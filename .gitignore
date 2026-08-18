@@ -2,3 +2,6 @@
 .claude/
 .journal/
 .wt/
+.moon/cache/
+bin/
+dist/

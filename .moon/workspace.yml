@@ -1,0 +1,12 @@
+projects:
+  sources:
+    root: '.'
+
+defaultProject: 'root'
+
+vcs:
+  defaultBranch: 'main'
+  provider: 'github'
+
+pipeline:
+  installDependencies: false

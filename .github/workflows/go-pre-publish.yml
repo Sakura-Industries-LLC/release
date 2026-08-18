@@ -1,0 +1,145 @@
+name: Reusable Go Pre-publish
+
+on:
+  workflow_call:
+    outputs:
+      artifact-id:
+        description: ID of the authoritative release-assets artifact.
+        value: ${{ jobs.release-assets.outputs.artifact-id }}
+      artifact-url:
+        description: URL of the authoritative release-assets artifact.
+        value: ${{ jobs.release-assets.outputs.artifact-url }}
+      artifact-digest:
+        description: SHA-256 digest of the authoritative release-assets artifact.
+        value: ${{ jobs.release-assets.outputs.artifact-digest }}
+      oci-input-artifact-id:
+        description: ID of the canonical Linux binaries artifact.
+        value: ${{ jobs.release-assets.outputs.oci-input-artifact-id }}
+      oci-input-artifact-url:
+        description: URL of the canonical Linux binaries artifact.
+        value: ${{ jobs.release-assets.outputs.oci-input-artifact-url }}
+      oci-input-artifact-digest:
+        description: SHA-256 digest of the canonical Linux binaries artifact.
+        value: ${{ jobs.release-assets.outputs.oci-input-artifact-digest }}
+
+permissions: {}
+
+jobs:
+  release-assets:
+    name: Build authoritative release assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-url: ${{ steps.upload.outputs.artifact-url }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      oci-input-artifact-id: ${{ steps.upload-oci-input.outputs.artifact-id }}
+      oci-input-artifact-url: ${{ steps.upload-oci-input.outputs.artifact-url }}
+      oci-input-artifact-digest: ${{ steps.upload-oci-input.outputs.artifact-digest }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GOTOOLCHAIN: local
+      MISE_EXEC_AUTO_INSTALL: 'false'
+    steps:
+      - name: Require a tag ref
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" != 'tag' ]]; then
+            echo '::error::Go pre-publish must run against a tag ref.'
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+          persist-credentials: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          install_args: >-
+            go
+            aqua:goreleaser/goreleaser
+            aqua:anchore/syft
+            aqua:sigstore/cosign
+          cache: true
+          add_shims_to_path: false
+          export_path: false
+
+      - name: Build and sign release assets
+        shell: bash
+        run: |
+          mise exec -- bash -euo pipefail -c '
+            for tool in go goreleaser syft cosign; do
+              active=$(command -v "${tool}")
+              managed=$(mise which "${tool}")
+              test "$(realpath "${active}")" = "$(realpath "${managed}")"
+              printf "Using %s: %s\n" "${tool}" "${active}"
+            done
+            go version
+            goreleaser release --clean --skip=publish
+          '
+
+      - name: Verify release asset checksums
+        working-directory: dist
+        shell: bash
+        run: |
+          sha256sum --check checksums.txt
+          test -s checksums.txt.sigstore.json
+
+      - name: Verify canonical Linux binaries
+        shell: bash
+        run: |
+          mapfile -t binaries < <(
+            jq -r '
+              .[]
+              | select(.type == "Binary" and .goos == "linux")
+              | [.goarch, .path]
+              | @tsv
+            ' dist/artifacts.json
+          )
+          if [[ ${#binaries[@]} -ne 2 ]]; then
+            echo "::error::Expected two canonical Linux binaries; found ${#binaries[@]}."
+            exit 1
+          fi
+          printf '%s\n' "${binaries[@]}" |
+            cut -f1 |
+            sort |
+            diff -u <(printf 'amd64\narm64\n') -
+
+          for record in "${binaries[@]}"; do
+            path=${record#*$'\t'}
+            test -x "${path}"
+          done
+
+      - name: Upload canonical Linux binaries
+        id: upload-oci-input
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oci-build-inputs
+          path: |
+            dist/artifacts.json
+            dist/*_linux_amd64*/**
+            dist/*_linux_arm64*/**
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Upload authoritative release assets
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom.json
+            dist/checksums.txt
+            dist/checksums.txt.sigstore.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

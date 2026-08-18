@@ -1,0 +1,569 @@
+name: Reusable OCI Image Publisher
+
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        description: ID of the authoritative OCI image artifact.
+        required: true
+        type: string
+      artifact-digest:
+        description: Expected SHA-256 digest of the authoritative OCI image artifact.
+        required: true
+        type: string
+      image-digest:
+        description: Expected SHA-256 digest of the OCI image index.
+        required: true
+        type: string
+      publish-image:
+        description: Publish, sign, and attest the image after verification.
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      image-name:
+        description: Canonical GHCR image name.
+        value: ${{ jobs.publish.outputs.image-name }}
+      image-reference:
+        description: Published image reference pinned by digest; empty when publication is disabled.
+        value: ${{ jobs.publish.outputs.image-reference }}
+      image-digest:
+        description: Verified OCI image index digest.
+        value: ${{ jobs.publish.outputs.image-digest }}
+      provenance-attestation-url:
+        description: GitHub provenance attestation URL; empty when publication is disabled.
+        value: ${{ jobs.publish.outputs.provenance-attestation-url }}
+      amd64-sbom-attestation-url:
+        description: GitHub amd64 SBOM attestation URL; empty when publication is disabled.
+        value: ${{ jobs.publish.outputs.amd64-sbom-attestation-url }}
+      arm64-sbom-attestation-url:
+        description: GitHub arm64 SBOM attestation URL; empty when publication is disabled.
+        value: ${{ jobs.publish.outputs.arm64-sbom-attestation-url }}
+
+jobs:
+  publish:
+    name: Publish OCI image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: oci-publish-${{ github.repository_id }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    outputs:
+      image-name: ${{ steps.stage.outputs.image-name }}
+      image-reference: ${{ steps.push.outputs.reference }}
+      image-digest: ${{ steps.stage.outputs.image-digest }}
+      provenance-attestation-url: ${{ steps.provenance.outputs.attestation-url }}
+      amd64-sbom-attestation-url: ${{ steps.amd64-sbom.outputs.attestation-url }}
+      arm64-sbom-attestation-url: ${{ steps.arm64-sbom.outputs.attestation-url }}
+    steps:
+      - name: Require a stable release tag
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const stableTag = /^refs\/tags\/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
+            if (!stableTag.test(context.ref)) {
+              throw new Error(
+                `OCI publication requires a stable vMAJOR.MINOR.PATCH tag; got ${context.ref}.`,
+              )
+            }
+
+      - name: Set up publisher tools
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          mise_toml: |
+            [tools]
+            "aqua:oras-project/oras" = "1.3.3"
+            "aqua:sigstore/cosign" = "3.1.3"
+          install_args: aqua:oras-project/oras aqua:sigstore/cosign
+          cache: true
+
+      - name: Verify authoritative OCI artifact
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_ID: ${{ inputs.artifact-id }}
+          EXPECTED_DIGEST: ${{ inputs.artifact-digest }}
+        with:
+          retries: 3
+          script: |
+            const artifactId = Number(process.env.ARTIFACT_ID)
+            if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+              throw new Error(`Invalid artifact ID: ${process.env.ARTIFACT_ID}`)
+            }
+
+            const {data: artifact} = await github.rest.actions.getArtifact({
+              ...context.repo,
+              artifact_id: artifactId,
+            })
+            if (artifact.expired) {
+              throw new Error(`Artifact ${artifactId} has expired.`)
+            }
+            if (artifact.workflow_run?.id !== Number(context.runId)) {
+              throw new Error(
+                `Artifact ${artifactId} belongs to workflow run ` +
+                  `${artifact.workflow_run?.id}, expected ${context.runId}.`,
+              )
+            }
+            const normalize = (digest) => String(digest ?? '')
+              .replace(/^sha256:/, '')
+              .toLowerCase()
+            const expected = normalize(process.env.EXPECTED_DIGEST)
+            const actual = normalize(artifact.digest)
+            if (!expected || actual !== expected) {
+              throw new Error(
+                `Artifact digest mismatch: expected ${process.env.EXPECTED_DIGEST}, got ${artifact.digest}.`,
+              )
+            }
+
+      - name: Download authoritative OCI image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          path: oci-image
+          digest-mismatch: error
+
+      - name: Verify OCI image contents
+        id: stage
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_IMAGE_DIGEST: ${{ inputs.image-digest }}
+        with:
+          script: |
+            const crypto = require('crypto')
+            const fs = require('fs')
+
+            const digestPattern = /^sha256:[0-9a-f]{64}$/
+            const expected = String(process.env.EXPECTED_IMAGE_DIGEST ?? '').toLowerCase()
+            if (!digestPattern.test(expected)) {
+              throw new Error(`Invalid image digest: ${process.env.EXPECTED_IMAGE_DIGEST}`)
+            }
+
+            const requireFile = (file) => {
+              let stat
+              try {
+                stat = fs.lstatSync(file)
+              } catch {
+                throw new Error(`Required OCI artifact file is missing: ${file}`)
+              }
+              if (!stat.isFile()) {
+                throw new Error(`Required OCI artifact path is not a regular file: ${file}`)
+              }
+            }
+            const readJson = (file) => {
+              requireFile(file)
+              try {
+                return JSON.parse(fs.readFileSync(file, 'utf8'))
+              } catch (error) {
+                throw new Error(`Invalid JSON in ${file}: ${error.message}`)
+              }
+            }
+
+            requireFile('oci-image/layout/oci-layout')
+            requireFile('oci-image/layout/index.json')
+            requireFile('oci-image/image-digest.txt')
+            const amd64Sbom = 'oci-image/sboms/sbom-x86_64.spdx.json'
+            const arm64Sbom = 'oci-image/sboms/sbom-aarch64.spdx.json'
+            readJson(amd64Sbom)
+            readJson(arm64Sbom)
+
+            const indexBytes = fs.readFileSync('oci-image/layout/index.json')
+            const recorded = fs.readFileSync('oci-image/image-digest.txt', 'utf8').trim()
+            const computed = `sha256:${crypto.createHash('sha256').update(indexBytes).digest('hex')}`
+            if (recorded !== expected || computed !== expected) {
+              throw new Error(
+                `OCI index digest mismatch: expected ${expected}, ` +
+                  `recorded ${recorded}, computed ${computed}.`,
+              )
+            }
+
+            const index = JSON.parse(indexBytes.toString('utf8'))
+            if (
+              index.schemaVersion !== 2 ||
+              index.mediaType !== 'application/vnd.oci.image.index.v1+json' ||
+              !Array.isArray(index.manifests) ||
+              index.manifests.length !== 2
+            ) {
+              throw new Error('OCI index must contain exactly two platform manifests.')
+            }
+
+            const platforms = index.manifests
+              .map((manifest) => `${manifest.platform?.os}/${manifest.platform?.architecture}`)
+              .sort()
+            if (platforms.join(',') !== 'linux/amd64,linux/arm64') {
+              throw new Error(`Unexpected OCI platforms: ${platforms.join(', ')}`)
+            }
+
+            const descriptor = (architecture) => index.manifests.find(
+              (manifest) =>
+                manifest.platform.os === 'linux' &&
+                manifest.platform.architecture === architecture,
+            )
+            const amd64Digest = String(descriptor('amd64').digest ?? '')
+            const arm64Digest = String(descriptor('arm64').digest ?? '')
+            for (const digest of [amd64Digest, arm64Digest]) {
+              if (!digestPattern.test(digest)) {
+                throw new Error(`Invalid platform manifest digest: ${digest}`)
+              }
+              requireFile(`oci-image/layout/blobs/sha256/${digest.slice('sha256:'.length)}`)
+            }
+
+            const version = String(process.env.GITHUB_REF_NAME ?? '').replace(/^v/, '')
+            const [major, minor, patch, ...extra] = version.split('.')
+            if (!major || !minor || !patch || extra.length !== 0) {
+              throw new Error(`Invalid stable version: ${version}`)
+            }
+            const imageName =
+              `ghcr.io/${context.repo.owner.toLowerCase()}/${context.repo.repo.toLowerCase()}`
+
+            core.setOutput('image-name', imageName)
+            core.setOutput('version', version)
+            core.setOutput('exact-tag', version)
+            core.setOutput('minor-tag', `${major}.${minor}`)
+            core.setOutput('major-tag', major)
+            core.setOutput('image-digest', expected)
+            core.setOutput('amd64-digest', amd64Digest)
+            core.setOutput('arm64-digest', arm64Digest)
+
+      - name: Log in to GHCR
+        if: inputs.publish-image
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        with:
+          script: |
+            const token = String(process.env.GHCR_TOKEN ?? '')
+            if (!token) {
+              throw new Error('GitHub token is empty.')
+            }
+            core.setSecret(token)
+            await exec.exec(
+              'oras',
+              ['login', 'ghcr.io', '--username', context.actor, '--password-stdin'],
+              {input: Buffer.from(`${token}\n`)},
+            )
+      - name: Plan OCI image tags
+        if: inputs.publish-image
+        id: tags
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXACT_TAG: ${{ steps.stage.outputs.exact-tag }}
+          EXPECTED_DIGEST: ${{ steps.stage.outputs.image-digest }}
+          IMAGE_NAME: ${{ steps.stage.outputs.image-name }}
+          MAJOR_TAG: ${{ steps.stage.outputs.major-tag }}
+          MINOR_TAG: ${{ steps.stage.outputs.minor-tag }}
+          VERSION: ${{ steps.stage.outputs.version }}
+        with:
+          script: |
+            const stableVersion = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
+            const imageName = process.env.IMAGE_NAME
+            const expectedDigest = process.env.EXPECTED_DIGEST
+            const version = process.env.VERSION
+            const tags = []
+
+            const runOras = async (args, missingIsNull = false) => {
+              const result = await exec.getExecOutput('oras', args, {
+                ignoreReturnCode: true,
+                silent: true,
+              })
+              if (result.exitCode === 0) {
+                return result.stdout.trim()
+              }
+              if (
+                missingIsNull &&
+                result.exitCode === 1 &&
+                result.stderr.includes(': not found')
+              ) {
+                return null
+              }
+              throw new Error(
+                `oras ${args[0]} failed with exit code ${result.exitCode}: ` +
+                  result.stderr.trim(),
+              )
+            }
+            const resolve = (reference) => runOras(['resolve', reference], true)
+            const parseVersion = (value) => {
+              const match = stableVersion.exec(String(value ?? ''))
+              if (!match) {
+                throw new Error(`Invalid stable version annotation: ${value}`)
+              }
+              return match.slice(1).map((component) => BigInt(component))
+            }
+            const compareVersions = (left, right) => {
+              const leftParts = parseVersion(left)
+              const rightParts = parseVersion(right)
+              for (let index = 0; index < leftParts.length; index += 1) {
+                if (leftParts[index] > rightParts[index]) {
+                  return 1
+                }
+                if (leftParts[index] < rightParts[index]) {
+                  return -1
+                }
+              }
+              return 0
+            }
+
+            const exactTag = process.env.EXACT_TAG
+            const exactDigest = await resolve(`${imageName}:${exactTag}`)
+            if (exactDigest === null) {
+              tags.push(exactTag)
+            } else if (exactDigest !== expectedDigest) {
+              throw new Error(
+                `Immutable tag ${imageName}:${exactTag} resolves to ${exactDigest}; ` +
+                  `expected ${expectedDigest}.`,
+              )
+            } else {
+              core.info(
+                `Exact-version tag ${exactTag} already resolves to the authoritative digest.`,
+              )
+            }
+
+            const candidateParts = parseVersion(version)
+            const planChannel = async (tag, scope) => {
+              const currentDigest = await resolve(`${imageName}:${tag}`)
+              if (currentDigest === null) {
+                tags.push(tag)
+                return
+              }
+              if (currentDigest === expectedDigest) {
+                core.info(`Channel tag ${tag} already resolves to the authoritative digest.`)
+                return
+              }
+
+              const manifest = JSON.parse(await runOras([
+                'manifest',
+                'fetch',
+                `${imageName}:${tag}`,
+              ]))
+              const currentVersion = manifest.annotations?.['org.opencontainers.image.version']
+              const currentParts = parseVersion(currentVersion)
+              if (
+                scope === 'minor' &&
+                (
+                  currentParts[0] !== candidateParts[0] ||
+                  currentParts[1] !== candidateParts[1]
+                )
+              ) {
+                throw new Error(
+                  `Channel tag ${tag} points outside its minor release line: ${currentVersion}.`,
+                )
+              }
+              if (scope === 'major' && currentParts[0] !== candidateParts[0]) {
+                throw new Error(
+                  `Channel tag ${tag} points outside its major release line: ${currentVersion}.`,
+                )
+              }
+              if (!['minor', 'major', 'latest'].includes(scope)) {
+                throw new Error(`Unknown channel scope ${scope}.`)
+              }
+
+              const comparison = compareVersions(version, currentVersion)
+              if (comparison > 0) {
+                tags.push(tag)
+              } else if (comparison < 0) {
+                core.info(
+                  `Keeping ${imageName}:${tag} at newer release ${currentVersion}.`,
+                )
+              } else {
+                throw new Error(
+                  `Channel tag ${imageName}:${tag} has version ${currentVersion} ` +
+                    `but resolves to ${currentDigest}; expected ${expectedDigest}.`,
+                )
+              }
+            }
+
+            await planChannel(process.env.MINOR_TAG, 'minor')
+            await planChannel(process.env.MAJOR_TAG, 'major')
+            await planChannel('latest', 'latest')
+            core.setOutput('tags', tags.join(','))
+
+      - name: Publish OCI image by digest
+        if: inputs.publish-image
+        id: push
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_DIGEST: ${{ steps.stage.outputs.image-digest }}
+          IMAGE_NAME: ${{ steps.stage.outputs.image-name }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+            const expectedDigest = process.env.EXPECTED_DIGEST
+            const imageName = process.env.IMAGE_NAME
+            const indexPath = 'oci-image/layout/index.json'
+            const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'))
+            const pushedBlobs = new Set()
+
+            for (const descriptor of index.manifests) {
+              const manifestPath = path.join(
+                'oci-image',
+                'layout',
+                'blobs',
+                'sha256',
+                descriptor.digest.slice('sha256:'.length),
+              )
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+              const blobDigests = [
+                manifest.config?.digest,
+                ...(manifest.layers ?? []).map((layer) => layer.digest),
+              ]
+              for (const digest of blobDigests) {
+                if (!digest || pushedBlobs.has(digest)) {
+                  continue
+                }
+                await exec.exec('oras', [
+                  'blob',
+                  'push',
+                  '--no-tty',
+                  `${imageName}@${digest}`,
+                  path.join(
+                    'oci-image',
+                    'layout',
+                    'blobs',
+                    'sha256',
+                    digest.slice('sha256:'.length),
+                  ),
+                ])
+                pushedBlobs.add(digest)
+              }
+              await exec.exec('oras', [
+                'manifest',
+                'push',
+                '--media-type',
+                descriptor.mediaType,
+                `${imageName}@${descriptor.digest}`,
+                manifestPath,
+              ])
+            }
+
+            await exec.exec('oras', [
+              'manifest',
+              'push',
+              '--media-type',
+              'application/vnd.oci.image.index.v1+json',
+              `${imageName}@${expectedDigest}`,
+              indexPath,
+            ])
+            const resolved = await exec.getExecOutput(
+              'oras',
+              ['resolve', `${imageName}@${expectedDigest}`],
+              {silent: true},
+            )
+            const actual = resolved.stdout.trim()
+            if (actual !== expectedDigest) {
+              throw new Error(
+                `Published ${imageName}@${expectedDigest} resolved to ${actual}.`,
+              )
+            }
+
+            core.setOutput('digest', expectedDigest)
+            core.setOutput('reference', `${imageName}@${expectedDigest}`)
+
+
+      - name: Sign OCI image and platform manifests
+        if: inputs.publish-image
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          IMAGE_REFERENCE: ${{ steps.push.outputs.reference }}
+        with:
+          script: |
+            await exec.exec('cosign', [
+              'sign',
+              '--yes',
+              '--recursive',
+              process.env.IMAGE_REFERENCE,
+            ])
+
+      - name: Attest OCI image provenance
+        if: inputs.publish-image
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.stage.outputs.image-name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest amd64 image SBOM
+        if: inputs.publish-image
+        id: amd64-sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.stage.outputs.image-name }}
+          subject-digest: ${{ steps.stage.outputs.amd64-digest }}
+          sbom-path: oci-image/sboms/sbom-x86_64.spdx.json
+          push-to-registry: true
+
+      - name: Attest arm64 image SBOM
+        if: inputs.publish-image
+        id: arm64-sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.stage.outputs.image-name }}
+          subject-digest: ${{ steps.stage.outputs.arm64-digest }}
+          sbom-path: oci-image/sboms/sbom-aarch64.spdx.json
+          push-to-registry: true
+      - name: Publish verified OCI image tags
+        if: inputs.publish-image
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXACT_TAG: ${{ steps.stage.outputs.exact-tag }}
+          EXPECTED_DIGEST: ${{ steps.stage.outputs.image-digest }}
+          IMAGE_NAME: ${{ steps.stage.outputs.image-name }}
+          IMAGE_TAGS: ${{ steps.tags.outputs.tags }}
+        with:
+          script: |
+            const expectedDigest = process.env.EXPECTED_DIGEST
+            const imageName = process.env.IMAGE_NAME
+            const tags = String(process.env.IMAGE_TAGS ?? '')
+              .split(',')
+              .filter(Boolean)
+
+            if (tags.length > 0) {
+              await exec.exec('oras', [
+                'tag',
+                '--concurrency',
+                '1',
+                `${imageName}@${expectedDigest}`,
+                ...tags,
+              ])
+              for (const tag of tags) {
+                const resolved = await exec.getExecOutput(
+                  'oras',
+                  ['resolve', `${imageName}:${tag}`],
+                  {silent: true},
+                )
+                const actual = resolved.stdout.trim()
+                if (actual !== expectedDigest) {
+                  throw new Error(
+                    `Published ${imageName}:${tag} resolved to ${actual}; ` +
+                      `expected ${expectedDigest}.`,
+                  )
+                }
+              }
+            }
+
+            const exact = await exec.getExecOutput(
+              'oras',
+              ['resolve', `${imageName}:${process.env.EXACT_TAG}`],
+              {silent: true},
+            )
+            const exactDigest = exact.stdout.trim()
+            if (exactDigest !== expectedDigest) {
+              throw new Error(
+                `Exact tag ${imageName}:${process.env.EXACT_TAG} resolves to ` +
+                  `${exactDigest}; expected ${expectedDigest}.`,
+              )
+            }
+
+      - name: Log out of GHCR
+        if: always() && inputs.publish-image
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await exec.exec('oras', ['logout', 'ghcr.io'])

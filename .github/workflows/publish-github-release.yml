@@ -1,0 +1,482 @@
+name: Reusable GitHub Release Publisher
+
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        description: ID of the authoritative release-assets artifact.
+        required: true
+        type: string
+      artifact-digest:
+        description: Expected SHA-256 digest of the release-assets artifact.
+        required: true
+        type: string
+      checksum-signing-workflow-ref:
+        description: Exact workflow ref expected in the checksum signing certificate identity.
+        required: true
+        type: string
+      release-app-client-id:
+        description: Client ID of the GitHub App that publishes releases.
+        required: true
+        type: string
+      publish-release:
+        description: Publish the draft after uploading and attesting its assets.
+        required: false
+        default: true
+        type: boolean
+      require-oci-image:
+        description: Require a published digest-pinned OCI image before making the GitHub Release public.
+        required: false
+        default: false
+        type: boolean
+      oci-image-reference:
+        description: Published digest-pinned OCI image reference; required for publication when require-oci-image is true.
+        required: false
+        default: ''
+        type: string
+    secrets:
+      release-app-private-key:
+        description: Private key of the GitHub App that publishes releases.
+        required: true
+    outputs:
+      attestation-url:
+        description: URL of the GitHub build-provenance attestation.
+        value: ${{ jobs.publish.outputs.attestation-url }}
+      release-url:
+        description: URL of the populated GitHub Release.
+        value: ${{ jobs.publish.outputs.release-url }}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      attestation-url: ${{ steps.attest.outputs.attestation-url }}
+      release-url: ${{ steps.release.outputs.url }}
+    permissions:
+      actions: read
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      MISE_EXEC_AUTO_INSTALL: 'false'
+    steps:
+      - name: Require a tag ref
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          OCI_IMAGE_REFERENCE: ${{ inputs.oci-image-reference }}
+          PUBLISH_RELEASE: ${{ inputs.publish-release }}
+          REQUIRE_OCI_IMAGE: ${{ inputs.require-oci-image }}
+        with:
+          script: |
+            if (process.env.GITHUB_REF_TYPE !== 'tag') {
+              throw new Error('GitHub Release publication must run against a tag ref.')
+            }
+            if (
+              process.env.PUBLISH_RELEASE === 'true' &&
+              process.env.REQUIRE_OCI_IMAGE === 'true'
+            ) {
+              const expectedName =
+                `ghcr.io/${context.repo.owner.toLowerCase()}/${context.repo.repo.toLowerCase()}`
+              const [name, digest, ...extra] =
+                String(process.env.OCI_IMAGE_REFERENCE ?? '').split('@')
+              if (
+                name !== expectedName ||
+                !/^sha256:[0-9a-f]{64}$/.test(digest) ||
+                extra.length !== 0
+              ) {
+                throw new Error(
+                  `GitHub Release publication requires a published OCI image at ${expectedName}@sha256:<digest>.`,
+                )
+              }
+            }
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+          persist-credentials: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          install_args: 'aqua:cli/cli aqua:sigstore/cosign'
+          cache: true
+          add_shims_to_path: false
+          export_path: false
+
+      - name: Verify publication tools
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await exec.exec('mise', ['exec', '--', 'gh', '--version'])
+            await exec.exec('mise', ['exec', '--', 'cosign', 'version'])
+
+      - name: Create release app token
+        id: release-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.release-app-client-id }}
+          private-key: ${{ secrets.release-app-private-key }}
+          permission-contents: write
+
+      - name: Verify artifact handoff
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_ID: ${{ inputs.artifact-id }}
+          EXPECTED_DIGEST: ${{ inputs.artifact-digest }}
+        with:
+          retries: 3
+          script: |
+            const artifactId = Number(process.env.ARTIFACT_ID)
+            if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+              throw new Error(`Invalid artifact ID: ${process.env.ARTIFACT_ID}`)
+            }
+
+            const {data: artifact} = await github.rest.actions.getArtifact({
+              ...context.repo,
+              artifact_id: artifactId,
+            })
+            if (artifact.expired) {
+              throw new Error(`Artifact ${artifactId} has expired.`)
+            }
+            if (artifact.workflow_run?.id !== Number(context.runId)) {
+              throw new Error(
+                `Artifact ${artifactId} belongs to workflow run ` +
+                  `${artifact.workflow_run?.id}, expected ${context.runId}.`,
+              )
+            }
+            const normalize = (digest) => String(digest ?? '')
+              .replace(/^sha256:/, '')
+              .toLowerCase()
+            const expected = normalize(process.env.EXPECTED_DIGEST)
+            const actual = normalize(artifact.digest)
+            if (!expected || actual !== expected) {
+              throw new Error(
+                `Artifact digest mismatch: expected ${process.env.EXPECTED_DIGEST}, got ${artifact.digest}.`,
+              )
+            }
+
+      - name: Wait for matching draft release
+        id: draft
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          RELEASE_APP_TOKEN: ${{ steps.release-app.outputs.token }}
+          TAG: ${{ github.ref_name }}
+        with:
+          retries: 3
+          script: |
+            const releaseGitHub = getOctokit(process.env.RELEASE_APP_TOKEN)
+            const sleep = (milliseconds) => new Promise((resolve) => {
+              setTimeout(resolve, milliseconds)
+            })
+
+            let release
+            for (let attempt = 1; attempt <= 24; attempt += 1) {
+              const releases = await releaseGitHub.paginate(
+                releaseGitHub.rest.repos.listReleases,
+                {...context.repo, per_page: 100},
+              )
+              release = releases.find(({tag_name: tag}) => tag === process.env.TAG)
+              if (release) break
+
+              core.info(`Draft release not available; retrying (${attempt}/24).`)
+              await sleep(5000)
+            }
+
+            if (!release) {
+              throw new Error(`No GitHub Release found for ${process.env.TAG}.`)
+            }
+            if (!release.draft) {
+              throw new Error(`Release ${process.env.TAG} is not a draft.`)
+            }
+
+            const tag = await exec.getExecOutput(
+              'git',
+              ['rev-list', '-n', '1', process.env.TAG],
+              {silent: true},
+            )
+            const tagCommit = tag.stdout.trim()
+            if (tagCommit !== process.env.EXPECTED_SHA) {
+              throw new Error(
+                `Tag resolves to ${tagCommit}, expected ${process.env.EXPECTED_SHA}.`,
+              )
+            }
+
+            core.setOutput('id', String(release.id))
+
+      - name: Download authoritative release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          path: dist
+          digest-mismatch: error
+
+      - name: Verify authoritative release bundle
+        id: bundle
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ inputs.checksum-signing-workflow-ref }}
+        with:
+          script: |
+            const crypto = require('node:crypto')
+            const fs = require('node:fs')
+            const path = require('node:path')
+
+            const workspace = process.env.GITHUB_WORKSPACE
+            const dist = path.join(workspace, 'dist')
+            const checksumName = 'checksums.txt'
+            const bundleName = 'checksums.txt.sigstore.json'
+            const checksumPath = path.join(dist, checksumName)
+            const bundlePath = path.join(dist, bundleName)
+            const controls = new Set([checksumName, bundleName])
+
+            const requireRegularFile = (file, label) => {
+              let stat
+              try {
+                stat = fs.lstatSync(file)
+              } catch {
+                throw new Error(`${label} does not exist.`)
+              }
+              if (!stat.isFile()) {
+                throw new Error(`${label} is not a regular file.`)
+              }
+            }
+
+            const sha256 = async (file) => {
+              const hash = crypto.createHash('sha256')
+              for await (const chunk of fs.createReadStream(file)) {
+                hash.update(chunk)
+              }
+              return hash.digest('hex')
+            }
+
+            requireRegularFile(checksumPath, checksumName)
+            requireRegularFile(bundlePath, bundleName)
+
+            const manifest = fs.readFileSync(checksumPath, 'utf8')
+            const lines = manifest.split(/\r?\n/)
+            if (lines.at(-1) === '') lines.pop()
+            if (lines.length === 0) {
+              throw new Error('checksums.txt does not list any release payloads.')
+            }
+
+            const seen = new Set()
+            const entries = []
+            for (const [index, line] of lines.entries()) {
+              const match = line.match(
+                /^([0-9A-Fa-f]{64}) [ *]([A-Za-z0-9][A-Za-z0-9._+-]*)$/,
+              )
+              if (!match) {
+                throw new Error(`Invalid checksums.txt entry on line ${index + 1}.`)
+              }
+
+              const [, rawDigest, name] = match
+              if (controls.has(name)) {
+                throw new Error(`Control file ${name} must not be listed in checksums.txt.`)
+              }
+              if (seen.has(name)) {
+                throw new Error(`Duplicate checksums.txt entry: ${name}.`)
+              }
+
+              const file = path.join(dist, name)
+              requireRegularFile(file, `Release payload ${name}`)
+              const digest = rawDigest.toLowerCase()
+              const actual = await sha256(file)
+              if (actual !== digest) {
+                throw new Error(
+                  `Release payload ${name} has digest ${actual}, expected ${digest}.`,
+                )
+              }
+
+              seen.add(name)
+              entries.push({name, file, digest})
+            }
+
+            const allowed = new Set([...seen, ...controls])
+            for (const entry of fs.readdirSync(dist, {withFileTypes: true})) {
+              if (!allowed.has(entry.name) || !entry.isFile()) {
+                throw new Error(`Unlisted or invalid release bundle entry: ${entry.name}.`)
+              }
+            }
+
+            await exec.exec('mise', [
+              'exec',
+              '--',
+              'cosign',
+              'verify-blob',
+              '--bundle',
+              bundlePath,
+              '--certificate-identity',
+              process.env.CERTIFICATE_IDENTITY,
+              '--certificate-oidc-issuer',
+              'https://token.actions.githubusercontent.com',
+              checksumPath,
+            ], {cwd: workspace})
+
+            const assets = entries.map(({file}) => file)
+            assets.push(checksumPath, bundlePath)
+            const digests = Object.fromEntries(
+              entries.map(({name, digest}) => [name, digest]),
+            )
+            digests[checksumName] = await sha256(checksumPath)
+            digests[bundleName] = await sha256(bundlePath)
+
+            core.setOutput('assets', JSON.stringify(assets))
+            core.setOutput('digests', JSON.stringify(digests))
+
+      - name: Attest release assets
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
+      - name: Upload release assets
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ASSETS: ${{ steps.bundle.outputs.assets }}
+          EXPECTED_DIGESTS: ${{ steps.bundle.outputs.digests }}
+          RELEASE_APP_TOKEN: ${{ steps.release-app.outputs.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        with:
+          retries: 3
+          script: |
+            const assets = JSON.parse(process.env.ASSETS)
+            const expected = JSON.parse(process.env.EXPECTED_DIGESTS)
+            const releaseId = Number(process.env.RELEASE_ID)
+            if (!Array.isArray(assets) || assets.length === 0) {
+              throw new Error('No release assets found.')
+            }
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) {
+              throw new Error(`Invalid release ID: ${process.env.RELEASE_ID}`)
+            }
+
+            const releaseGitHub = getOctokit(process.env.RELEASE_APP_TOKEN)
+            const releases = await releaseGitHub.paginate(
+              releaseGitHub.rest.repos.listReleases,
+              {...context.repo, per_page: 100},
+            )
+            const matches = releases.filter(
+              ({tag_name: tag}) => tag === process.env.TAG,
+            )
+            if (matches.length !== 1 || matches[0].id !== releaseId) {
+              throw new Error(
+                `Tag ${process.env.TAG} does not uniquely resolve to release ${releaseId}.`,
+              )
+            }
+
+            const expectedNames = new Set(Object.keys(expected))
+            const existing = await releaseGitHub.paginate(
+              releaseGitHub.rest.repos.listReleaseAssets,
+              {...context.repo, release_id: releaseId, per_page: 100},
+            )
+            const unexpected = existing
+              .filter(({name}) => !expectedNames.has(name))
+              .map(({name}) => name)
+            if (unexpected.length !== 0) {
+              throw new Error(
+                `Draft release contains unexpected assets: ${unexpected.join(', ')}.`,
+              )
+            }
+
+            await exec.exec('mise', [
+              'exec',
+              '--',
+              'gh',
+              'release',
+              'upload',
+              process.env.TAG,
+              ...assets,
+              '--repo',
+              process.env.REPOSITORY,
+              '--clobber',
+            ], {
+              cwd: process.env.GITHUB_WORKSPACE,
+              env: {...process.env, GH_TOKEN: process.env.RELEASE_APP_TOKEN},
+            })
+
+      - name: Verify and finalize release
+        id: release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_DIGESTS: ${{ steps.bundle.outputs.digests }}
+          PUBLISH_RELEASE: ${{ inputs.publish-release }}
+          RELEASE_APP_TOKEN: ${{ steps.release-app.outputs.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        with:
+          retries: 3
+          script: |
+            const releaseGitHub = getOctokit(process.env.RELEASE_APP_TOKEN)
+            const releaseId = Number(process.env.RELEASE_ID)
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) {
+              throw new Error(`Invalid release ID: ${process.env.RELEASE_ID}`)
+            }
+
+            const expected = JSON.parse(process.env.EXPECTED_DIGESTS)
+            const expectedNames = Object.keys(expected)
+            const sleep = (milliseconds) => new Promise((resolve) => {
+              setTimeout(resolve, milliseconds)
+            })
+            let assets
+            for (let attempt = 1; attempt <= 12; attempt += 1) {
+              assets = await releaseGitHub.paginate(
+                releaseGitHub.rest.repos.listReleaseAssets,
+                {...context.repo, release_id: releaseId, per_page: 100},
+              )
+              const ready = assets.length === expectedNames.length &&
+                assets.every(({digest, state}) => digest && state === 'uploaded')
+              if (ready) break
+
+              core.info(`Release assets not ready; retrying (${attempt}/12).`)
+              await sleep(1000)
+            }
+            if (assets.some(({digest, state}) => !digest || state !== 'uploaded')) {
+              throw new Error('GitHub Release assets did not reach the uploaded state.')
+            }
+
+            const actual = new Map(assets.map((asset) => [asset.name, asset.digest]))
+            if (actual.size !== assets.length) {
+              throw new Error('GitHub Release contains duplicate asset names.')
+            }
+
+            if (assets.length !== expectedNames.length) {
+              throw new Error(
+                `Release contains ${assets.length} assets; expected ${expectedNames.length}.`,
+              )
+            }
+            for (const name of expectedNames) {
+              const expectedDigest = `sha256:${expected[name]}`
+              const actualDigest = actual.get(name)
+              if (actualDigest !== expectedDigest) {
+                throw new Error(
+                  `Release asset ${name} has digest ${actualDigest}, expected ${expectedDigest}.`,
+                )
+              }
+            }
+
+            const publish = process.env.PUBLISH_RELEASE === 'true'
+            if (publish) {
+              await releaseGitHub.rest.repos.updateRelease({
+                ...context.repo,
+                release_id: releaseId,
+                draft: false,
+              })
+            }
+
+            const {data: release} = await releaseGitHub.rest.repos.getRelease({
+              ...context.repo,
+              release_id: releaseId,
+            })
+            if (release.draft === publish) {
+              throw new Error('GitHub Release ended in the wrong draft state.')
+            }
+            core.setOutput('url', release.html_url)

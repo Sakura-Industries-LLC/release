@@ -1,0 +1,82 @@
+language: 'go'
+layer: 'application'
+stack: 'backend'
+
+project:
+  title: 'release-mvp'
+  description: 'Exercise the Meigma release pipeline.'
+  owner: 'meigma'
+  maintainers:
+    - 'meigma'
+
+toolchains:
+  default: 'system'
+
+fileGroups:
+  goSources:
+    - 'cmd/**/*.go'
+    - 'internal/**/*.go'
+    - 'go.mod'
+    - 'go.sum'
+    - 'mise.toml'
+    - 'mise.lock'
+  lintConfig:
+    - '.golangci.yml'
+    - 'mise.toml'
+    - 'mise.lock'
+  ciConfig:
+    - 'moon.yml'
+    - '.github/workflows/**/*.yml'
+
+workspace:
+  inheritedTasks:
+    include: []
+
+tasks:
+  format:
+    command: 'mise exec -- golangci-lint fmt --config .golangci.yml --diff'
+    inputs:
+      - '@group(goSources)'
+      - '@group(lintConfig)'
+      - '@group(ciConfig)'
+    options:
+      cache: false
+
+  lint:
+    command: 'mise exec -- golangci-lint run --config .golangci.yml ./... --show-stats=false'
+    inputs:
+      - '@group(goSources)'
+      - '@group(lintConfig)'
+      - '@group(ciConfig)'
+    options:
+      cache: false
+
+  build:
+    command: 'mise exec -- go build -o bin/release-mvp ./cmd/release-mvp'
+    inputs:
+      - '@group(goSources)'
+      - '@group(ciConfig)'
+    outputs:
+      - 'bin/release-mvp'
+
+  test:
+    command: 'mise exec -- go test ./...'
+    inputs:
+      - '@group(goSources)'
+      - '@group(ciConfig)'
+    options:
+      cache: false
+
+  check:
+    deps:
+      - 'root:format'
+      - 'root:lint'
+      - 'root:build'
+      - 'root:test'
+    inputs:
+      - '@group(goSources)'
+      - '@group(lintConfig)'
+      - '@group(ciConfig)'
+    options:
+      cache: false
+      runInCI: true

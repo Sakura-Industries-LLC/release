@@ -1,0 +1,33 @@
+contents:
+  repositories:
+    - https://dl-cdn.alpinelinux.org/alpine/v3.24/main
+  packages:
+    - alpine-release
+    - ca-certificates-bundle
+    - example
+
+entrypoint:
+  command: /usr/bin/example
+
+accounts:
+  groups:
+    - groupname: nonroot
+      gid: 65532
+  users:
+    - username: nonroot
+      uid: 65532
+  run-as: nonroot
+
+environment:
+  PATH: /usr/bin
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+
+archs:
+  - amd64
+  - arm64
+
+annotations:
+  org.opencontainers.image.title: example
+  org.opencontainers.image.description: Example Go command using the Meigma release workflows.
+  org.opencontainers.image.source: https://github.com/OWNER/REPOSITORY
+  org.opencontainers.image.licenses: LicenseRef-Proprietary
