@@ -75,6 +75,10 @@ jobs:
     needs: release-assets
     permissions:
       actions: read
+      # The callee installs setup-release-cli, whose installed acquisition path
+      # runs `gh attestation verify`. A called workflow can never exceed the
+      # caller's ceiling, so this must be granted here too.
+      attestations: read
       contents: read
     uses: ./.github/workflows/go-oci-build.yml
     with:

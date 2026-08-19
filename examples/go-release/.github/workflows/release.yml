@@ -25,6 +25,9 @@ jobs:
     needs: release-assets
     permissions:
       actions: read
+      # Required because the called workflow verifies the release-cli
+      # attestation while installing it; a callee cannot exceed this ceiling.
+      attestations: read
       contents: read
     uses: meigma/release/.github/workflows/go-oci-build.yml@fb8c8098ff27968fb3070e928c00e925f38c698e
     with:

@@ -84,6 +84,19 @@ Use the complete caller in `examples/go-release/.github/workflows/release.yml` a
 1. `oci-image` calls `go-oci-build.yml` with the canonical Linux artifact ID and digest from `release-assets`.
 2. `oci-publish` calls `publish-oci-image.yml` with the authoritative OCI artifact ID, artifact digest, and image index digest from `oci-image`.
 
+The builder job must grant these permissions:
+
+```yaml
+permissions:
+  actions: read
+  attestations: read
+  contents: read
+```
+
+`attestations: read` is required because the builder installs `release-cli` and
+verifies its attestation. A called workflow can never request more than the
+calling job grants, so omitting it fails the run before any job starts.
+
 The publisher job must grant only these permissions:
 
 ```yaml
