@@ -36,11 +36,8 @@ type annotationFile struct {
 
 // Resolve implements [puboci.StateReader].
 func (c *Client) Resolve(ctx context.Context, ref puboci.Reference) (rel.Digest, error) {
-	if ctx == nil {
-		return "", errors.New("context is nil")
-	}
-	if c == nil || c.auth == nil {
-		return "", errors.New("registry client is nil")
+	if err := c.requireReady(ctx); err != nil {
+		return "", err
 	}
 
 	return c.resolve(ctx, ref)
@@ -48,11 +45,8 @@ func (c *Client) Resolve(ctx context.Context, ref puboci.Reference) (rel.Digest,
 
 // Version implements [puboci.StateReader].
 func (c *Client) Version(ctx context.Context, ref puboci.Reference) (rel.Version, error) {
-	if ctx == nil {
-		return rel.Version{}, errors.New("context is nil")
-	}
-	if c == nil || c.auth == nil {
-		return rel.Version{}, errors.New("registry client is nil")
+	if err := c.requireReady(ctx); err != nil {
+		return rel.Version{}, err
 	}
 
 	return c.version(ctx, ref)
@@ -60,7 +54,7 @@ func (c *Client) Version(ctx context.Context, ref puboci.Reference) (rel.Version
 
 // resolve looks up the digest for ref after exported guards.
 func (c *Client) resolve(ctx context.Context, ref puboci.Reference) (rel.Digest, error) {
-	repo, err := c.repository(ref)
+	repo, err := c.repository(ref.Image)
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +74,7 @@ func (c *Client) resolve(ctx context.Context, ref puboci.Reference) (rel.Digest,
 
 // version reads the version annotation for ref after exported guards.
 func (c *Client) version(ctx context.Context, ref puboci.Reference) (rel.Version, error) {
-	repo, err := c.repository(ref)
+	repo, err := c.repository(ref.Image)
 	if err != nil {
 		return rel.Version{}, err
 	}

@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -92,6 +93,7 @@ func newTagsCommand(options Options) *cobra.Command {
 	cmd.Flags().String(flagImage, "", "OCI image name without a tag or digest")
 	cmd.Flags().String(flagVersion, "", "stable MAJOR.MINOR.PATCH version")
 	cmd.Flags().String(flagDigest, "", "candidate OCI index digest")
+	cmd.Flags().Bool(flagPlainHTTP, false, "use HTTP instead of HTTPS for the registry")
 
 	return cmd
 }
@@ -107,7 +109,7 @@ func runPlanTags(cmd *cobra.Command, options Options) error {
 		return writeCommandResult(options, commandPlanTags, nil, UsageError(err))
 	}
 
-	reader, err := stateReader(options, expected.Credentials)
+	reader, err := stateReader(options, expected.Registry)
 	if err != nil {
 		return writeCommandResult(options, commandPlanTags, nil, err)
 	}
@@ -137,8 +139,8 @@ type tagsConfig struct {
 	Version rel.Version
 	// Digest is the candidate image digest.
 	Digest rel.Digest
-	// Credentials authenticates registry reads. An empty password is anonymous.
-	Credentials RegistryCredentials
+	// Registry authenticates and configures the registry client.
+	Registry RegistryConfig
 }
 
 // resolveTags parses flags and Actions environment into a plan-tags config.
@@ -149,6 +151,9 @@ func resolveTags(options Options) (tagsConfig, error) {
 	if options.settings != nil {
 		settings = *options.settings
 	}
+	if err := settings.err; err != nil {
+		return tagsConfig{}, err
+	}
 
 	digest, err := resolvePlanDigest(settings)
 	if err != nil {
@@ -158,16 +163,19 @@ func resolveTags(options Options) (tagsConfig, error) {
 	if err != nil {
 		return tagsConfig{}, err
 	}
+	if plainErr := requireLoopbackPlainHTTP(image, settings.PlainHTTP); plainErr != nil {
+		return tagsConfig{}, plainErr
+	}
 	version, err := resolvePlanVersion(settings, options.LookupEnv)
 	if err != nil {
 		return tagsConfig{}, err
 	}
 
 	return tagsConfig{
-		Image:       image,
-		Version:     version,
-		Digest:      digest,
-		Credentials: resolveRegistryCredentials(options.LookupEnv),
+		Image:    image,
+		Version:  version,
+		Digest:   digest,
+		Registry: resolveRegistryConfig(settings, options.LookupEnv),
 	}, nil
 }
 
@@ -234,6 +242,33 @@ func deriveVersion(lookup LookupEnv) (string, error) {
 	return strings.TrimPrefix(refName, "v"), nil
 }
 
+// requireLoopbackPlainHTTP rejects --plain-http unless image is on loopback.
+func requireLoopbackPlainHTTP(image puboci.Image, plainHTTP bool) error {
+	if !plainHTTP {
+		return nil
+	}
+	if loopbackImageHost(image) {
+		return nil
+	}
+
+	return fmt.Errorf("--%s is allowed only for loopback image hosts", flagPlainHTTP)
+}
+
+// loopbackImageHost reports whether image's registry host is loopback.
+func loopbackImageHost(image puboci.Image) bool {
+	host, _, _ := strings.Cut(image.String(), "/")
+	hostname := host
+	if split, _, err := net.SplitHostPort(host); err == nil {
+		hostname = split
+	}
+	switch hostname {
+	case "127.0.0.1", "::1", "[::1]", "localhost":
+		return true
+	default:
+		return false
+	}
+}
+
 // resolveRegistryCredentials reads the optional Actions registry token.
 //
 // A missing token yields empty credentials and is not an error.
@@ -256,8 +291,8 @@ func resolveRegistryCredentials(lookup LookupEnv) RegistryCredentials {
 	}
 }
 
-// stateReader returns the injected port or constructs one from credentials.
-func stateReader(options Options, credentials RegistryCredentials) (puboci.StateReader, error) {
+// stateReader returns the injected port or constructs one from registry config.
+func stateReader(options Options, config RegistryConfig) (puboci.StateReader, error) {
 	if options.StateReader != nil {
 		return options.StateReader, nil
 	}
@@ -265,7 +300,7 @@ func stateReader(options Options, credentials RegistryCredentials) (puboci.State
 		return nil, errors.New("state reader factory is not configured")
 	}
 
-	reader, err := options.NewStateReader(credentials)
+	reader, err := options.NewStateReader(config)
 	if err != nil {
 		return nil, UsageError(fmt.Errorf("registry client: %w", err))
 	}

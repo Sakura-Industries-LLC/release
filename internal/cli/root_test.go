@@ -154,7 +154,7 @@ func TestStageUnknownFlagNoEnvelope(t *testing.T) {
 func TestUnknownCommandNoEnvelope(t *testing.T) {
 	t.Parallel()
 
-	stdout, stderr, err := execute(t, nil, []string{"publish", "--json"}, cli.BuildInfo{})
+	stdout, stderr, err := execute(t, nil, []string{"bogus", "--json"}, cli.BuildInfo{})
 	require.Error(t, err)
 	assert.Equal(t, 2, cli.ExitCode(err))
 	assert.Empty(t, stdout)

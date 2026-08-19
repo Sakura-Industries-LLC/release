@@ -27,6 +27,10 @@ const (
 	envImage = "RELEASE_IMAGE"
 	// envVersion is the environment variable for --version.
 	envVersion = "RELEASE_VERSION"
+	// envLayout is the environment variable for --layout.
+	envLayout = "RELEASE_LAYOUT"
+	// envDryRun is the environment variable for --dry-run.
+	envDryRun = "RELEASE_DRY_RUN"
 )
 
 // LookupEnv looks up an environment variable.
@@ -52,8 +56,16 @@ type Settings struct {
 	Version string
 	// Digest is the selected --digest / RELEASE_DIGEST value.
 	Digest string
+	// Layout is the selected --layout / RELEASE_LAYOUT path.
+	Layout string
+	// DryRun reports whether --dry-run / RELEASE_DRY_RUN requested a dry run.
+	DryRun bool
+	// PlainHTTP reports whether --plain-http requested HTTP.
+	PlainHTTP bool
 	// JSON reports whether --json / RELEASE_JSON requested structured output.
 	JSON bool
+	// err is a flag or environment parse failure discovered while resolving settings.
+	err error
 }
 
 // BuildInfo describes linker-injected build metadata.
@@ -64,6 +76,14 @@ type BuildInfo struct {
 	Commit string
 	// Protocol is the workflow/binary contract integer.
 	Protocol int
+}
+
+// RegistryConfig is the resolved registry client configuration.
+type RegistryConfig struct {
+	// Credentials authenticates registry reads and writes. An empty password is anonymous.
+	Credentials RegistryCredentials
+	// PlainHTTP forces HTTP instead of HTTPS. Tests use this against a local registry.
+	PlainHTTP bool
 }
 
 // Options customizes root command construction.
@@ -84,8 +104,18 @@ type Options struct {
 	NewArtifactMeta func(token string, endpoint GitHubEndpoint) (pubgh.ArtifactMeta, error)
 	// StateReader, when set, is the registry read port. Tests inject it.
 	StateReader puboci.StateReader
-	// NewStateReader constructs the registry read port from resolved credentials.
-	NewStateReader func(credentials RegistryCredentials) (puboci.StateReader, error)
+	// NewStateReader constructs the registry read port from resolved registry config.
+	NewStateReader func(config RegistryConfig) (puboci.StateReader, error)
+	// ContentPusher, when set, is the registry write port. Tests inject it.
+	ContentPusher puboci.ContentPusher
+	// NewContentPusher constructs the registry write port from resolved registry config.
+	NewContentPusher func(config RegistryConfig) (puboci.ContentPusher, error)
+	// Signer, when set, is the Cosign signing port. Tests inject it.
+	Signer puboci.Signer
+	// NewSigner constructs the Cosign signing port from a binary path.
+	//
+	// An empty path resolves cosign from PATH.
+	NewSigner func(path string) (puboci.Signer, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -123,6 +153,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.AddCommand(newStageCommand(options))
 	root.AddCommand(newPlanCommand(options))
 	root.AddCommand(newVerifyCommand(options))
+	root.AddCommand(newPublishCommand(options))
 	root.AddCommand(newVersionCommand(options))
 
 	return root
@@ -167,15 +198,32 @@ func (options Options) withDefaults() Options {
 
 // resolveSettings applies flag-over-env precedence for the executing command.
 func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
-	return Settings{
+	settings := Settings{
 		Profile:    resolveString(cmd, flagProfile, envProfile, lookup),
 		Dist:       resolveString(cmd, flagDist, envDist, lookup),
 		ArtifactID: resolveString(cmd, flagArtifactID, envArtifactID, lookup),
 		Image:      resolveString(cmd, flagImage, envImage, lookup),
 		Version:    resolveString(cmd, flagVersion, envVersion, lookup),
 		Digest:     resolveString(cmd, flagDigest, envDigest, lookup),
-		JSON:       resolveBool(cmd, "json", envJSON, lookup),
+		Layout:     resolveString(cmd, flagLayout, envLayout, lookup),
+		PlainHTTP:  resolveFlagBool(cmd, flagPlainHTTP),
 	}
+	dryRun, err := resolveBool(cmd, flagDryRun, envDryRun, lookup)
+	if err != nil {
+		settings.err = fmt.Errorf("%s: %w", envDryRun, err)
+	} else {
+		settings.DryRun = dryRun
+	}
+	jsonOut, err := resolveBool(cmd, "json", envJSON, lookup)
+	if err != nil {
+		if settings.err == nil {
+			settings.err = fmt.Errorf("%s: %w", envJSON, err)
+		}
+	} else {
+		settings.JSON = jsonOut
+	}
+
+	return settings
 }
 
 // resolveString returns the flag value when the flag was set, otherwise the
@@ -196,17 +244,39 @@ func resolveString(cmd *cobra.Command, flagName, envName string, lookup LookupEn
 
 // resolveBool returns the flag value when the flag was set, otherwise the
 // named environment variable parsed as a bool, otherwise false.
-func resolveBool(cmd *cobra.Command, flagName, envName string, lookup LookupEnv) bool {
+//
+// An unparsable environment value is an error. [strconv.ParseBool] does not
+// accept yes, on, y, or enabled.
+func resolveBool(cmd *cobra.Command, flagName, envName string, lookup LookupEnv) (bool, error) {
 	if flag := cmd.Flags().Lookup(flagName); flag != nil && flag.Changed {
 		value, err := strconv.ParseBool(flag.Value.String())
-		return err == nil && value
+		if err != nil {
+			return false, err
+		}
+
+		return value, nil
 	}
 	if raw, ok := lookup(envName); ok {
 		value, err := strconv.ParseBool(raw)
-		return err == nil && value
+		if err != nil {
+			return false, err
+		}
+
+		return value, nil
 	}
 
-	return false
+	return false, nil
+}
+
+// resolveFlagBool returns the named flag when it was set, otherwise false.
+func resolveFlagBool(cmd *cobra.Command, flagName string) bool {
+	flag := cmd.Flags().Lookup(flagName)
+	if flag == nil || !flag.Changed {
+		return false
+	}
+	value, err := strconv.ParseBool(flag.Value.String())
+
+	return err == nil && value
 }
 
 // usageNoArgs rejects positional arguments as a usage error.

@@ -68,7 +68,7 @@ func TestParseImage(t *testing.T) {
 func TestReferenceString(t *testing.T) {
 	t.Parallel()
 
-	image := mustImage(t, "ghcr.io/owner/repo")
+	image := mustImage(t)
 	ref := image.Reference(rel.Tag("1.2.3"))
 	assert.Equal(t, "ghcr.io/owner/repo:1.2.3", ref.String())
 }
@@ -335,7 +335,7 @@ type planFixture struct {
 func newPlanFixture(t *testing.T) planFixture {
 	t.Helper()
 
-	image := mustImage(t, "ghcr.io/owner/repo")
+	image := mustImage(t)
 	version := rel.Version{Major: 1, Minor: 2, Patch: 3}
 	channels := rel.ChannelsFor(version)
 
@@ -352,11 +352,14 @@ func newPlanFixture(t *testing.T) planFixture {
 	}
 }
 
-// mustImage parses an image name or fails the test.
-func mustImage(t *testing.T, value string) puboci.Image {
+// testImageName is the fixture image every puboci test plans against.
+const testImageName = "ghcr.io/owner/repo"
+
+// mustImage parses the fixture image name or fails the test.
+func mustImage(t *testing.T) puboci.Image {
 	t.Helper()
 
-	image, err := puboci.ParseImage(value)
+	image, err := puboci.ParseImage(testImageName)
 	require.NoError(t, err)
 
 	return image

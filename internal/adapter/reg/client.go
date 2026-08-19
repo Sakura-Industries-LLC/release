@@ -2,6 +2,7 @@ package reg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -15,7 +16,7 @@ import (
 
 // Credentials is a registry username and password.
 //
-// A zero value is an anonymous read. Password is a [rel.Secret] so token
+// A zero value is anonymous. Password is a [rel.Secret] so token
 // text is not printed, logged, or encoded.
 type Credentials struct {
 	// Username is the registry user. An empty username with a password is
@@ -27,9 +28,9 @@ type Credentials struct {
 	Password rel.Secret
 }
 
-// Options configures a read-only registry [Client].
+// Options configures a registry [Client].
 type Options struct {
-	// Credentials authenticates registry reads. The zero value is anonymous.
+	// Credentials authenticates registry requests. The zero value is anonymous.
 	Credentials Credentials
 
 	// PlainHTTP forces HTTP instead of HTTPS. Tests use this against a
@@ -42,11 +43,11 @@ type Options struct {
 	HTTPClient *http.Client
 }
 
-// Client reads tag state from a GHCR-compatible registry.
+// Client reads tag state and pushes digest-addressed content.
 //
-// It implements [puboci.StateReader]. It never pushes, tags, or deletes.
-// Credential material is captured inside the auth client's closure and is
-// not stored on this value.
+// It implements [puboci.StateReader] and [puboci.ContentPusher]. It never
+// creates, moves, or deletes a tag. Credential material is captured inside
+// the auth client's closure and is not stored on this value.
 type Client struct {
 	// auth is the shared oras auth client.
 	auth *auth.Client
@@ -91,9 +92,21 @@ func New(options Options) *Client {
 	}
 }
 
-// repository builds a remote repository client for ref.
-func (c *Client) repository(ref puboci.Reference) (*remote.Repository, error) {
-	repo, err := remote.NewRepository(ref.Image.String())
+// requireReady rejects a nil context or an uninitialized client.
+func (c *Client) requireReady(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("context is nil")
+	}
+	if c == nil || c.auth == nil {
+		return errors.New("registry client is nil")
+	}
+
+	return nil
+}
+
+// repository builds a remote repository client for image.
+func (c *Client) repository(image puboci.Image) (*remote.Repository, error) {
+	repo, err := remote.NewRepository(image.String())
 	if err != nil {
 		return nil, fmt.Errorf("parse repository: %w", err)
 	}

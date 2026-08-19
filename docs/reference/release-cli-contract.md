@@ -1,17 +1,20 @@
 # `release-cli` contract reference
 
-`release-cli` validates and reports release data for the reusable workflows. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` validates release data, reports machine-readable results, and prepares digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
-| `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
+| `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
+| `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
 `--dist` is required for `stage`. The only accepted profile is `go`. `verify handoff` requires artifact ID and digest values. Supply them with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+
+Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
 The artifact ID must be a positive decimal safe integer. The digest must be a 64-digit hexadecimal SHA-256 value with or without the `sha256:` prefix. Digest hex is case-insensitive and is normalized to lowercase with the prefix.
 
@@ -26,7 +29,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `plan tags`, `stage`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `plan tags`, `publish oci prepare`, `stage`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -66,6 +69,69 @@ For example, this result plans to apply the exact and minor tags, retain the maj
     {"tag": "1", "scope": "major", "action": "retain"},
     {"tag": "latest", "scope": "latest", "action": "accept"}
   ]
+}
+```
+
+For `publish oci prepare --json`, `command` is exactly `publish oci prepare`. The `result` object has schema `release.dev/oci-prepare/v1` and contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `schema` | string | Always `release.dev/oci-prepare/v1`. |
+| `authoritative` | boolean | `true` after a non-dry-run preparation completes; `false` for `--dry-run`. A non-authoritative result is not usable for publication. |
+| `image` | string | OCI image name prepared by the command. |
+| `version` | string | Candidate stable release version. |
+| `index_digest` | string | OCI index digest, normalized to lowercase with the `sha256:` prefix. |
+| `platforms` | array of objects | Platform manifests in the order recorded by `index.json`. |
+| `platforms[].platform` | string | Platform in `OS/architecture` form, such as `linux/amd64`. |
+| `platforms[].digest` | string | Digest of the platform manifest. |
+| `observed` | array of objects | Registry observations ordered by scope: exact, minor, major, then latest. |
+| `observed[].tag` | string | Exact or channel tag that was observed. |
+| `observed[].scope` | string | Tag scope: `exact`, `minor`, `major`, or `latest`. |
+| `observed[].present` | boolean | Whether the tag was present in the registry. |
+| `observed[].digest` | string | Digest resolved from a present tag. This field is omitted for an absent tag. |
+| `observed[].version` | string | Stable version read from the current manifest annotation. This field is omitted when no annotation was read. |
+
+For example, a successful non-dry-run preparation writes this standard envelope:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "publish oci prepare",
+  "ok": true,
+  "result": {
+    "schema": "release.dev/oci-prepare/v1",
+    "authoritative": true,
+    "image": "ghcr.io/owner/repo",
+    "version": "1.2.3",
+    "index_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "platforms": [
+      {
+        "platform": "linux/amd64",
+        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        "platform": "linux/arm64",
+        "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "observed": [
+      {"tag": "1.2.3", "scope": "exact", "present": false},
+      {"tag": "1.2", "scope": "minor", "present": false},
+      {
+        "tag": "1",
+        "scope": "major",
+        "present": true,
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "version": "1.1.9"
+      },
+      {
+        "tag": "latest",
+        "scope": "latest",
+        "present": true,
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  }
 }
 ```
 
@@ -109,7 +175,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `plan tags`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `plan tags`, `publish oci prepare`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -130,9 +196,12 @@ No other exit code is defined; in particular, code `3` has no meaning. An exit c
 | Image | `--image` | `RELEASE_IMAGE` | `ghcr.io/<owner>/<repo>`, lowercased from `GITHUB_REPOSITORY`. |
 | Version | `--version` | `RELEASE_VERSION` | `GITHUB_REF_NAME` with one optional leading `v` stripped. |
 | Digest | `--digest` | `RELEASE_DIGEST` | None. A digest is required. |
+| Plain HTTP | `--plain-http` | None. The option is flag-only. | Disabled. |
 | JSON output | `--json` | `RELEASE_JSON` | Disabled. |
 
 An explicitly set flag takes precedence over its environment variable. The derived default applies only when the corresponding flag and release environment variable are absent. The image must have the lowercase form `host/path[/path...]` without a tag or digest. The digest must have the `sha256:` prefix followed by 64 hexadecimal digits.
+
+`--plain-http` permits an HTTP registry connection for local-registry testing only. The command refuses this flag unless the image host is `127.0.0.1`, `::1`, or `localhost`, optionally with a port. Any other host is invalid configuration and exits with code `2`.
 
 The command resolves registry credentials in this order:
 
@@ -188,6 +257,49 @@ For a valid channel annotation on a different digest, the command compares the c
 ### Concurrency
 
 The publisher workflow serializes tag planning and application with a repository-wide concurrency group. A direct `plan tags` invocation outside that workflow has no cross-run lock. Two concurrent planners can observe the same registry state and plan conflicting channel moves. Direct use therefore requires a single writer by convention.
+
+## OCI digest preparation
+
+`release-cli publish oci prepare` validates and prepares one digest-addressed OCI layout for publication.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Layout directory | `--layout` | `RELEASE_LAYOUT` | None. A path is required. |
+| Image | `--image` | `RELEASE_IMAGE` | `ghcr.io/<owner>/<repo>`, lowercased from `GITHUB_REPOSITORY`. |
+| Version | `--version` | `RELEASE_VERSION` | `GITHUB_REF_NAME` with one optional leading `v` stripped. |
+| Expected index digest | `--digest` | `RELEASE_DIGEST` | None. A digest is required. |
+| Dry run | `--dry-run` | `RELEASE_DRY_RUN` | Disabled. |
+| Plain HTTP | `--plain-http` | None. The option is flag-only. | Disabled. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+`--layout` identifies the extracted `oci-image/layout` directory. An explicitly set flag takes precedence over its environment variable. The derived image or version default applies only when the corresponding flag and release environment variable are absent. Image, version, and digest validation is the same as for `plan tags`.
+
+`--plain-http` permits an HTTP registry connection for local-registry testing only. The command refuses this flag unless the image host is `127.0.0.1`, `::1`, or `localhost`, optionally with a port. Any other host is invalid configuration and exits with code `2`. Never use plain HTTP for a real publication.
+
+Registry credentials use the same token and username resolution as `plan tags`. The command keeps these credentials in memory and does not write a Docker configuration file.
+
+The command performs these operations in order:
+
+1. Read and validate the OCI layout.
+2. Compute the digest of the exact `index.json` bytes and require it to equal the expected `--digest`.
+3. Collect fresh registry state and plan the exact and channel tags. An immutable exact-tag conflict stops the command before any registry write.
+4. Push every unique config and layer blob, each platform manifest, and the index by digest.
+5. Verify that the index and each platform manifest resolve by their expected digest.
+6. Sign `image@<index digest>` recursively with Cosign.
+
+The command never creates or moves a tag.
+
+With `--dry-run`, the command performs layout validation, digest verification, fresh registry-state collection, and tag planning only. It makes zero registry writes and does not invoke Cosign. The result has `"authoritative": false`; a non-authoritative result is not usable for publication.
+
+The command invokes a `cosign` binary resolved from `PATH`. Set `RELEASE_COSIGN_PATH` to override the binary path. Its signing invocation is:
+
+```text
+cosign sign --yes --recursive <image>@<digest>
+```
+
+Keyless signing requires the ambient OIDC credentials supplied by the workflow.
+
+The command exists for verification and the upcoming two-phase publication. In this release, the reusable publisher workflow still performs publication, signing, attestation, and tagging through its existing `actions/github-script` steps. Those workflow steps remain authoritative, and the workflow does not call `publish oci prepare`.
 
 ## Actions artifact handoff
 

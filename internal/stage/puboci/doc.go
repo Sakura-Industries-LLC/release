@@ -1,6 +1,7 @@
-// Package puboci plans immutable exact tags and moving channel tags.
+// Package puboci reads a local OCI layout and prepares digest-addressed publication.
 //
-// [CollectState] reads current registry state through [StateReader].
-// [PlanTags] feeds that state to [rel.PlanTags]. The package performs no
-// registry writes and does not retry transient failures.
+// [ReadLayout] loads an extracted oci-image/layout directory. [Prepare] plans
+// tags through [StateReader], pushes content through [ContentPusher], and
+// signs the published index through [Signer]. Tagging is not part of this
+// package yet.
 package puboci

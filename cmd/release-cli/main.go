@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/meigma/release/internal/adapter/cosign"
 	"github.com/meigma/release/internal/adapter/ghact"
 	"github.com/meigma/release/internal/adapter/reg"
 	"github.com/meigma/release/internal/cli"
@@ -37,12 +38,16 @@ func run() int {
 		NewArtifactMeta: func(token string, endpoint cli.GitHubEndpoint) (pubgh.ArtifactMeta, error) {
 			return ghact.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
 		},
-		NewStateReader: func(credentials cli.RegistryCredentials) (puboci.StateReader, error) {
-			return reg.New(reg.Options{
-				Credentials: reg.Credentials{
-					Username: credentials.Username,
-					Password: credentials.Password,
-				},
+		NewStateReader: func(config cli.RegistryConfig) (puboci.StateReader, error) {
+			return newRegistryClient(config), nil
+		},
+		NewContentPusher: func(config cli.RegistryConfig) (puboci.ContentPusher, error) {
+			return newRegistryClient(config), nil
+		},
+		NewSigner: func(path string) (puboci.Signer, error) {
+			return cosign.New(cosign.Options{
+				Path:   path,
+				Stderr: os.Stderr,
 			}), nil
 		},
 		Build: cli.BuildInfo{
@@ -57,4 +62,15 @@ func run() int {
 	}
 
 	return 0
+}
+
+// newRegistryClient constructs the shared registry adapter from resolved config.
+func newRegistryClient(config cli.RegistryConfig) *reg.Client {
+	return reg.New(reg.Options{
+		Credentials: reg.Credentials{
+			Username: config.Credentials.Username,
+			Password: config.Credentials.Password,
+		},
+		PlainHTTP: config.PlainHTTP,
+	})
 }

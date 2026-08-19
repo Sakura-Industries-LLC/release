@@ -207,6 +207,10 @@ The exact tag must resolve to the builder's expected OCI index digest after publ
 
 A direct `plan tags` invocation has no repository-wide concurrency lock. Two concurrent planners outside the publisher workflow can observe the same registry state and plan conflicting channel moves. Direct use therefore requires a single writer by convention.
 
+`release-cli publish oci prepare` reproduces the publisher's digest-addressed publication and recursive Cosign-signing steps. It can be exercised independently for verification and the upcoming two-phase publication. In this release, the reusable publisher workflow remains authoritative and does not call `publish oci prepare`. Its existing `actions/github-script` steps continue to perform publication, signing, attestation, and tagging.
+
+Trust metadata still precedes every public tag. `publish oci prepare` never creates or moves a tag, and the authoritative workflow applies tags only after signing and attestation complete.
+
 Digest-pinned references are the durable consumer interface:
 
 ```text

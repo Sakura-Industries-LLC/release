@@ -340,16 +340,24 @@ func digestOf(body []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// mustRef builds the fixture reference for testRepo and testTag on server.
-func mustRef(t *testing.T, server *httptest.Server) puboci.Reference {
+// mustImage builds the fixture image for testRepo on server.
+func mustImage(t *testing.T, server *httptest.Server) puboci.Image {
 	t.Helper()
 
 	parsed, err := url.Parse(server.URL)
 	require.NoError(t, err)
 	image, err := puboci.ParseImage(parsed.Host + "/" + testRepo)
 	require.NoError(t, err)
+
+	return image
+}
+
+// mustRef builds the fixture reference for testRepo and testTag on server.
+func mustRef(t *testing.T, server *httptest.Server) puboci.Reference {
+	t.Helper()
+
 	tag, err := rel.ParseTag(testTag)
 	require.NoError(t, err)
 
-	return image.Reference(tag)
+	return mustImage(t, server).Reference(tag)
 }

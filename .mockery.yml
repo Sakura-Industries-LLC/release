@@ -30,3 +30,10 @@ packages:
       StateReader:
         config:
           filename: state_reader.go
+      ContentPusher:
+        config:
+          filename: content_pusher.go
+      Signer:
+        config:
+          dir: internal/adapter/cosign/mocks
+          filename: signer.go
