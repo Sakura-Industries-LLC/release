@@ -43,11 +43,11 @@ type Options struct {
 	HTTPClient *http.Client
 }
 
-// Client reads tag state and pushes digest-addressed content.
+// Client reads tag state, pushes digest-addressed content, and commits tags.
 //
-// It implements [puboci.StateReader] and [puboci.ContentPusher]. It never
-// creates, moves, or deletes a tag. Credential material is captured inside
-// the auth client's closure and is not stored on this value.
+// It implements [puboci.StateReader], [puboci.ContentPusher], and
+// [puboci.TagCommitter]. Credential material is captured inside the auth
+// client's closure and is not stored on this value.
 type Client struct {
 	// auth is the shared oras auth client.
 	auth *auth.Client

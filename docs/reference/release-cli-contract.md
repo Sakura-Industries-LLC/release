@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` validates release data, reports machine-readable results, and prepares digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` validates release data, reports machine-readable results, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
@@ -9,6 +9,7 @@
 | `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
+| `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
@@ -29,7 +30,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `plan tags`, `publish oci prepare`, `stage`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -135,6 +136,37 @@ For example, a successful non-dry-run preparation writes this standard envelope:
 }
 ```
 
+For `publish oci finalize --json`, `command` is exactly `publish oci finalize`. The `result` object has schema `release.dev/oci-finalize/v1` and contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `schema` | string | Always `release.dev/oci-finalize/v1`. |
+| `image` | string | OCI image name from the prepare result. |
+| `version` | string | Candidate stable release version from the prepare result. |
+| `index_digest` | string | Candidate OCI index digest from the prepare result. |
+| `applied` | array of strings | Tags written by this run, in tag-plan order. |
+| `accepted` | array of strings | Tags that already resolved to the candidate index digest. |
+| `retained` | array of strings | Channel tags left on a newer release. |
+
+For example, this result applies the exact and minor tags while retaining newer major and `latest` channels:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "publish oci finalize",
+  "ok": true,
+  "result": {
+    "schema": "release.dev/oci-finalize/v1",
+    "image": "ghcr.io/owner/repo",
+    "version": "1.2.3",
+    "index_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "applied": ["1.2.3", "1.2"],
+    "accepted": [],
+    "retained": ["1", "latest"]
+  }
+}
+```
+
 The `version --json` result contains exactly these fields:
 
 | Field | JSON type | Value |
@@ -175,7 +207,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `plan tags`, `publish oci prepare`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -214,7 +246,7 @@ If neither token is present, the command reads the registry anonymously. Anonymo
 
 Missing or invalid configuration exits with code `2`. Under `--json`, this failure still writes exactly one envelope with `ok` set to `false`. A planning or registry failure exits with code `1`.
 
-`plan tags` performs registry reads only. It never writes a tag, blob, or manifest. The reusable publisher workflow still owns tag application in this release. Its existing `actions/github-script` tag planner remains authoritative for publication. The workflow does not call `plan tags` in this release. The command supports planning and inspection only.
+`plan tags` performs registry reads only. It never writes a tag, blob, or manifest. The publisher workflow uses `publish oci prepare` and `publish oci finalize` for publication; it does not invoke the standalone `plan tags` inspection command.
 
 ### Tag policy
 
@@ -224,7 +256,7 @@ The candidate version must match this canonical stable-version grammar:
 ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
 ```
 
-The version has exactly three components. It has no `v` prefix, leading zeros, prerelease, or build metadata. Each component must fit in a 64-bit unsigned integer. The publisher workflow compares components with arbitrary-precision integers. The CLI's 64-bit limit is a deliberate fail-closed narrowing of that workflow behavior.
+The version has exactly three components. It has no `v` prefix, leading zeros, prerelease, or build metadata. Each component must fit in a 64-bit unsigned integer.
 
 The exact tag is `MAJOR.MINOR.PATCH`:
 
@@ -244,7 +276,6 @@ The command then evaluates channels in this order:
 
 An absent channel gets a `create` decision. A channel that already resolves to the candidate digest gets an `accept` decision. Otherwise, the command reads the current manifest's `org.opencontainers.image.version` annotation. A missing or invalid stable-version annotation fails planning. A minor or major channel outside its required release line also fails planning.
 
-Failure ordering differs from the publisher workflow. The workflow checks the exact tag before it resolves any channel. The CLI collects the exact tag and all three channels before it decides the plan. If an immutable-tag conflict and a corrupt channel exist together, the CLI may report the channel failure instead of the immutable-tag conflict. Both planners refuse the plan, and the CLI exits with code `1`. Only the failure reported first can differ.
 
 For a valid channel annotation on a different digest, the command compares the candidate version with the annotated version:
 
@@ -299,7 +330,37 @@ cosign sign --yes --recursive <image>@<digest>
 
 Keyless signing requires the ambient OIDC credentials supplied by the workflow.
 
-The command exists for verification and the upcoming two-phase publication. In this release, the reusable publisher workflow still performs publication, signing, attestation, and tagging through its existing `actions/github-script` steps. Those workflow steps remain authoritative, and the workflow does not call `publish oci prepare`.
+The reusable publisher workflow invokes this command before its three GitHub attestation steps. If all three attestations succeed, the workflow passes the command's JSON envelope to `publish oci finalize`. See [Why OCI publication has two phases](../explanation/two-phase-oci-publication.md) for the ordering rationale.
+
+## OCI tag finalization
+
+`release-cli publish oci finalize` accepts a successful prepare result, re-reads registry state, and applies the exact and eligible channel tags.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Prepare result | `--result` | None. | None. The flag is required and its only accepted value is `-`, which selects stdin. |
+| Plain HTTP | `--plain-http` | None. The option is flag-only. | Disabled. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+Image, version, and index digest do not have finalize flags. The command reads all three values from the piped prepare result. Registry credentials and the loopback-only `--plain-http` restriction resolve exactly as they do for `publish oci prepare`.
+
+Stdin must contain exactly the JSON envelope emitted by a successful `publish oci prepare --json` command:
+
+```text
+{"schema":"release.dev/result/v1","command":"publish oci prepare","ok":true,"result":{...}}
+```
+
+The nested `result` must be a valid `release.dev/oci-prepare/v1` document. An empty stdin stream, trailing content, a wrong envelope schema, a command other than `publish oci prepare`, or `ok` set to `false` is invalid configuration. A malformed nested prepare result is also invalid configuration. Any `--result` value other than `-` is a usage error; there is no receipt-file mode. All of these failures exit with code `2` before any registry request.
+
+The command refuses a dry-run prepare result because its `authoritative` field is `false`; this is a publication failure with exit code `1`. For an authoritative result, finalization performs these operations:
+
+1. Collect fresh state for the exact tag and the minor, major, and `latest` channels.
+2. Compare fresh state with the observations in the prepare result. A tag that is unchanged or now resolves to the candidate index digest is accepted. Any other change is registry drift.
+3. Recompute the tag plan from fresh state.
+4. Commit the plan's apply tags serially, verifying each tag after it is written. The command skips the commit when the plan has no apply tags.
+5. Independently resolve the exact tag and every applied tag and require each one to match the candidate index digest.
+
+Drift, an immutable exact-tag conflict, corrupt channel state, a registry failure, or a failed postcondition exits with code `1`. The commit and postcondition registry reads retry only retryable failures, with the same four-attempt and 1-second, 2-second, and 4-second wait pattern as preparation. A rerun can accept tags already applied to the candidate digest, but the command makes no general promise that arbitrary failures are safe to retry.
 
 ## Actions artifact handoff
 

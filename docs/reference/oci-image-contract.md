@@ -13,9 +13,9 @@ GoReleaser producer
   -> Melange signed APK repository
   -> locked apko multi-architecture OCI layout
   -> verified oci-image artifact
-  -> ORAS GHCR publication
-  -> keyless Cosign signatures for the index and both platform manifests
+  -> release-cli digest-addressed GHCR preparation and recursive Cosign signatures
   -> GitHub and registry provenance/SBOM attestations
+  -> release-cli verified tag finalization
   -> public GitHub Release
 ```
 
@@ -100,7 +100,7 @@ permissions:
   packages: write
 ```
 
-`packages: write` authenticates ORAS, Cosign, and registry-backed GitHub attestations to GHCR. `id-token: write` supplies short-lived Sigstore identity. The publisher receives no GitHub App key and cannot mutate repository contents or releases.
+`packages: write` permits the in-memory `release-cli` registry client, Cosign, and registry-backed GitHub attestations to write to GHCR. `id-token: write` supplies short-lived Sigstore identity. The publisher receives no GitHub App key and cannot mutate repository contents or releases.
 
 After the stable-tag gate and tool setup, the publisher's relevant sequence is:
 
@@ -108,6 +108,14 @@ After the stable-tag gate and tool setup, the publisher's relevant sequence is:
 2. Run `setup-release-cli`.
 3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
 4. Download the authoritative OCI image with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+5. Verify the OCI layout contents and expose the image, version, index, and platform values used by later steps.
+6. When `publish-image` is `true`, log in to GHCR for Cosign and registry-backed attestations.
+7. Run `release-cli publish oci prepare`. Publication runs push and sign the digest-addressed image; verification-only runs add `--dry-run` and make no registry writes. The workflow captures the command's JSON envelope for finalization.
+8. When `publish-image` is `true`, run the three SHA-pinned `actions/attest` steps for index provenance and the two platform SBOMs.
+9. When `publish-image` is `true`, pipe the captured prepare envelope to `release-cli publish oci finalize --result -`.
+10. After a publication attempt, remove the GHCR entry from the Docker configuration even when an earlier publication step failed.
+
+The workflow sets `image-reference` only for a publication run. It remains empty when `publish-image` is `false`.
 
 ## Consumer configuration
 
@@ -172,7 +180,7 @@ Artifact handoff integrity has three independent owners:
 
 1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
 2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
-3. Later `release-cli` content commands verify the extracted content. For the OCI image artifact, content verification includes requiring the recorded, recomputed, and caller-supplied OCI index digests to be identical, one Linux manifest for `amd64`, one for `arm64`, all referenced blobs, and parseable SPDX JSON for each architecture.
+3. The SHA-pinned `actions/github-script` staging step verifies the extracted OCI content. It requires the recorded, recomputed, and caller-supplied OCI index digests to be identical, one Linux manifest for `amd64`, one for `arm64`, all referenced blobs, and parseable SPDX JSON for each architecture.
 
 `release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
 
@@ -201,15 +209,15 @@ A stable release tag `vMAJOR.MINOR.PATCH` publishes:
 | `MAJOR` | Advances only when the candidate is a greater stable version in the same major line. |
 | `latest` | Advances only when the candidate is greater than its current stable version. |
 
-The exact tag must resolve to the builder's expected OCI index digest after publication. Each eligible channel tag must resolve to that digest; an out-of-order or backport release leaves newer channel tags unchanged. The publisher resolves and validates every existing tag before uploading the image. A repository-wide publisher concurrency group prevents different release tags from planning and updating channels concurrently. Prerelease, build-metadata, malformed, branch, and untagged refs are rejected.
+The exact tag must resolve to the builder's expected OCI index digest after publication. Each eligible channel tag must resolve to that digest; an out-of-order or backport release leaves newer channel tags unchanged. `release-cli publish oci prepare` resolves and validates every existing tag before uploading the image. `release-cli publish oci finalize` re-reads the registry before it applies any tag. A repository-wide publisher concurrency group prevents different release tags from planning and updating channels concurrently. Prerelease, build-metadata, malformed, branch, and untagged refs are rejected.
 
-`release-cli plan tags` evaluates the same exact-tag and channel policy as the publisher's planning step. It can run independently to inspect the decisions for a candidate release. The publisher's existing `actions/github-script` planning step remains authoritative for publication in this release. The workflow does not call `plan tags`.
+`release-cli plan tags` evaluates the same exact-tag and channel policy used during publication. It can run independently to inspect the decisions for a candidate release. The publisher does not call this standalone inspection command.
 
 A direct `plan tags` invocation has no repository-wide concurrency lock. Two concurrent planners outside the publisher workflow can observe the same registry state and plan conflicting channel moves. Direct use therefore requires a single writer by convention.
 
-`release-cli publish oci prepare` reproduces the publisher's digest-addressed publication and recursive Cosign-signing steps. It can be exercised independently for verification and the upcoming two-phase publication. In this release, the reusable publisher workflow remains authoritative and does not call `publish oci prepare`. Its existing `actions/github-script` steps continue to perform publication, signing, attestation, and tagging.
+The publisher runs `release-cli publish oci prepare`, the three GitHub attestation actions, and then `release-cli publish oci finalize`. Prepare publishes and signs the digest-addressed image without creating or moving a tag. Finalize compares fresh registry state with the prepare observations, recomputes the tag plan, applies tags serially, and verifies their resolutions.
 
-Trust metadata still precedes every public tag. `publish oci prepare` never creates or moves a tag, and the authoritative workflow applies tags only after signing and attestation complete.
+Trust metadata strictly precedes every public tag. No exact or channel tag is created or moved until recursive signing and all three attestations complete. See [Why OCI publication has two phases](../explanation/two-phase-oci-publication.md) for the security and failure model.
 
 Digest-pinned references are the durable consumer interface:
 
@@ -255,15 +263,15 @@ Cosign signatures and GitHub attestations are distinct. A passing check for one 
 
 | State | Registry effect | Expected next action |
 | --- | --- | --- |
-| `publish-image: false` | None. Artifact and index verification only. | Inspect the rehearsal and enable both publication controls in one reviewed commit. |
-| Digest upload incomplete | Untagged blobs or manifests may exist. No release tag has been created or changed. GitHub Release remains draft. | Rerun only failed jobs so the publisher reuses the authoritative artifact from the same workflow run. |
+| `publish-image: false` | None. The workflow runs `publish oci prepare --dry-run` for layout, digest, state, and tag-plan verification. It applies no tags, and `image-reference` remains empty. | Inspect the rehearsal and enable both publication controls in one reviewed commit. |
+| Prepare incomplete | Untagged, digest-addressed blobs or manifests may exist. No release tag has been created or changed. GitHub Release remains draft. | Rerun only failed jobs so the publisher reuses the authoritative artifact from the same workflow run. |
 | Signing incomplete | The digest-addressed image may exist, but no release tag has been created or changed. GitHub Release remains draft. | Rerun only failed jobs; do not advertise or make the package public. |
 | Attestation incomplete | The digest is signed but does not satisfy the complete contract. No release tag has been created or changed. GitHub Release remains draft. | Rerun only failed jobs and verify every attestation. |
-| Tag publication incomplete | The digest has complete trust metadata, but a registry failure may have applied only part of the planned tag set. GitHub Release remains draft. | Rerun only failed jobs; the publisher revalidates the immutable exact tag and converges eligible channels on the expected digest. |
+| Finalize incomplete | The digest has complete trust metadata, but a registry failure may have applied only a prefix of the planned tag set. GitHub Release remains draft. | Rerun only failed jobs. Finalize reads fresh registry state, accepts candidate tags already applied, and applies the remaining eligible tags. Investigate any reported drift instead of replaying a saved prepare result. |
 | Complete, package private | Authenticated pulls work and planned tags resolve correctly. | Inspect, then perform the one-time public visibility change. |
 | Complete, package public | Anonymous digest and tag pulls work. | Monitor and publish only additive corrective releases. |
 
-The publisher plans tags before its first upload, publishes the OCI layout by digest, signs and attests that digest and both platform manifests, and applies public tags last. A failed-job rerun reuses the same authoritative artifact and may add duplicate valid signatures or attestations after a partial success. The GitHub Release publisher requires the successful digest-pinned OCI output and cannot make the release public until the image publisher job succeeds.
+The publisher plans tags before its first upload, publishes and signs the OCI layout by digest through `publish oci prepare`, creates all three attestations, and applies public tags last through `publish oci finalize`. A failed-job rerun reuses the same authoritative artifact and may add duplicate valid signatures or attestations after a partial success. Finalize reads current registry state rather than replaying the earlier plan. The GitHub Release publisher requires the successful digest-pinned OCI output and cannot make the release public until the image publisher job succeeds.
 
 ## GHCR visibility
 
@@ -280,7 +288,7 @@ The current boundary is deliberately split:
 - `publish-oci-image.yml` does not check out consumer source and writes only to the caller's GHCR package and attestation store; and
 - `publish-github-release.yml` waits for image publication but uses a separate short-lived Release App token for release mutation.
 
-The privileged publisher uses `release-cli` for pre-download artifact metadata verification. The remaining validation and orchestration stay in the pinned workflow actions. ORAS and Cosign receive explicit argument arrays through `@actions/exec`; release metadata is not interpolated into shell programs.
+The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The SHA-pinned `actions/github-script` staging step verifies the OCI layout, and the three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
 
 The workflow artifact is temporary transport, not a public distribution channel. The OCI digest, registry content, Cosign identity, and attestation identities form the public verification boundary.
 

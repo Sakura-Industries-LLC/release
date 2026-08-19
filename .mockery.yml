@@ -37,3 +37,6 @@ packages:
         config:
           dir: internal/adapter/cosign/mocks
           filename: signer.go
+      TagCommitter:
+        config:
+          filename: tag_committer.go

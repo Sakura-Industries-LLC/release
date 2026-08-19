@@ -44,6 +44,9 @@ func run() int {
 		NewContentPusher: func(config cli.RegistryConfig) (puboci.ContentPusher, error) {
 			return newRegistryClient(config), nil
 		},
+		NewTagCommitter: func(config cli.RegistryConfig) (puboci.TagCommitter, error) {
+			return newRegistryClient(config), nil
+		},
 		NewSigner: func(path string) (puboci.Signer, error) {
 			return cosign.New(cosign.Options{
 				Path:   path,

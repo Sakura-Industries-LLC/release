@@ -126,7 +126,7 @@ publish-image: false
 publish-release: false
 ```
 
-The run still builds the APK repository and OCI index, verifies the canonical binaries and image metadata, and validates the publisher's artifact handoff. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release.
+The run still builds the APK repository and OCI index, verifies the canonical binaries and image metadata, validates the publisher's artifact handoff, and runs `release-cli publish oci prepare --dry-run`. The dry run validates the layout, digest, registry state, and tag plan without a registry write. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release. The publisher's `image-reference` output remains empty.
 
 Inspect the `oci-image` workflow artifact. It must contain:
 
@@ -158,6 +158,8 @@ publish-release: true
 
 Create the next stable `vMAJOR.MINOR.PATCH` release through Release Please. The image publisher rejects non-stable tags.
 
+The publisher runs `release-cli publish oci prepare` to push, verify, and recursively sign the image by digest without creating tags. It then runs the three GitHub attestation actions for index provenance and the two platform SBOMs. After all three attestations succeed, `release-cli publish oci finalize` re-reads registry state, applies eligible tags serially, and verifies their resolutions. See [Why OCI publication has two phases](../explanation/two-phase-oci-publication.md) for why tags are last.
+
 A successful `v1.2.3` run always publishes the immutable exact tag:
 
 ```text
@@ -166,7 +168,7 @@ A successful `v1.2.3` run always publishes the immutable exact tag:
 
 It also advances `1.2`, `1`, and `latest` when `1.2.3` is newer than each channel's current stable version. An out-of-order or backport release publishes its exact tag and advances only the channels for which it is newer; it never moves a channel backward.
 
-The publisher enforces exact-tag immutability before uploading registry content. If `1.2.3` already resolves to a different digest, publication fails without writing the candidate image. Consumers that require repeatable deployment must use `ghcr.io/owner/repository@sha256:...`, not a moving tag.
+`release-cli publish oci prepare` enforces exact-tag immutability before uploading registry content. If `1.2.3` already resolves to a different digest, preparation fails without writing the candidate image. Consumers that require repeatable deployment must use `ghcr.io/owner/repository@sha256:...`, not a moving tag.
 
 Package visibility follows the organization's package-creation setting; it does not inherit repository visibility. After the first complete publication, inspect the package:
 
@@ -251,7 +253,11 @@ Both commands must report the release version and commit. Running a non-native p
 
 ## Recovery
 
-A failed publisher leaves the GitHub Release draft unpublished because `github-release` depends on `oci-publish` and requires its digest-pinned image output.
+A failed publisher leaves the GitHub Release draft unpublished because `github-release` depends on `oci-publish` and requires its digest-pinned image output. The registry effect depends on the phase that fails:
+
+- A failed prepare can leave untagged, digest-addressed blobs or manifests. It creates or moves no tag, so tag-based consumers see no release change.
+- A failed attestation can leave a signed digest and partial trust metadata. It creates or moves no tag.
+- A failed finalize can leave only a prefix of the planned tags on the candidate digest. The digest already has its required signatures and attestations, but the workflow remains failed.
 
 When repository content is unchanged, rerun only the failed jobs:
 
@@ -259,6 +265,10 @@ When repository content is unchanged, rerun only the failed jobs:
 gh run rerun "$FAILED_RUN_ID" --repo "$REPOSITORY" --failed
 ```
 
-This preserves the successful builder job and reuses its authoritative OCI artifact. The publisher revalidates the artifact, digest, immutable exact tag, and eligible channel tags. A retry after a partial success may add duplicate valid signatures or attestations. Public tags are assigned only after the expected digest and both platform manifests are signed and attested.
+This preserves the successful builder job and reuses its authoritative OCI artifact. The publisher runs prepare again, records current observations, completes the three attestation steps, and gives finalize a result from that run. Finalize then reads fresh registry state, accepts tags that already resolve to the candidate digest, and applies the remaining eligible tags. A retry after a partial success may add duplicate valid signatures or attestations.
+
+Never hand-replay a saved prepare result. It records registry observations from an earlier point in time and is not a durable receipt. Rerun the publisher so prepare and finalize are paired around the attestation steps and finalize can detect drift.
+
+If finalize reports drift, inspect the named tag and the current registry state before another run. Drift means the registry changed in a way that does not match either prepare's observation or this publication's candidate digest.
 
 If source, workflow configuration, or tool pins must change, follow the unpublished-tag recovery procedure in [Rehearse and recover GitHub Releases](rehearse-and-recover-github-releases.md). Never move a tag after its GitHub Release is public. Never delete and recreate a public exact-version image tag to substitute different content. Publish a corrective release instead.

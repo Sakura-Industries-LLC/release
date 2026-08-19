@@ -3,6 +3,8 @@ package puboci
 import (
 	"context"
 	"io"
+
+	"github.com/meigma/release/internal/rel"
 )
 
 // ContentPusher writes digest-addressed OCI content and checks that it resolves.
@@ -48,4 +50,15 @@ type Signer interface {
 	// ref is the published index. The call writes signatures only; it does
 	// not mutate tags.
 	SignRecursive(ctx context.Context, ref DigestRef) error
+}
+
+// TagCommitter applies tags to a published digest serially.
+//
+// [TagCommitter.Commit] writes each tag in order and verifies that it
+// resolves to digest. Implementations must not apply tags in parallel.
+// Transient failures wrap [ErrRetryable]. Absent content wraps
+// [ErrTagAbsent]. Errors must not contain credentials or full URLs.
+type TagCommitter interface {
+	// Commit applies tags to digest serially, verifying each one.
+	Commit(ctx context.Context, image Image, digest rel.Digest, tags []rel.Tag) error
 }

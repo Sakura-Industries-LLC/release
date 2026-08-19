@@ -116,6 +116,10 @@ type Options struct {
 	//
 	// An empty path resolves cosign from PATH.
 	NewSigner func(path string) (puboci.Signer, error)
+	// TagCommitter, when set, is the registry tag-write port. Tests inject it.
+	TagCommitter puboci.TagCommitter
+	// NewTagCommitter constructs the registry tag-write port from resolved registry config.
+	NewTagCommitter func(config RegistryConfig) (puboci.TagCommitter, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
