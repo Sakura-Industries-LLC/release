@@ -33,7 +33,7 @@ runs:
       env:
         # Release Please keeps this value in step with the released binary.
         # x-release-please-start-version
-        DEFAULT_VERSION: 0.0.0
+        DEFAULT_VERSION: 0.1.0
         # x-release-please-end
         EXPECTED_PROTOCOL: 1
         CLI_PATH_INPUT: ${{ inputs.cli-path }}
