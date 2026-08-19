@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: release-mvp
+project_name: release-cli
 
 gomod:
   proxy: true
@@ -11,9 +11,9 @@ gomod:
     - GOSUMDB=sum.golang.org
 
 builds:
-  - id: release-mvp
-    main: ./cmd/release-mvp
-    binary: release-mvp
+  - id: release-cli
+    main: ./cmd/release-cli
+    binary: release-cli
     env:
       - CGO_ENABLED=0
     goos:
@@ -32,9 +32,9 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: release-mvp
+  - id: release-cli
     ids:
-      - release-mvp
+      - release-cli
     formats:
       - tar.gz
     format_overrides:

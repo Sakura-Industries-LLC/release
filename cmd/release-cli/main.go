@@ -16,10 +16,12 @@ var (
 	commit  = "none"
 )
 
+// main is the process entrypoint.
 func main() {
 	os.Exit(run())
 }
 
+// run constructs the command tree and returns the process exit code.
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -29,13 +31,14 @@ func run() int {
 		Out: os.Stdout,
 		Err: os.Stderr,
 		Build: cli.BuildInfo{
-			Version: version,
-			Commit:  commit,
+			Version:  version,
+			Commit:   commit,
+			Protocol: cli.Protocol,
 		},
 	})
 	if err := root.ExecuteContext(ctx); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
-		return 1
+		return cli.ExitCode(err)
 	}
 
 	return 0

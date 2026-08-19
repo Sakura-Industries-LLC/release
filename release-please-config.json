@@ -10,8 +10,14 @@
   "bump-patch-for-minor-pre-major": true,
   "packages": {
     ".": {
-      "package-name": "release-mvp",
-      "changelog-path": "CHANGELOG.md"
+      "package-name": "release-cli",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": ".github/actions/setup-release-cli/action.yml"
+        }
+      ]
     }
   },
   "changelog-sections": [

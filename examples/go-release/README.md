@@ -40,6 +40,12 @@ Replace these project-specific example values:
 - Manifest value `0.0.0` in `.release-please-manifest.json` if the consumer already has a release. Use its latest released version without the `v` prefix.
 - Linker variables `main.version` and `main.commit` in `.goreleaser.yaml` if the consumer command exposes version data through different variables. The copied sample defines both variables and prints `example <version> (<commit>)` for `--version`.
 
+The example uses one full commit SHA for every reusable workflow reference and
+the checksum signing identity. That SHA is the consumer pin for the complete
+release unit. The current pin, `fb8c8098ff27968fb3070e928c00e925f38c698e`,
+is the last released revision. It will be refreshed when this program's final
+pull request lands.
+
 Keep these contract values unchanged:
 
 - all four reusable workflow references at `fb8c8098ff27968fb3070e928c00e925f38c698e`;

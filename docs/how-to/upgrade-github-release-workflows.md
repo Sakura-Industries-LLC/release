@@ -1,6 +1,6 @@
 # Upgrade GitHub Release workflows
 
-Use this guide to move a consumer repository from the current workflow revision, `fb8c8098ff27968fb3070e928c00e925f38c698e`, to a reviewed immutable revision. Do not use a branch or tag as a reusable workflow reference. The [GitHub Release contract](../reference/github-release-contract.md) and [OCI image contract](../reference/oci-image-contract.md) define the current interfaces and publication boundaries.
+Use this guide to move a consumer repository from its current workflow revision to a reviewed immutable revision. Do not use a branch or tag as a reusable workflow reference. The [GitHub Release contract](../reference/github-release-contract.md), [OCI image contract](../reference/oci-image-contract.md), and [`release-cli` contract](../reference/release-cli-contract.md) define the current interfaces and publication boundaries.
 
 ## Prerequisites
 
@@ -16,11 +16,12 @@ Record the consumer, the current baseline, and a local checkout of `meigma/relea
 
 ```bash
 export REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
-export CURRENT_RELEASE_REVISION=fb8c8098ff27968fb3070e928c00e925f38c698e
+read -r -p 'Current full meigma/release commit SHA: ' CURRENT_RELEASE_REVISION
 read -r -p 'Reviewed full meigma/release commit SHA: ' NEW_RELEASE_REVISION
 export NEW_RELEASE_REVISION
 read -r -p 'Path to the meigma/release checkout: ' RELEASE_CHECKOUT
 export RELEASE_CHECKOUT
+[[ "$CURRENT_RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
 [[ "$NEW_RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
 test "$NEW_RELEASE_REVISION" != "$CURRENT_RELEASE_REVISION"
 test "$(gh api "repos/meigma/release/commits/$NEW_RELEASE_REVISION" --jq .sha)" = \
@@ -52,9 +53,11 @@ git -C "$RELEASE_CHECKOUT" diff \
   .github/workflows/publish-github-release.yml \
   .github/workflows/publish-oci-image.yml \
   .github/workflows/release.yml \
+  .github/actions/setup-release-cli/action.yml \
   .github/workflows/release-please.yml \
   docs/reference/github-release-contract.md \
   docs/reference/oci-image-contract.md \
+  docs/reference/release-cli-contract.md \
   examples/go-release
 ```
 
@@ -70,6 +73,8 @@ git -C "$RELEASE_CHECKOUT" show \
 Before adoption, identify changes to:
 
 - reusable workflow inputs, outputs, secrets, and caller permissions;
+- the `release-cli` commands, flags, exit codes, and result fields used by the workflows;
+- the setup action's acquisition behavior and version and protocol checks;
 - checksum signer and attestation identities;
 - artifact handoff, payload names, SBOMs, checksums, and publication states;
 - consumer source and GoReleaser configuration requirements;
@@ -90,6 +95,12 @@ In `.github/workflows/release.yml`, replace the current revision with `NEW_RELEA
 5. `checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@...`
 
 Keep both `publish-image: false` and `publish-release: false` for the upgrade rehearsal. All four reusable workflow references and the checksum signing identity must change in the same pull request and commit. A mixed revision fails a signing boundary or runs contracts that were not reviewed together.
+
+The one full commit SHA selects the workflows, their composite setup action, and
+the `release-cli` version used by those workflows. Do not add a separate CLI
+version setting. Leave the optional `cli-path` input unset in a normal consumer.
+It is an unsupported escape hatch for this repository's dogfood release and for
+callers that own the workflow-to-binary pairing.
 
 Apply every other target-contract change in that same upgrade:
 

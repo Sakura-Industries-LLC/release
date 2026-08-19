@@ -2,6 +2,9 @@
 
 Use this guide to populate a draft GitHub Release without publishing it, then resume publication through the same tag and draft. Complete [Configure GitHub Releases](configure-github-releases.md) first. The [GitHub Release contract](../reference/github-release-contract.md) defines the checks that each run enforces.
 
+`FULL_SHA` is the placeholder for the released commit and will be replaced when
+this program's final pull request lands.
+
 ## Prerequisites
 
 Before starting a rehearsal, confirm that:
@@ -248,6 +251,20 @@ Keep the release as a draft while diagnosing any failure below.
 
 If recovery changes source, workflow configuration, or tool pins, merge that correction, record its commit SHA, and trigger a new run by authorized movement of the unpublished tag to that commit. Then select the run by the exact tag and SHA as shown above. If the tag cannot be moved safely, abandon the incomplete candidate and cut a new one. When repository content is unchanged and upstream build jobs succeeded, rerun only failed jobs with `gh run rerun "$FAILED_RUN_ID" --repo "$REPOSITORY" --failed`; this preserves the authoritative artifacts from the original workflow run. Use a complete rerun only when an upstream artifact must be rebuilt, such as artifact expiry or an artifact-handoff failure.
 
+### Release artifact staging fails
+
+The producer runs `release-cli stage --profile go --dist dist` after GoReleaser
+and before either Actions artifact upload. It stops on an invalid checksum
+claim or bundle, an invalid Linux binary selection, an escaped path, or a binary
+that is not a regular executable file. The failed step writes the offending
+artifact diagnostic to stderr.
+
+Use the diagnostic and the [`release-cli` contract](../reference/release-cli-contract.md)
+to inspect the generated `dist` files. Correct the source or GoReleaser
+configuration instead of bypassing the check. If the correction changes
+repository content, merge it and move the unpublished rehearsal tag to the new
+commit as described above, or abandon the candidate and cut a new one.
+
 ### The matching draft is missing
 
 The publisher polls the releases collection for the current tag and then reports `No GitHub Release found` if none appears.
@@ -287,7 +304,7 @@ If the repository does not need a correction, rerun the complete top-level workf
 For the documented current revision, the publisher requires a nonempty `checksums.txt`, the exact closed payload list, matching payload hashes, a regular Cosign bundle file, issuer `https://token.actions.githubusercontent.com`, and this certificate identity:
 
 ```text
-https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@fb8c8098ff27968fb3070e928c00e925f38c698e
+https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
 ```
 
 For an upgrade rehearsal, replace the current-revision identity with the target value described in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).

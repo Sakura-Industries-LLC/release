@@ -2,6 +2,14 @@ name: Reusable Go Pre-publish
 
 on:
   workflow_call:
+    inputs:
+      cli-path:
+        description: >
+          Unsupported path to a caller-supplied release-cli binary. You
+          supply the binary, you own the pairing.
+        required: false
+        type: string
+        default: ''
     outputs:
       artifact-id:
         description: ID of the authoritative release-assets artifact.
@@ -37,6 +45,8 @@ jobs:
       oci-input-artifact-url: ${{ steps.upload-oci-input.outputs.artifact-url }}
       oci-input-artifact-digest: ${{ steps.upload-oci-input.outputs.artifact-digest }}
     permissions:
+      actions: read
+      attestations: read
       contents: read
       id-token: write
     env:
@@ -85,37 +95,35 @@ jobs:
             goreleaser release --clean --skip=publish
           '
 
-      - name: Verify release asset checksums
-        working-directory: dist
+      - name: Download dogfood release-cli
+        if: inputs.cli-path != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-cli-dogfood
+          path: ${{ runner.temp }}/release-cli-dogfood
+
+      - name: Place dogfood release-cli
+        if: inputs.cli-path != ''
+        env:
+          CLI_PATH: ${{ inputs.cli-path }}
         shell: bash
         run: |
-          sha256sum --check checksums.txt
-          test -s checksums.txt.sigstore.json
+          set -euo pipefail
+          mkdir -p "$(dirname "${CLI_PATH}")"
+          install -m755 "${RUNNER_TEMP}/release-cli-dogfood/release-cli" "${CLI_PATH}"
 
-      - name: Verify canonical Linux binaries
+      - name: Set up release-cli
+        id: setup-cli
+        uses: $/.github/actions/setup-release-cli
+        with:
+          cli-path: ${{ inputs.cli-path }}
+
+      - name: Stage Go release artifacts
+        env:
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
         shell: bash
         run: |
-          mapfile -t binaries < <(
-            jq -r '
-              .[]
-              | select(.type == "Binary" and .goos == "linux")
-              | [.goarch, .path]
-              | @tsv
-            ' dist/artifacts.json
-          )
-          if [[ ${#binaries[@]} -ne 2 ]]; then
-            echo "::error::Expected two canonical Linux binaries; found ${#binaries[@]}."
-            exit 1
-          fi
-          printf '%s\n' "${binaries[@]}" |
-            cut -f1 |
-            sort |
-            diff -u <(printf 'amd64\narm64\n') -
-
-          for record in "${binaries[@]}"; do
-            path=${record#*$'\t'}
-            test -x "${path}"
-          done
+          "${RELEASE_CLI}" stage --profile go --dist dist
 
       - name: Upload canonical Linux binaries
         id: upload-oci-input

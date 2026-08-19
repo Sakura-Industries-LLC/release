@@ -1,5 +1,5 @@
 package:
-  name: release-mvp
+  name: release-cli
   version: ${{vars.version}}
   epoch: 0
   description: Exercise the Meigma release pipeline.
@@ -23,4 +23,4 @@ environment:
 
 pipeline:
   - runs: |
-      install -Dm755 -o 0 -g 0 application "${{targets.destdir}}/usr/bin/release-mvp"
+      install -Dm755 -o 0 -g 0 application "${{targets.destdir}}/usr/bin/release-cli"

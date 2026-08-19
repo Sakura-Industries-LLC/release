@@ -2,6 +2,9 @@
 
 Use this guide to add the shared Meigma Go release workflows to a repository. The [GitHub Release contract](../reference/github-release-contract.md) defines the reusable workflow inputs, permissions, artifacts, and failure behavior.
 
+`FULL_SHA` is the placeholder for the released commit and will be replaced when
+this program's final pull request lands.
+
 ## Prerequisites
 
 Before you change the repository, confirm that:
@@ -100,14 +103,20 @@ In the copied files, replace the example values with values from the consumer re
 
 Do not replace these shared contract values:
 
-- reusable workflow revision `fb8c8098ff27968fb3070e928c00e925f38c698e`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@fb8c8098ff27968fb3070e928c00e925f38c698e`;
+- reusable workflow revision `FULL_SHA`;
+- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA`;
 - variable name `MEIGMA_RELEASE_APP_CLIENT_ID`; or
 - secret name `MEIGMA_RELEASE_APP_PRIVATE_KEY`.
 
 To change the immutable revision later, follow [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md). Update all reusable workflow references and the checksum signing identity together; do not edit one reference in isolation.
 
 The copied GoReleaser configuration builds Darwin, Linux, and Windows archives for amd64 and arm64. Confirm that the consumer command supports those targets before releasing it.
+
+The producer runs GoReleaser, obtains `release-cli` through the shared setup
+action, and then runs `release-cli stage --profile go --dist dist` before
+uploading either Actions artifact. Leave the optional `cli-path` input unset in
+a consumer repository. It is an unsupported escape hatch for this repository's
+dogfood release and for callers that own the workflow-to-binary pairing.
 
 The copied release caller sets both `publish-image: false` and `publish-release: false`. Keep both values for the first rehearsal. Before a public release, change both to `true` and merge the change before Release Please creates the tag. The [rehearsal and recovery guide](rehearse-and-recover-github-releases.md) gives the safer first-run sequence.
 
@@ -227,7 +236,7 @@ Verify that the checksum manifest was signed by the canonical reusable pre-publi
 ```bash
 mise exec -- cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@fb8c8098ff27968fb3070e928c00e925f38c698e' \
+  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 ```
@@ -243,7 +252,7 @@ while IFS= read -r entry; do
   mise exec -- gh attestation verify "$asset" \
     --repo "$REPOSITORY" \
     --signer-workflow meigma/release/.github/workflows/publish-github-release.yml \
-    --signer-digest fb8c8098ff27968fb3070e928c00e925f38c698e \
+    --signer-digest FULL_SHA \
     --source-ref "refs/tags/$TAG" \
     --deny-self-hosted-runners
 done < checksums.txt

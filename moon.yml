@@ -3,7 +3,7 @@ layer: 'application'
 stack: 'backend'
 
 project:
-  title: 'release-mvp'
+  title: 'release-cli'
   description: 'Exercise the Meigma release pipeline.'
   owner: 'meigma'
   maintainers:
@@ -52,12 +52,21 @@ tasks:
       cache: false
 
   build:
-    command: 'mise exec -- go build -o bin/release-mvp ./cmd/release-mvp'
+    command: 'mise exec -- go build -o bin/release-cli ./cmd/release-cli'
     inputs:
       - '@group(goSources)'
       - '@group(ciConfig)'
     outputs:
-      - 'bin/release-mvp'
+      - 'bin/release-cli'
+
+  protocol:
+    command: 'mise exec -- bash scripts/check-protocol-stamp.sh'
+    inputs:
+      - 'scripts/check-protocol-stamp.sh'
+      - '.github/actions/setup-release-cli/action.yml'
+      - '@group(goSources)'
+    options:
+      cache: false
 
   test:
     command: 'mise exec -- go test ./...'
@@ -73,6 +82,7 @@ tasks:
       - 'root:lint'
       - 'root:build'
       - 'root:test'
+      - 'root:protocol'
     inputs:
       - '@group(goSources)'
       - '@group(lintConfig)'

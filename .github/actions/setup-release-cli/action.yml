@@ -1,0 +1,153 @@
+name: Set up release-cli
+description: >
+  Acquires release-cli either from the release stamped into this file
+  (supported path) or from a caller-supplied binary (unsupported escape
+  hatch), then enforces the version/protocol guard.
+
+inputs:
+  cli-path:
+    description: >
+      Unsupported path to a caller-supplied release-cli binary. You supply
+      the binary, you own the pairing: a stamp mismatch warns instead of
+      failing.
+    required: false
+    default: ''
+
+outputs:
+  cli-path:
+    description: Absolute executable path selected by the action.
+    value: ${{ steps.resolve.outputs.cli-path }}
+  reported-version:
+    description: Version the binary reported.
+    value: ${{ steps.resolve.outputs.reported-version }}
+  reported-protocol:
+    description: Protocol integer the binary reported.
+    value: ${{ steps.resolve.outputs.reported-protocol }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve and verify the CLI
+      id: resolve
+      shell: bash
+      env:
+        # Release Please keeps this value in step with the released binary.
+        # x-release-please-start-version
+        DEFAULT_VERSION: 0.0.0
+        # x-release-please-end
+        EXPECTED_PROTOCOL: 1
+        CLI_PATH_INPUT: ${{ inputs.cli-path }}
+        SOURCE_REPOSITORY: ${{ github.action_repository }}
+        GH_TOKEN: ${{ inputs.cli-path == '' && github.token || '' }}
+      run: |
+        set -euo pipefail
+
+        if [[ -n "${CLI_PATH_INPUT}" ]]; then
+          # Caller-supplied binary: no download, no attestation, no token.
+          unset GH_TOKEN
+          mode=cli-path
+          binary="$(cd "$(dirname "${CLI_PATH_INPUT}")" && pwd)/$(basename "${CLI_PATH_INPUT}")"
+          test -f "${binary}"
+          test -x "${binary}"
+        else
+          mode=installed
+
+          # Download source and attestation trust root are the same value.
+          # Never fall back to GITHUB_REPOSITORY: that is the consumer on
+          # an external call, and a missing action_repository would verify
+          # an archive against the consumer itself.
+          if [[ -z "${SOURCE_REPOSITORY:-}" ]]; then
+            echo '::error::Cannot derive the release-cli distribution repository. Reference this action as $/.github/actions/setup-release-cli from a reusable workflow, or as owner/repo/path@ref. A local ./.github/actions path leaves github.action_repository empty.'
+            exit 1
+          fi
+          repository="${SOURCE_REPOSITORY}"
+
+          if ! command -v gh >/dev/null 2>&1; then
+            echo '::error::gh is required to download and verify release-cli. Install the GitHub CLI and retry.'
+            exit 1
+          fi
+          if ! gh attestation --help >/dev/null 2>&1; then
+            echo '::error::gh attestation is unavailable. Upgrade the GitHub CLI and retry.'
+            exit 1
+          fi
+
+          workdir="$(mktemp -d)"
+          tag="v${DEFAULT_VERSION}"
+
+          gh release download "${tag}" \
+            --repo "${repository}" \
+            --pattern 'release-cli_*_linux_amd64.tar.gz' \
+            --pattern 'checksums.txt' \
+            --dir "${workdir}"
+
+          shopt -s nullglob
+          archives=("${workdir}"/release-cli_*_linux_amd64.tar.gz)
+          if [[ ${#archives[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one release-cli_*_linux_amd64.tar.gz archive, found ${#archives[@]}."
+            exit 1
+          fi
+          archive="${archives[0]}"
+          archive_name="$(basename "${archive}")"
+
+          mapfile -t checksum_lines < <(
+            awk -v name="${archive_name}" '
+              $1 ~ /^[0-9A-Fa-f]{64}$/ {
+                n = $0
+                sub(/^[0-9A-Fa-f]{64} [ *]/, "", n)
+                if (n == name) print
+              }
+            ' "${workdir}/checksums.txt"
+          )
+          if [[ ${#checksum_lines[@]} -ne 1 ]]; then
+            echo "::error::checksums.txt must contain exactly one SHA-256 entry for ${archive_name}."
+            exit 1
+          fi
+          (
+            cd "${workdir}"
+            printf '%s\n' "${checksum_lines[0]}" > .archive.sha256
+            sha256sum -c .archive.sha256
+          )
+
+          gh attestation verify "${archive}" \
+            --repo "${repository}" \
+            --signer-workflow "${repository}/.github/workflows/publish-github-release.yml" \
+            --deny-self-hosted-runners
+
+          tar -xzf "${archive}" -C "${workdir}"
+          binary="${workdir}/release-cli"
+          test -f "${binary}"
+          chmod +x "${binary}"
+        fi
+
+        report="$("${binary}" version --json)"
+        reported_version="$(printf '%s' "${report}" | jq -r .result.version)"
+        reported_protocol="$(printf '%s' "${report}" | jq -r .result.protocol)"
+
+        {
+          echo "cli-path=${binary}"
+          echo "reported-version=${reported_version}"
+          echo "reported-protocol=${reported_protocol}"
+        } >>"${GITHUB_OUTPUT}"
+
+        echo "mode=${mode} version=${reported_version} protocol=${reported_protocol}"
+
+        if [[ "${mode}" == "installed" ]]; then
+          # Supported path: fail closed before any command runs.
+          if [[ "${reported_version}" != "${DEFAULT_VERSION}" ]]; then
+            echo "::error::Installed CLI reported version ${reported_version}, expected ${DEFAULT_VERSION}."
+            exit 1
+          fi
+          if [[ "${reported_protocol}" != "${EXPECTED_PROTOCOL}" ]]; then
+            echo "::error::Installed CLI reported protocol ${reported_protocol}, expected ${EXPECTED_PROTOCOL}."
+            exit 1
+          fi
+          echo "installed path verified: version and protocol match the release unit"
+        else
+          # Unsupported path: report, warn, and continue.
+          if [[ "${reported_protocol}" != "${EXPECTED_PROTOCOL}" ]]; then
+            echo "::warning::Off-contract binary: protocol ${reported_protocol} != expected ${EXPECTED_PROTOCOL}. You supplied the binary, you own the pairing."
+          fi
+          if [[ "${reported_version}" != "${DEFAULT_VERSION}" ]]; then
+            echo "::warning::Off-contract binary: version ${reported_version} != release-unit version ${DEFAULT_VERSION}."
+          fi
+        fi

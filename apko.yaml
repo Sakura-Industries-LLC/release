@@ -4,10 +4,10 @@ contents:
   packages:
     - alpine-release
     - ca-certificates-bundle
-    - release-mvp
+    - release-cli
 
 entrypoint:
-  command: /usr/bin/release-mvp
+  command: /usr/bin/release-cli
 
 accounts:
   groups:
@@ -27,7 +27,7 @@ archs:
   - arm64
 
 annotations:
-  org.opencontainers.image.title: release-mvp
+  org.opencontainers.image.title: release-cli
   org.opencontainers.image.description: Exercise the Meigma release pipeline.
   org.opencontainers.image.source: https://github.com/meigma/release
   org.opencontainers.image.licenses: LicenseRef-Proprietary
