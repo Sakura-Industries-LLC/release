@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/meigma/release/internal/stage/pubgh"
 )
 
 const (
@@ -37,6 +39,10 @@ type Settings struct {
 	Profile string
 	// Dist is the selected --dist / RELEASE_DIST path.
 	Dist string
+	// ArtifactID is the selected --artifact-id / RELEASE_ARTIFACT_ID value.
+	ArtifactID string
+	// Digest is the selected --digest / RELEASE_DIGEST value.
+	Digest string
 	// JSON reports whether --json / RELEASE_JSON requested structured output.
 	JSON bool
 }
@@ -59,10 +65,14 @@ type Options struct {
 	Out io.Writer
 	// Err receives diagnostics and human-readable status.
 	Err io.Writer
-	// LookupEnv resolves RELEASE_* variables. Nil selects [os.LookupEnv].
+	// LookupEnv resolves RELEASE_* and Actions environment variables. Nil selects [os.LookupEnv].
 	LookupEnv LookupEnv
 	// Build controls version output.
 	Build BuildInfo
+	// ArtifactMeta, when set, is the handoff metadata port. Tests inject it.
+	ArtifactMeta pubgh.ArtifactMeta
+	// NewArtifactMeta constructs the metadata port from a token and API endpoint.
+	NewArtifactMeta func(token string, endpoint GitHubEndpoint) (pubgh.ArtifactMeta, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -98,6 +108,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.SetFlagErrorFunc(flagParseError)
 	root.PersistentFlags().Bool("json", false, "emit one JSON result document on stdout")
 	root.AddCommand(newStageCommand(options))
+	root.AddCommand(newVerifyCommand(options))
 	root.AddCommand(newVersionCommand(options))
 
 	return root
@@ -143,9 +154,11 @@ func (options Options) withDefaults() Options {
 // resolveSettings applies flag-over-env precedence for the executing command.
 func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 	return Settings{
-		Profile: resolveString(cmd, flagProfile, envProfile, lookup),
-		Dist:    resolveString(cmd, flagDist, envDist, lookup),
-		JSON:    resolveBool(cmd, "json", envJSON, lookup),
+		Profile:    resolveString(cmd, flagProfile, envProfile, lookup),
+		Dist:       resolveString(cmd, flagDist, envDist, lookup),
+		ArtifactID: resolveString(cmd, flagArtifactID, envArtifactID, lookup),
+		Digest:     resolveString(cmd, flagDigest, envDigest, lookup),
+		JSON:       resolveBool(cmd, "json", envJSON, lookup),
 	}
 }
 

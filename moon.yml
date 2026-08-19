@@ -27,6 +27,10 @@ fileGroups:
   ciConfig:
     - 'moon.yml'
     - '.github/workflows/**/*.yml'
+  mockeryConfig:
+    - '.mockery.yml'
+    - 'mise.toml'
+    - 'mise.lock'
 
 workspace:
   inheritedTasks:
@@ -76,6 +80,16 @@ tasks:
     options:
       cache: false
 
+  mocks:
+    command: 'mise exec -- bash scripts/check-mocks.sh'
+    inputs:
+      - 'scripts/check-mocks.sh'
+      - '@group(goSources)'
+      - '@group(mockeryConfig)'
+      - '@group(ciConfig)'
+    options:
+      cache: false
+
   check:
     deps:
       - 'root:format'
@@ -83,6 +97,7 @@ tasks:
       - 'root:build'
       - 'root:test'
       - 'root:protocol'
+      - 'root:mocks'
     inputs:
       - '@group(goSources)'
       - '@group(lintConfig)'

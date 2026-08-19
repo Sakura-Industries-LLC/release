@@ -80,6 +80,7 @@ jobs:
     with:
       artifact-id: ${{ needs.release-assets.outputs.oci-input-artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.oci-input-artifact-digest }}
+      cli-path: .release-cli/release-cli
   oci-publish:
     name: Publish OCI image
     needs: oci-image
@@ -96,6 +97,7 @@ jobs:
       artifact-digest: ${{ needs.oci-image.outputs.artifact-digest }}
       image-digest: ${{ needs.oci-image.outputs.image-digest }}
       publish-image: true
+      cli-path: .release-cli/release-cli
 
 
 
@@ -120,5 +122,6 @@ jobs:
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
       publish-release: true
+      cli-path: .release-cli/release-cli
     secrets:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}

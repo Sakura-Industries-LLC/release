@@ -143,6 +143,7 @@ The workflow runs on `ubuntu-24.04` with a 20-minute timeout. It declares `permi
 | --- | --- | --- | --- | --- |
 | `artifact-id` | string | Yes | None | Positive integer ID from `go-pre-publish.yml`. |
 | `artifact-digest` | string | Yes | None | Expected SHA-256 digest from `go-pre-publish.yml`. The comparison accepts the digest with or without a `sha256:` prefix. |
+| `cli-path` | string | No | Empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `checksum-signing-workflow-ref` | string | Yes | None | Exact owner, repository, workflow path, and revision used as the checksum certificate identity after the `https://github.com/` prefix is added. |
 | `release-app-client-id` | string | Yes | None | Client ID used to mint the Release App installation token. |
 | `publish-release` | boolean | No | `true` | Whether to change the populated draft to a non-draft release after verification. |
@@ -169,6 +170,14 @@ The publisher job requires these caller permissions:
 | `id-token` | `write` | Obtain the OIDC identity for GitHub build-provenance attestations. |
 
 The workflow runs on `ubuntu-24.04` with a 10-minute timeout. The reusable workflow declares `permissions: {}` at workflow scope; the caller must grant the job permissions explicitly.
+
+After the tag gate, checkout, tool setup, and Release App token step, the publisher's relevant sequence is:
+
+1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
+2. Run `setup-release-cli` from the same pinned release revision.
+3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+4. Find the matching draft release and verify its tag.
+5. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
 
 ## Versioning and credentials
 
@@ -284,7 +293,15 @@ dist/checksums.txt.sigstore.json
 
 For the supported three-operating-system, two-architecture Go profile, this is six archives, six archive SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`: fourteen files in total.
 
-Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, and verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md). The publisher separately checks the Actions artifact metadata and downloads it with `digest-mismatch: error`.
+Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, and verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md).
+
+The publisher's artifact handoff has three independent owners:
+
+1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
+2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
+3. Later `release-cli` content commands verify the extracted content.
+
+`release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
 
 `checksums.txt` is the authoritative payload list. It may end with a newline; every entry line must contain a 64-digit hexadecimal SHA-256 digest, a standard text or binary marker, and a flat filename matching this character set:
 
@@ -335,7 +352,9 @@ The publisher does not create a release, generate release notes, change a tag, o
 
 ## Retry and recovery behavior
 
-The artifact verification, draft lookup, upload, and final verification steps request three retries from `actions/github-script` for retryable API failures. Draft discovery additionally polls up to 24 times at five-second intervals. Final asset inspection polls up to 12 times at one-second intervals for every expected asset to report an `uploaded` state and a digest.
+`verify handoff` uses the [`release-cli` metadata request retry policy](release-cli-contract.md#metadata-request-retries). That policy preserves the `retries: 3` behavior of the replaced artifact metadata block.
+
+The remaining draft lookup, upload, and final verification steps request three retries from `actions/github-script` for retryable API failures. Draft discovery additionally polls up to 24 times at five-second intervals. Final asset inspection polls up to 12 times at one-second intervals for every expected asset to report an `uploaded` state and a digest.
 
 A failed run does not roll back uploaded assets or delete the draft. Recovery is convergent while the release remains a draft:
 

@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/meigma/release/internal/adapter/ghact"
 	"github.com/meigma/release/internal/cli"
+	"github.com/meigma/release/internal/stage/pubgh"
 )
 
 //nolint:gochecknoglobals // Linker-injected build metadata.
@@ -30,6 +32,9 @@ func run() int {
 		In:  os.Stdin,
 		Out: os.Stdout,
 		Err: os.Stderr,
+		NewArtifactMeta: func(token string, endpoint cli.GitHubEndpoint) (pubgh.ArtifactMeta, error) {
+			return ghact.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
 		Build: cli.BuildInfo{
 			Version:  version,
 			Commit:   commit,

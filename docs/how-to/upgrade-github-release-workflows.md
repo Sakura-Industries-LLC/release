@@ -86,6 +86,8 @@ Stop if the target revision removes a required consumer capability or if any mig
 
 ## 2. Apply the target contract atomically
 
+Moving from the preceding revision to the artifact-handoff verification revision requires no consumer interface changes beyond updating the pinned revision. Every existing reusable workflow input and output is unchanged. `go-oci-build.yml`, `publish-github-release.yml`, and `publish-oci-image.yml` add only the optional `cli-path` input, whose default is empty. Normal consumers omit `cli-path`; the workflows then install the CLI associated with the pinned release revision.
+
 In `.github/workflows/release.yml`, replace the current revision with `NEW_RELEASE_REVISION` in all five locations:
 
 1. `uses: meigma/release/.github/workflows/go-pre-publish.yml@...`

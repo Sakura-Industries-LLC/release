@@ -1,0 +1,25 @@
+# Interfaces live in the consumer package (I2). Generated mocks live under
+# the implementing adapter's mocks/ package (T3), not next to the interface.
+# Add an interface here only when its slice lands. The port budget is closed
+# at 13; do not invent a fourteenth.
+all: false
+dir: '{{.InterfaceDir}}'
+filename: '{{ .InterfaceName | snakecase }}.go'
+force-file-write: true
+formatter: goimports
+formatter-options:
+  goimports:
+    local-prefix: github.com/meigma/release
+log-level: info
+structname: '{{.Mock}}{{.InterfaceName}}'
+pkgname: mocks
+recursive: false
+template: testify
+packages:
+  github.com/meigma/release/internal/stage/pubgh:
+    config:
+      dir: internal/adapter/ghact/mocks
+    interfaces:
+      ArtifactMeta:
+        config:
+          filename: artifact_meta.go

@@ -31,9 +31,10 @@ var ErrUsage = errors.New("usage")
 
 // Envelope is the single JSON document emitted under --json.
 //
-// Schema is always [Schema]. Command is the verb path ("stage" or "version").
-// OK is true only on success. Result is command-specific and must not be nil
-// in a written document. A zero Envelope is invalid and is never encoded.
+// Schema is always [Schema]. Command is the verb path ("stage", "version",
+// or "verify handoff"). OK is true only on success. Result is
+// command-specific and must not be nil in a written document. A zero
+// Envelope is invalid and is never encoded.
 type Envelope struct {
 	// Schema identifies the envelope version.
 	Schema string `json:"schema"`
@@ -69,6 +70,28 @@ type StageResult struct {
 	Assets int `json:"assets"`
 	// Binaries maps GOARCH onto the verified binary path and mode.
 	Binaries map[string]BinaryResult `json:"binaries"`
+}
+
+// ArtifactHandoffResult is one verified Actions artifact.
+type ArtifactHandoffResult struct {
+	// ID is the GitHub artifact identifier.
+	ID int64 `json:"id"`
+	// Name is the GitHub artifact name.
+	Name string `json:"name"`
+	// Digest is the GitHub-reported digest, always sha256-prefixed.
+	Digest string `json:"digest"`
+	// SizeBytes is the reported archive size.
+	SizeBytes int64 `json:"size_bytes"`
+	// RunID is the workflow run that owns the artifact.
+	RunID int64 `json:"run_id"`
+	// ExpiresAt is the RFC3339 expiry instant, or empty when GitHub omitted it.
+	ExpiresAt string `json:"expires_at"`
+}
+
+// HandoffResult is the --json payload for verify handoff.
+type HandoffResult struct {
+	// Artifact is the verified Actions artifact metadata.
+	Artifact ArtifactHandoffResult `json:"artifact"`
 }
 
 // ErrorResult is the --json payload for a failed command.

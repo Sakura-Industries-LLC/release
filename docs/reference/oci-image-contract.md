@@ -43,6 +43,7 @@ Moving branches and tags are not supported workflow references.
 | --- | --- | --- | --- |
 | `artifact-id` | yes | none | Numeric ID of the canonical Linux binary artifact from `go-pre-publish.yml`. |
 | `artifact-digest` | yes | none | GitHub artifact SHA-256 digest for that artifact. |
+| `cli-path` | no | empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `melange-config` | no | `melange.yaml` | Consumer-relative Melange configuration path. |
 | `apko-config` | no | `apko.yaml` | Consumer-relative apko configuration path. |
 
@@ -57,6 +58,13 @@ It returns:
 
 The caller grants `actions: read` and `contents: read`. The builder has no registry credentials, package write permission, attestation permission, or release credential.
 
+After the tag gate, checkout, mise, QEMU, and tool proof, the builder's relevant sequence is:
+
+1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
+2. Run `setup-release-cli`.
+3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+4. Download the canonical Linux binaries with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+
 ## Publisher interface
 
 `publish-oci-image.yml` accepts these inputs:
@@ -65,6 +73,7 @@ The caller grants `actions: read` and `contents: read`. The builder has no regis
 | --- | --- | --- | --- |
 | `artifact-id` | yes | none | Numeric ID of the `oci-image` artifact from `go-oci-build.yml`. |
 | `artifact-digest` | yes | none | Expected GitHub artifact SHA-256 digest. |
+| `cli-path` | no | empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `image-digest` | yes | none | Expected OCI index digest. |
 | `publish-image` | no | `false` | When `true`, push, sign, and attest the verified image. When `false`, stop after verification. |
 
@@ -92,6 +101,13 @@ permissions:
 ```
 
 `packages: write` authenticates ORAS, Cosign, and registry-backed GitHub attestations to GHCR. `id-token: write` supplies short-lived Sigstore identity. The publisher receives no GitHub App key and cannot mutate repository contents or releases.
+
+After the stable-tag gate and tool setup, the publisher's relevant sequence is:
+
+1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
+2. Run `setup-release-cli`.
+3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+4. Download the authoritative OCI image with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
 
 ## Consumer configuration
 
@@ -152,13 +168,15 @@ sboms/sbom-x86_64.spdx.json
 
 The package directories also contain signed APK repository indexes, Melange provenance, embedded package SBOMs, and the signed APKs. Files not listed above may be diagnostic outputs from the pinned tools; consumers must not infer a stable API from undocumented filenames.
 
-The publisher verifies all three handoff coordinates before a registry write:
+Artifact handoff integrity has three independent owners:
 
-1. artifact ID belongs to the current workflow run;
-2. GitHub artifact digest equals the caller-supplied digest; and
-3. recorded, recomputed, and caller-supplied OCI index digests are identical.
+1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
+2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
+3. Later `release-cli` content commands verify the extracted content. For the OCI image artifact, content verification includes requiring the recorded, recomputed, and caller-supplied OCI index digests to be identical, one Linux manifest for `amd64`, one for `arm64`, all referenced blobs, and parseable SPDX JSON for each architecture.
 
-It also requires one Linux manifest for `amd64`, one for `arm64`, both referenced blobs, and parseable SPDX JSON for each architecture.
+`release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
+
+Both OCI workflows use the [`release-cli` metadata request retry policy](release-cli-contract.md#metadata-request-retries) for `verify handoff`. That policy preserves the `retries: 3` behavior of each replaced artifact metadata block.
 
 ## Published image
 
@@ -254,7 +272,7 @@ The current boundary is deliberately split:
 - `publish-oci-image.yml` does not check out consumer source and writes only to the caller's GHCR package and attestation store; and
 - `publish-github-release.yml` waits for image publication but uses a separate short-lived Release App token for release mutation.
 
-The privileged publisher implements validation and orchestration with the pinned `actions/github-script` action. It invokes ORAS and Cosign with explicit argument arrays through `@actions/exec`; release metadata is not interpolated into shell programs.
+The privileged publisher uses `release-cli` for pre-download artifact metadata verification. The remaining validation and orchestration stay in the pinned workflow actions. ORAS and Cosign receive explicit argument arrays through `@actions/exec`; release metadata is not interpolated into shell programs.
 
 The workflow artifact is temporary transport, not a public distribution channel. The OCI digest, registry content, Cosign identity, and attestation identities form the public verification boundary.
 
