@@ -31,8 +31,8 @@ var ErrUsage = errors.New("usage")
 
 // Envelope is the single JSON document emitted under --json.
 //
-// Schema is always [Schema]. Command is the verb path ("stage", "version",
-// or "verify handoff"). OK is true only on success. Result is
+// Schema is always [Schema]. Command is the verb path ("stage", "plan tags",
+// "version", or "verify handoff"). OK is true only on success. Result is
 // command-specific and must not be nil in a written document. A zero
 // Envelope is invalid and is never encoded.
 type Envelope struct {

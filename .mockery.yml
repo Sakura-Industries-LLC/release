@@ -23,3 +23,10 @@ packages:
       ArtifactMeta:
         config:
           filename: artifact_meta.go
+  github.com/meigma/release/internal/stage/puboci:
+    config:
+      dir: internal/adapter/reg/mocks
+    interfaces:
+      StateReader:
+        config:
+          filename: state_reader.go

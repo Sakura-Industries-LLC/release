@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/meigma/release/internal/stage/puboci"
 )
 
 const (
@@ -22,6 +23,10 @@ const (
 	envDist = "RELEASE_DIST"
 	// envJSON is the environment variable for --json.
 	envJSON = "RELEASE_JSON"
+	// envImage is the environment variable for --image.
+	envImage = "RELEASE_IMAGE"
+	// envVersion is the environment variable for --version.
+	envVersion = "RELEASE_VERSION"
 )
 
 // LookupEnv looks up an environment variable.
@@ -41,6 +46,10 @@ type Settings struct {
 	Dist string
 	// ArtifactID is the selected --artifact-id / RELEASE_ARTIFACT_ID value.
 	ArtifactID string
+	// Image is the selected --image / RELEASE_IMAGE value.
+	Image string
+	// Version is the selected --version / RELEASE_VERSION value.
+	Version string
 	// Digest is the selected --digest / RELEASE_DIGEST value.
 	Digest string
 	// JSON reports whether --json / RELEASE_JSON requested structured output.
@@ -73,6 +82,10 @@ type Options struct {
 	ArtifactMeta pubgh.ArtifactMeta
 	// NewArtifactMeta constructs the metadata port from a token and API endpoint.
 	NewArtifactMeta func(token string, endpoint GitHubEndpoint) (pubgh.ArtifactMeta, error)
+	// StateReader, when set, is the registry read port. Tests inject it.
+	StateReader puboci.StateReader
+	// NewStateReader constructs the registry read port from resolved credentials.
+	NewStateReader func(credentials RegistryCredentials) (puboci.StateReader, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -108,6 +121,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.SetFlagErrorFunc(flagParseError)
 	root.PersistentFlags().Bool("json", false, "emit one JSON result document on stdout")
 	root.AddCommand(newStageCommand(options))
+	root.AddCommand(newPlanCommand(options))
 	root.AddCommand(newVerifyCommand(options))
 	root.AddCommand(newVersionCommand(options))
 
@@ -157,6 +171,8 @@ func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 		Profile:    resolveString(cmd, flagProfile, envProfile, lookup),
 		Dist:       resolveString(cmd, flagDist, envDist, lookup),
 		ArtifactID: resolveString(cmd, flagArtifactID, envArtifactID, lookup),
+		Image:      resolveString(cmd, flagImage, envImage, lookup),
+		Version:    resolveString(cmd, flagVersion, envVersion, lookup),
 		Digest:     resolveString(cmd, flagDigest, envDigest, lookup),
 		JSON:       resolveBool(cmd, "json", envJSON, lookup),
 	}

@@ -7,6 +7,7 @@
 | Command | Purpose |
 | --- | --- |
 | `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
+| `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
@@ -25,7 +26,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `stage`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `plan tags`, `stage`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -37,6 +38,36 @@ The `stage --json` result contains these fields:
 | `binaries` | object | Entries named `amd64` and `arm64` for the verified Linux binaries. |
 | `binaries.<arch>.path` | string | Original `<dist-basename>/`-prefixed path from `artifacts.json`. |
 | `binaries.<arch>.mode` | string | Observed permission bits in octal notation. |
+
+For `plan tags --json`, `command` is exactly `plan tags`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `image` | string | OCI image name whose tags were inspected. |
+| `version` | string | Candidate stable release version. |
+| `digest` | string | Candidate OCI index digest, normalized to lowercase with the `sha256:` prefix. |
+| `tags` | array of strings | Tags with a `create` decision, in decision order. Tags with an `accept` or `retain` decision are omitted. |
+| `decisions` | array of objects | Decision for the exact tag and each channel tag, in policy order. |
+| `decisions[].tag` | string | Exact or channel tag that was evaluated. |
+| `decisions[].scope` | string | Tag scope: `exact`, `minor`, `major`, or `latest`. |
+| `decisions[].action` | string | Result: `create`, `accept`, or `retain`. |
+
+For example, this result plans to apply the exact and minor tags, retain the major tag, and accept the existing `latest` tag:
+
+```json
+{
+  "image": "ghcr.io/owner/repo",
+  "version": "1.2.3",
+  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tags": ["1.2.3", "1.2"],
+  "decisions": [
+    {"tag": "1.2.3", "scope": "exact", "action": "create"},
+    {"tag": "1.2", "scope": "minor", "action": "create"},
+    {"tag": "1", "scope": "major", "action": "retain"},
+    {"tag": "latest", "scope": "latest", "action": "accept"}
+  ]
+}
+```
 
 The `version --json` result contains exactly these fields:
 
@@ -70,14 +101,15 @@ The `verify handoff --json` result contains this object:
 | `artifact.run_id` | number | Workflow run ID associated with the artifact. |
 | `artifact.expires_at` | string | Artifact expiration time in RFC 3339 format, or an empty string if GitHub omitted it. |
 
-After successful parsing, a command failure under `--json` sets `ok` to `false`
-and gives `result` one string field named `error`. The command also returns its
-nonzero exit code. If parsing itself fails because of an unknown command or
-flag, an invalid flag value, or the wrong number of arguments, no envelope is
-written; the usage error goes to stderr and the process exits with code
-`2`.
+After command-line parsing and dispatch succeed, a command or configuration
+failure under `--json` sets `ok` to `false` and gives `result` one string field
+named `error`. The command also returns its nonzero exit code. Configuration
+failures return code `2` and still emit exactly one envelope. Only command-line
+parse or dispatch failures skip the envelope. These include an unknown command
+or flag, an invalid flag value, or the wrong number of arguments. The usage
+error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `stage` or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `plan tags`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -88,6 +120,74 @@ Without `--json`, a successful `stage` or `verify handoff` command writes nothin
 | `2` | Command usage or configuration is invalid. This includes an unsupported `--profile` value. |
 
 No other exit code is defined; in particular, code `3` has no meaning. An exit code does not make a general promise that a command is safe to run again.
+
+## OCI tag planning
+
+`release-cli plan tags` inspects the current registry state and returns the tag decisions for one candidate OCI index.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Image | `--image` | `RELEASE_IMAGE` | `ghcr.io/<owner>/<repo>`, lowercased from `GITHUB_REPOSITORY`. |
+| Version | `--version` | `RELEASE_VERSION` | `GITHUB_REF_NAME` with one optional leading `v` stripped. |
+| Digest | `--digest` | `RELEASE_DIGEST` | None. A digest is required. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+An explicitly set flag takes precedence over its environment variable. The derived default applies only when the corresponding flag and release environment variable are absent. The image must have the lowercase form `host/path[/path...]` without a tag or digest. The digest must have the `sha256:` prefix followed by 64 hexadecimal digits.
+
+The command resolves registry credentials in this order:
+
+| Credential | Resolution |
+| --- | --- |
+| Token | Nonempty `GITHUB_TOKEN`, then nonempty `GH_TOKEN`. |
+| Username | Nonempty `GITHUB_ACTOR`, then `x-access-token`. |
+
+If neither token is present, the command reads the registry anonymously. Anonymous reads work only for public packages.
+
+Missing or invalid configuration exits with code `2`. Under `--json`, this failure still writes exactly one envelope with `ok` set to `false`. A planning or registry failure exits with code `1`.
+
+`plan tags` performs registry reads only. It never writes a tag, blob, or manifest. The reusable publisher workflow still owns tag application in this release. Its existing `actions/github-script` tag planner remains authoritative for publication. The workflow does not call `plan tags` in this release. The command supports planning and inspection only.
+
+### Tag policy
+
+The candidate version must match this canonical stable-version grammar:
+
+```text
+^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
+```
+
+The version has exactly three components. It has no `v` prefix, leading zeros, prerelease, or build metadata. Each component must fit in a 64-bit unsigned integer. The publisher workflow compares components with arbitrary-precision integers. The CLI's 64-bit limit is a deliberate fail-closed narrowing of that workflow behavior.
+
+The exact tag is `MAJOR.MINOR.PATCH`:
+
+| Current exact-tag state | Decision |
+| --- | --- |
+| The tag is absent. | `create`: apply the tag to the candidate digest. |
+| The tag resolves to the candidate digest. | `accept`: leave the tag unchanged. |
+| The tag resolves to another digest. | Fail with an immutable-tag conflict. |
+
+The command then evaluates channels in this order:
+
+| Channel tag | Scope | Required release line |
+| --- | --- | --- |
+| `MAJOR.MINOR` | `minor` | The current annotation must have the candidate's major and minor components. |
+| `MAJOR` | `major` | The current annotation must have the candidate's major component. |
+| `latest` | `latest` | No release-line check. |
+
+An absent channel gets a `create` decision. A channel that already resolves to the candidate digest gets an `accept` decision. Otherwise, the command reads the current manifest's `org.opencontainers.image.version` annotation. A missing or invalid stable-version annotation fails planning. A minor or major channel outside its required release line also fails planning.
+
+Failure ordering differs from the publisher workflow. The workflow checks the exact tag before it resolves any channel. The CLI collects the exact tag and all three channels before it decides the plan. If an immutable-tag conflict and a corrupt channel exist together, the CLI may report the channel failure instead of the immutable-tag conflict. Both planners refuse the plan, and the CLI exits with code `1`. Only the failure reported first can differ.
+
+For a valid channel annotation on a different digest, the command compares the candidate version with the annotated version:
+
+| Comparison | Decision |
+| --- | --- |
+| The candidate is newer. | `create`: move the channel to the candidate digest. |
+| The candidate is older. | `retain`: keep the channel on the newer release. |
+| The versions are equal. | Fail because equal versions on different digests are corrupt state. |
+
+### Concurrency
+
+The publisher workflow serializes tag planning and application with a repository-wide concurrency group. A direct `plan tags` invocation outside that workflow has no cross-run lock. Two concurrent planners can observe the same registry state and plan conflicting channel moves. Direct use therefore requires a single writer by convention.
 
 ## Actions artifact handoff
 

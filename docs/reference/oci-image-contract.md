@@ -203,6 +203,10 @@ A stable release tag `vMAJOR.MINOR.PATCH` publishes:
 
 The exact tag must resolve to the builder's expected OCI index digest after publication. Each eligible channel tag must resolve to that digest; an out-of-order or backport release leaves newer channel tags unchanged. The publisher resolves and validates every existing tag before uploading the image. A repository-wide publisher concurrency group prevents different release tags from planning and updating channels concurrently. Prerelease, build-metadata, malformed, branch, and untagged refs are rejected.
 
+`release-cli plan tags` evaluates the same exact-tag and channel policy as the publisher's planning step. It can run independently to inspect the decisions for a candidate release. The publisher's existing `actions/github-script` planning step remains authoritative for publication in this release. The workflow does not call `plan tags`.
+
+A direct `plan tags` invocation has no repository-wide concurrency lock. Two concurrent planners outside the publisher workflow can observe the same registry state and plan conflicting channel moves. Direct use therefore requires a single writer by convention.
+
 Digest-pinned references are the durable consumer interface:
 
 ```text
