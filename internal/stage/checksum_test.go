@@ -72,6 +72,31 @@ func TestParseChecksums(t *testing.T) {
 			wantErr: "contains a path separator",
 		},
 		{
+			name:    "leading dot",
+			input:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  .hidden\n",
+			wantErr: "is not a valid release payload name",
+		},
+		{
+			name:    "embedded space",
+			input:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  my file.tar.gz\n",
+			wantErr: "is not a valid release payload name",
+		},
+		{
+			name:    "embedded tab",
+			input:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  my\tfile.tar.gz\n",
+			wantErr: "is not a valid release payload name",
+		},
+		{
+			name:    "non-ASCII name",
+			input:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  café.tar.gz\n",
+			wantErr: "is not a valid release payload name",
+		},
+		{
+			name:    "leading hyphen",
+			input:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  -odd.tar.gz\n",
+			wantErr: "is not a valid release payload name",
+		},
+		{
 			name:    "bad digest length",
 			input:   "aaaa  archive.tar.gz\n",
 			wantErr: "malformed entry",

@@ -51,6 +51,7 @@ func newVerifyCommand(options Options) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newHandoffCommand(options))
+	cmd.AddCommand(newBundleCommand(options))
 
 	return cmd
 }

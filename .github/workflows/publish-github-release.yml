@@ -225,116 +225,64 @@ jobs:
 
       - name: Verify authoritative release bundle
         id: bundle
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           CERTIFICATE_IDENTITY: https://github.com/${{ inputs.checksum-signing-workflow-ref }}
-        with:
-          script: |
-            const crypto = require('node:crypto')
-            const fs = require('node:fs')
-            const path = require('node:path')
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # mise runs here without shims and without exporting PATH, so hand the
+          # CLI the pinned cosign binary instead of putting it on PATH globally.
+          cosign_path="$(mise which cosign)"
+          if [ ! -x "${cosign_path}" ]; then
+            echo "::error::Resolved cosign path ${cosign_path} is not executable."
+            exit 1
+          fi
 
-            const workspace = process.env.GITHUB_WORKSPACE
-            const dist = path.join(workspace, 'dist')
-            const checksumName = 'checksums.txt'
-            const bundleName = 'checksums.txt.sigstore.json'
-            const checksumPath = path.join(dist, checksumName)
-            const bundlePath = path.join(dist, bundleName)
-            const controls = new Set([checksumName, bundleName])
+          envelope="$(
+            RELEASE_COSIGN_PATH="${cosign_path}" \
+              "${RELEASE_CLI}" verify bundle \
+              --dist dist \
+              --identity "${CERTIFICATE_IDENTITY}" \
+              --json
+          )"
+          printf '%s\n' "${envelope}"
 
-            const requireRegularFile = (file, label) => {
-              let stat
-              try {
-                stat = fs.lstatSync(file)
-              } catch {
-                throw new Error(`${label} does not exist.`)
-              }
-              if (!stat.isFile()) {
-                throw new Error(`${label} is not a regular file.`)
-              }
-            }
+          # Payloads in checksums.txt order, then checksums.txt, then its bundle,
+          # rooted at the directory the CLI reports it actually verified.
+          assets="$(jq -ce --arg workspace "${GITHUB_WORKSPACE}" '
+            .result
+            | if (.dist | type) != "string" or (.dist | length) == 0 then
+                error("envelope reported no distribution directory")
+              else . end
+            | ($workspace + "/" + .dist) as $prefix
+            | [.payloads[], .controls[]]
+            | map($prefix + "/" + .name)
+          ' <<<"${envelope}")"
+          digests="$(jq -ce '
+            [.result.payloads[], .result.controls[]]
+            | map({key: .name, value: .digest})
+            | from_entries
+          ' <<<"${envelope}")"
+          if [ -z "${assets}" ] || [ "${assets}" = 'null' ] || [ "${assets}" = '[]' ]; then
+            echo '::error::Verified release bundle listed no assets.'
+            exit 1
+          fi
+          if [ -z "${digests}" ] || [ "${digests}" = 'null' ] || [ "${digests}" = '{}' ]; then
+            echo '::error::Verified release bundle listed no digests.'
+            exit 1
+          fi
 
-            const sha256 = async (file) => {
-              const hash = crypto.createHash('sha256')
-              for await (const chunk of fs.createReadStream(file)) {
-                hash.update(chunk)
-              }
-              return hash.digest('hex')
-            }
-
-            requireRegularFile(checksumPath, checksumName)
-            requireRegularFile(bundlePath, bundleName)
-
-            const manifest = fs.readFileSync(checksumPath, 'utf8')
-            const lines = manifest.split(/\r?\n/)
-            if (lines.at(-1) === '') lines.pop()
-            if (lines.length === 0) {
-              throw new Error('checksums.txt does not list any release payloads.')
-            }
-
-            const seen = new Set()
-            const entries = []
-            for (const [index, line] of lines.entries()) {
-              const match = line.match(
-                /^([0-9A-Fa-f]{64}) [ *]([A-Za-z0-9][A-Za-z0-9._+-]*)$/,
-              )
-              if (!match) {
-                throw new Error(`Invalid checksums.txt entry on line ${index + 1}.`)
-              }
-
-              const [, rawDigest, name] = match
-              if (controls.has(name)) {
-                throw new Error(`Control file ${name} must not be listed in checksums.txt.`)
-              }
-              if (seen.has(name)) {
-                throw new Error(`Duplicate checksums.txt entry: ${name}.`)
-              }
-
-              const file = path.join(dist, name)
-              requireRegularFile(file, `Release payload ${name}`)
-              const digest = rawDigest.toLowerCase()
-              const actual = await sha256(file)
-              if (actual !== digest) {
-                throw new Error(
-                  `Release payload ${name} has digest ${actual}, expected ${digest}.`,
-                )
-              }
-
-              seen.add(name)
-              entries.push({name, file, digest})
-            }
-
-            const allowed = new Set([...seen, ...controls])
-            for (const entry of fs.readdirSync(dist, {withFileTypes: true})) {
-              if (!allowed.has(entry.name) || !entry.isFile()) {
-                throw new Error(`Unlisted or invalid release bundle entry: ${entry.name}.`)
-              }
-            }
-
-            await exec.exec('mise', [
-              'exec',
-              '--',
-              'cosign',
-              'verify-blob',
-              '--bundle',
-              bundlePath,
-              '--certificate-identity',
-              process.env.CERTIFICATE_IDENTITY,
-              '--certificate-oidc-issuer',
-              'https://token.actions.githubusercontent.com',
-              checksumPath,
-            ], {cwd: workspace})
-
-            const assets = entries.map(({file}) => file)
-            assets.push(checksumPath, bundlePath)
-            const digests = Object.fromEntries(
-              entries.map(({name, digest}) => [name, digest]),
-            )
-            digests[checksumName] = await sha256(checksumPath)
-            digests[bundleName] = await sha256(bundlePath)
-
-            core.setOutput('assets', JSON.stringify(assets))
-            core.setOutput('digests', JSON.stringify(digests))
+          # Random delimiter: it cannot occur as a line of either JSON value.
+          delimiter="BUNDLE_$(openssl rand -hex 16)"
+          {
+            printf 'assets<<%s\n' "${delimiter}"
+            printf '%s\n' "${assets}"
+            printf '%s\n' "${delimiter}"
+            printf 'digests<<%s\n' "${delimiter}"
+            printf '%s\n' "${digests}"
+            printf '%s\n' "${delimiter}"
+          } >>"${GITHUB_OUTPUT}"
 
       - name: Attest release assets
         id: attest

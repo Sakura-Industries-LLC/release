@@ -178,6 +178,11 @@ After the tag gate, checkout, tool setup, and Release App token step, the publis
 3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
 4. Find the matching draft release and verify its tag.
 5. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+6. Run `release-cli verify bundle --dist dist --identity https://github.com/<checksum-signing-workflow-ref> --json`.
+7. Create the GitHub build-provenance attestation with `dist/checksums.txt` as `subject-checksums`.
+8. Upload the verified payloads and two control files.
+
+`release-cli verify bundle` must succeed before the attestation step runs, and the attestation must succeed before upload. This preserves the verify, attest, then upload ordering.
 
 ## Versioning and credentials
 
@@ -234,7 +239,7 @@ The repository must declare and lock these mise tool identifiers:
 - `aqua:sigstore/cosign`
 - `aqua:cli/cli`
 
-The producer installs the first four tools. The publisher installs GitHub CLI and Cosign. Both workflows set `MISE_EXEC_AUTO_INSTALL=false` and invoke their managed tools through `mise exec`; undeclared tools are not installed as a fallback. The producer also sets `GOTOOLCHAIN=local` and verifies that `go`, `goreleaser`, `syft`, and `cosign` resolve to their mise-managed executables. The setup action separately requires the runner's `gh` command with attestation support and fails closed if either is unavailable.
+The producer installs the first four tools. The publisher installs GitHub CLI and Cosign. Both workflows set `MISE_EXEC_AUTO_INSTALL=false` and resolve managed tools through mise; undeclared tools are not installed as a fallback. The publisher passes the Cosign path resolved by mise to `release-cli verify bundle` through `RELEASE_COSIGN_PATH`. The producer also sets `GOTOOLCHAIN=local` and verifies that `go`, `goreleaser`, `syft`, and `cosign` resolve to their mise-managed executables. The setup action separately requires the runner's `gh` command with attestation support and fails closed if either is unavailable.
 
 The canonical workflows install mise `2026.8.8`. These repository pins are the current known-compatible baseline, not versions selected automatically by the reusable workflows:
 
@@ -299,7 +304,7 @@ The publisher's artifact handoff has three independent owners:
 
 1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
 2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
-3. Later `release-cli` content commands verify the extracted content.
+3. `release-cli verify bundle` verifies the extracted content and the detached Sigstore bundle.
 
 `release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
 
@@ -309,7 +314,7 @@ The publisher's artifact handoff has three independent owners:
 [A-Za-z0-9][A-Za-z0-9._+-]*
 ```
 
-The bundle verifier enforces these rules:
+`release-cli verify bundle` enforces these rules:
 
 - The manifest contains at least one payload.
 - Every payload name is unique.
@@ -324,7 +329,7 @@ GitHub build-provenance attestations use `dist/checksums.txt` as `subject-checks
 
 ## Trust identities
 
-The checksum signature is accepted only when Cosign verifies all of the following:
+The checksum signature is accepted only when `release-cli verify bundle` invokes Cosign and verifies all of the following:
 
 | Field | Required value |
 | --- | --- |
@@ -333,7 +338,7 @@ The checksum signature is accepted only when Cosign verifies all of the followin
 | Signed blob | `checksums.txt` |
 | Bundle | `checksums.txt.sigstore.json` |
 
-The exact identity comes from `checksum-signing-workflow-ref`; a branch name, tag name, different commit, or different workflow path does not satisfy the documented identity.
+The workflow adds the `https://github.com/` prefix to `checksum-signing-workflow-ref` and passes the resulting exact URL to `release-cli verify bundle` with `--identity`. A branch name, tag name, different commit, or different workflow path does not satisfy the documented identity.
 
 The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. A short-lived Release App installation token with `contents: write` performs draft discovery, asset upload, and the final draft-state change.
 

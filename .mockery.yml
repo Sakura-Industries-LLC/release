@@ -23,6 +23,10 @@ packages:
       ArtifactMeta:
         config:
           filename: artifact_meta.go
+      BlobVerifier:
+        config:
+          dir: internal/adapter/cosign/mocks
+          filename: blob_verifier.go
   github.com/meigma/release/internal/stage/puboci:
     config:
       dir: internal/adapter/reg/mocks

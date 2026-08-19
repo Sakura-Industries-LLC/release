@@ -110,6 +110,8 @@ Do not replace these shared contract values:
 
 To change the immutable revision later, follow [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md). Update all reusable workflow references and the checksum signing identity together; do not edit one reference in isolation.
 
+Keep `checksum-signing-workflow-ref` in `owner/repository/workflow@revision` form without a URL prefix. The publisher adds `https://github.com/` and passes the resulting exact certificate identity to `release-cli verify bundle` with `--identity`. For example, the documented input becomes `--identity https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA`.
+
 The copied GoReleaser configuration builds Darwin, Linux, and Windows archives for amd64 and arm64. Confirm that the consumer command supports those targets before releasing it.
 
 The producer runs GoReleaser, obtains `release-cli` through the shared setup
@@ -117,6 +119,8 @@ action, and then runs `release-cli stage --profile go --dist dist` before
 uploading either Actions artifact. Leave the optional `cli-path` input unset in
 a consumer repository. It is an unsupported escape hatch for this repository's
 dogfood release and for callers that own the workflow-to-binary pairing.
+
+After downloading the authoritative artifact, the publisher runs `release-cli verify bundle`. The command verifies the local closed file set before it verifies the detached Sigstore bundle against the exact certificate identity. The workflow then creates the GitHub build-provenance attestation with `dist/checksums.txt` and uploads the verified files. Keep this verify, attest, then upload order.
 
 The copied release caller sets both `publish-image: false` and `publish-release: false`. Keep both values for the first rehearsal. Before a public release, change both to `true` and merge the change before Release Please creates the tag. The [rehearsal and recovery guide](rehearse-and-recover-github-releases.md) gives the safer first-run sequence.
 
@@ -188,7 +192,7 @@ gh run list --repo "$REPOSITORY" --workflow release-please.yml --limit 5
 gh run list --repo "$REPOSITORY" --workflow release.yml --limit 5
 ```
 
-With both publishers enabled, the Release workflow builds the authoritative archives and OCI image, verifies their handoffs, publishes and signs the GHCR image, creates image and release attestations, uploads the closed asset set to the draft, verifies GitHub's asset digests, and changes the draft to a published release. It does not create a second release.
+With both publishers enabled, the Release workflow builds the authoritative archives and OCI image, verifies their handoffs, and publishes and signs the GHCR image. For the GitHub Release, the publisher runs `release-cli verify bundle`, creates the release attestation with `dist/checksums.txt`, uploads the closed asset set to the draft, verifies GitHub's asset digests, and changes the draft to a published release. It does not create a second release.
 
 For an unmodified new example, the first tag is `v0.1.0`. For another repository, set `TAG` to the exact tag shown by the successful Release Please run:
 

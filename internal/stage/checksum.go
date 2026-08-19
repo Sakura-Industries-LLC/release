@@ -35,8 +35,9 @@ type Digest string
 
 // AssetName is a flat payload filename from checksums.txt.
 //
-// The only constructor is [ParseAssetName], which rejects empty names and
-// path separators. The zero value is invalid.
+// The only constructor is [ParseAssetName], which rejects empty names, path
+// separators, and names outside the ASCII release-payload grammar. The zero
+// value is invalid.
 type AssetName string
 
 // ChecksumEntry is one validated claim from checksums.txt.
@@ -98,13 +99,17 @@ func (d Digest) String() string {
 
 // ParseAssetName constructs an [AssetName] from a flat checksums.txt filename.
 //
-// Names must be nonempty and must not contain a path separator.
+// Names must be nonempty ASCII matching `[A-Za-z0-9][A-Za-z0-9._+-]*` and
+// must not contain a path separator.
 func ParseAssetName(raw string) (AssetName, error) {
 	if raw == "" {
 		return "", errors.New("asset name is empty")
 	}
 	if strings.ContainsAny(raw, `/\`) {
 		return "", fmt.Errorf("asset name %q contains a path separator", raw)
+	}
+	if !validAssetName(raw) {
+		return "", fmt.Errorf("asset name %q is not a valid release payload name", raw)
 	}
 
 	return AssetName(raw), nil
@@ -130,7 +135,8 @@ func (s ChecksumSet) Len() int {
 // Accepted lines are `<64 hex><two spaces><name>` or the binary-marker form
 // `<64 hex><space><asterisk><name>`. CRLF is tolerated. Uppercase hex is
 // normalized. Empty input, duplicate names, path separators in names,
-// malformed digests, and a self-listed checksums.txt are rejected.
+// names outside the [ParseAssetName] grammar, malformed digests, and a
+// self-listed checksums.txt are rejected.
 func ParseChecksums(r io.Reader) (ChecksumSet, error) {
 	if r == nil {
 		return ChecksumSet{}, errors.New("checksums reader is nil")
@@ -264,6 +270,35 @@ func requireRegularNonempty(fsys fs.FS, name string) error {
 	}
 
 	return nil
+}
+
+// validAssetName reports whether name matches the release-payload grammar.
+func validAssetName(name string) bool {
+	if name == "" || !isAssetNameFirst(name[0]) {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		if !isAssetNameRest(name[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isAssetNameFirst reports whether b may start a payload name.
+func isAssetNameFirst(b byte) bool {
+	return isASCIILetterOrDigit(b)
+}
+
+// isAssetNameRest reports whether b may appear after the first name byte.
+func isAssetNameRest(b byte) bool {
+	return isASCIILetterOrDigit(b) || b == '.' || b == '_' || b == '+' || b == '-'
+}
+
+// isASCIILetterOrDigit reports whether b is an ASCII letter or digit.
+func isASCIILetterOrDigit(b byte) bool {
+	return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9'
 }
 
 // isHex reports whether r is an ASCII hexadecimal digit.

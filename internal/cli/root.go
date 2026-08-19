@@ -31,6 +31,10 @@ const (
 	envLayout = "RELEASE_LAYOUT"
 	// envDryRun is the environment variable for --dry-run.
 	envDryRun = "RELEASE_DRY_RUN"
+	// envIdentity is the environment variable for --identity.
+	envIdentity = "RELEASE_IDENTITY"
+	// envIssuer is the environment variable for --issuer.
+	envIssuer = "RELEASE_ISSUER"
 )
 
 // LookupEnv looks up an environment variable.
@@ -48,6 +52,10 @@ type Settings struct {
 	Profile string
 	// Dist is the selected --dist / RELEASE_DIST path.
 	Dist string
+	// Identity is the selected --identity / RELEASE_IDENTITY URL.
+	Identity string
+	// Issuer is the selected --issuer / RELEASE_ISSUER URL.
+	Issuer string
 	// ArtifactID is the selected --artifact-id / RELEASE_ARTIFACT_ID value.
 	ArtifactID string
 	// Image is the selected --image / RELEASE_IMAGE value.
@@ -120,6 +128,13 @@ type Options struct {
 	TagCommitter puboci.TagCommitter
 	// NewTagCommitter constructs the registry tag-write port from resolved registry config.
 	NewTagCommitter func(config RegistryConfig) (puboci.TagCommitter, error)
+	// BlobVerifier, when set, is the detached-bundle verification port. Tests inject it.
+	BlobVerifier pubgh.BlobVerifier
+	// NewBlobVerifier constructs the detached-bundle verification port from a
+	// Cosign binary path and a distribution directory.
+	//
+	// An empty path resolves cosign from PATH.
+	NewBlobVerifier func(path, dir string) (pubgh.BlobVerifier, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -205,6 +220,8 @@ func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 	settings := Settings{
 		Profile:    resolveString(cmd, flagProfile, envProfile, lookup),
 		Dist:       resolveString(cmd, flagDist, envDist, lookup),
+		Identity:   resolveString(cmd, flagIdentity, envIdentity, lookup),
+		Issuer:     resolveString(cmd, flagIssuer, envIssuer, lookup),
 		ArtifactID: resolveString(cmd, flagArtifactID, envArtifactID, lookup),
 		Image:      resolveString(cmd, flagImage, envImage, lookup),
 		Version:    resolveString(cmd, flagVersion, envVersion, lookup),

@@ -10,10 +10,11 @@
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
+| `release-cli verify bundle --dist PATH --identity URL [--issuer URL] [--json]` | Verify a closed release bundle and its detached Sigstore signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
-`--dist` is required for `stage`. The only accepted profile is `go`. `verify handoff` requires artifact ID and digest values. Supply them with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+`stage` and `verify bundle` require a distribution path. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
 
 Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
@@ -30,7 +31,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -42,6 +43,46 @@ The `stage --json` result contains these fields:
 | `binaries` | object | Entries named `amd64` and `arm64` for the verified Linux binaries. |
 | `binaries.<arch>.path` | string | Original `<dist-basename>/`-prefixed path from `artifacts.json`. |
 | `binaries.<arch>.mode` | string | Observed permission bits in octal notation. |
+
+The `verify bundle --json` result contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `dist` | string | Distribution directory selected by `--dist` or `RELEASE_DIST`. |
+| `identity` | string | Exact certificate identity URL used for Sigstore verification. |
+| `issuer` | string | OIDC issuer used for Sigstore verification. |
+| `payloads` | array of objects | Checksummed release payloads in `checksums.txt` order. |
+| `payloads[].name` | string | Flat payload name inside the distribution directory. |
+| `payloads[].digest` | string | Payload SHA-256 digest as 64 lowercase hexadecimal characters without a `sha256:` prefix. |
+| `controls` | array of objects | The two control files, ordered as `checksums.txt` and `checksums.txt.sigstore.json`. |
+| `controls[].name` | string | Control file name inside the distribution directory. |
+| `controls[].digest` | string | Control file SHA-256 digest as 64 lowercase hexadecimal characters without a `sha256:` prefix. |
+
+For example, a verified bundle produces this result object:
+
+```json
+{
+  "dist": "dist",
+  "identity": "https://github.com/owner/repo/.github/workflows/go-pre-publish.yml@refs/heads/main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "payloads": [
+    {
+      "name": "release-cli_1.2.3_linux_amd64.tar.gz",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "controls": [
+    {
+      "name": "checksums.txt",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "checksums.txt.sigstore.json",
+      "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}
+```
 
 For `plan tags --json`, `command` is exactly `plan tags`. The `result` object contains these fields:
 
@@ -207,7 +248,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -361,6 +402,31 @@ The command refuses a dry-run prepare result because its `authoritative` field i
 5. Independently resolve the exact tag and every applied tag and require each one to match the candidate index digest.
 
 Drift, an immutable exact-tag conflict, corrupt channel state, a registry failure, or a failed postcondition exits with code `1`. The commit and postcondition registry reads retry only retryable failures, with the same four-attempt and 1-second, 2-second, and 4-second wait pattern as preparation. A rerun can accept tags already applied to the candidate digest, but the command makes no general promise that arbitrary failures are safe to retry.
+
+## Signed release bundle verification
+
+`release-cli verify bundle` verifies the local release bundle before the GitHub Release workflow attests or uploads it.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Distribution directory | `--dist` | `RELEASE_DIST` | None. A path is required. |
+| Certificate identity | `--identity` | `RELEASE_IDENTITY` | None. An exact, absolute HTTPS URL with a host is required. |
+| Certificate OIDC issuer | `--issuer` | `RELEASE_ISSUER` | `https://token.actions.githubusercontent.com`. The effective value must be an absolute HTTPS URL with a host. |
+| Cosign binary | None. | `RELEASE_COSIGN_PATH` | Resolve `cosign` from `PATH`. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+An explicitly set flag takes precedence over its environment variable. The identity and issuer must each be an absolute HTTPS URL with a host. `RELEASE_COSIGN_PATH` has no corresponding flag; set it to the Cosign executable when `cosign` is not on `PATH`.
+
+All local checks precede the Cosign invocation. The local checks enforce these requirements:
+
+- `checksums.txt` and `checksums.txt.sigstore.json` are regular files.
+- Every `checksums.txt` entry is a regular file whose SHA-256 digest matches the manifest.
+- Neither control file is listed as a payload.
+- The distribution directory contains only the listed payloads and the two control files. An extra file, directory, symbolic link, or other entry fails this closed-set check.
+
+Only after the local checks succeed does the command verify the detached `checksums.txt.sigstore.json` bundle for `checksums.txt` against the exact certificate identity and OIDC issuer. Any local failure means Cosign is never invoked.
+
+Missing `--dist`/`RELEASE_DIST` or `--identity`/`RELEASE_IDENTITY`, and a malformed identity or issuer URL, are configuration errors and exit with code `2`. A local verification failure, a Sigstore verification failure, or an unresolvable Cosign binary exits with code `1`.
 
 ## Actions artifact handoff
 
