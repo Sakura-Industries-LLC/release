@@ -176,13 +176,16 @@ After the tag gate, checkout, tool setup, and Release App token step, the publis
 1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
 2. Run `setup-release-cli` from the same pinned release revision.
 3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
-4. Find the matching draft release and verify its tag.
-5. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
-6. Run `release-cli verify bundle --dist dist --identity https://github.com/<checksum-signing-workflow-ref> --json`.
-7. Create the GitHub build-provenance attestation with `dist/checksums.txt` as `subject-checksums`.
-8. Upload the verified payloads and two control files.
+4. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+5. Run `release-cli verify bundle --dist dist --identity https://github.com/<checksum-signing-workflow-ref> --json`.
+6. Create the GitHub build-provenance attestation with `dist/checksums.txt` as `subject-checksums`.
+7. Run `release-cli publish github --dist dist --json`. When `publish-release` is `false`, also pass `--no-undraft`.
 
-`release-cli verify bundle` must succeed before the attestation step runs, and the attestation must succeed before upload. This preserves the verify, attest, then upload ordering.
+The final CLI command rebuilds the expected closed asset set from `dist`, binds the tag to the workflow commit, discovers the release, uploads and converges expected assets, and conditionally makes the release public. Its result URL becomes the workflow's `release-url` output.
+
+`release-cli verify bundle` must succeed before the attestation step runs, and the attestation must succeed before `publish github` can upload an asset. This preserves the verify, attest, then upload ordering.
+
+The workflow mints the short-lived Release App installation token with `actions/create-github-app-token` and passes it to the CLI as `RELEASE_APP_TOKEN`. The CLI holds the value as a redacted secret. It does not receive the App private key or client ID and does not mint a token.
 
 ## Versioning and credentials
 
@@ -202,7 +205,7 @@ The supported Release Please configuration has these release-boundary values:
 | `bump-minor-pre-major` | `true` | Uses a minor bump for pre-1.0 features. |
 | `bump-patch-for-minor-pre-major` | `true` | Uses a patch bump for pre-1.0 fixes. |
 
-The initial version and pre-1.0 bump rules are current versioning policy, not reusable-workflow defaults. The publisher's hard requirement is a matching draft and tag; it does not calculate a version or create either object.
+The initial version and pre-1.0 bump rules are current versioning policy, not reusable-workflow defaults. The publisher requires exactly one release for the tag and normally requires it to be a draft; it does not calculate a version or create either object. The only public-release success exception is a completed-publication rerun with `publish-release: true` whose assets exactly match the expected closed set. A public release under `publish-release: false` is indeterminate because the requested draft-only outcome was not preserved.
 
 Both versioning and publication use these organization-level credential identifiers:
 
@@ -220,12 +223,12 @@ The publisher proceeds only when all of these conditions hold:
 - The artifact has not expired.
 - The artifact belongs to the current workflow run.
 - The artifact's GitHub-reported digest matches `artifact-digest`.
-- A GitHub Release exists whose `tag_name` equals `github.ref_name`.
-- The matching release is still a draft.
 - `git rev-list -n 1 <tag>` equals `github.sha` for the run.
-- Before upload, the tag resolves uniquely to the previously selected release ID.
+- Exactly one GitHub Release has a `tag_name` equal to `github.ref_name`.
+- The matching release is a draft before any mutation.
+- Before upload, every existing asset name belongs to the expected closed set.
 
-The publisher polls the release list up to 24 times, waiting five seconds after an unsuccessful lookup. It fails instead of creating a missing draft. It also fails if the release is already published or if the tag resolves to a different commit than the run.
+The CLI polls the release list up to 24 times, with attempts 5 seconds apart. It fails instead of creating a missing release. More than one release for the tag is ambiguous and fails closed. If the one matching release is already public, the CLI performs no mutation. With `publish-release: true`, it reads the assets: an exact expected match reports a completed publication as success, and any other asset state is indeterminate. With `publish-release: false`, every already-public state is indeterminate before any asset read.
 
 ## Repository and toolchain contract
 
@@ -323,7 +326,7 @@ The publisher's artifact handoff has three independent owners:
 - `checksums.txt` and `checksums.txt.sigstore.json` are control files and cannot list themselves as payloads.
 - The downloaded `dist` directory contains exactly the listed payloads and the two control files. Any other entry is rejected.
 
-The publisher uploads the listed payloads plus the two control files. The GitHub Release must end with exactly that closed name set. Duplicate names, missing names, unexpected names, non-uploaded asset states, missing GitHub digests, or digest differences cause failure.
+`release-cli publish github` uploads the listed payloads plus the two control files. The GitHub Release must end with exactly that closed name set. Duplicate names, missing names, unexpected names, non-uploaded asset states, missing GitHub digests, or digest differences cause failure.
 
 GitHub build-provenance attestations use `dist/checksums.txt` as `subject-checksums`. The checksummed archives and SBOMs are attestation subjects. The checksum manifest and its Cosign bundle are uploaded control files, not entries in their own manifest.
 
@@ -340,7 +343,7 @@ The checksum signature is accepted only when `release-cli verify bundle` invokes
 
 The workflow adds the `https://github.com/` prefix to `checksum-signing-workflow-ref` and passes the resulting exact URL to `release-cli verify bundle` with `--identity`. A branch name, tag name, different commit, or different workflow path does not satisfy the documented identity.
 
-The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. A short-lived Release App installation token with `contents: write` performs draft discovery, asset upload, and the final draft-state change.
+The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. The workflow mints a short-lived Release App installation token with `contents: write` and passes it to `release-cli publish github`. The CLI stores the value as a redacted secret and uses it for release discovery and publication; it never mints an App token.
 
 ## Publication states
 
@@ -349,29 +352,29 @@ The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FU
 | Version prepared | Release Please runs on `main` or by manual dispatch. | Release Please updates its release pull request according to the manifest configuration. | The release change reaches `main`. |
 | Draft created | Release Please cuts the version through the Release App. | Release Please creates the `v*` tag and matching draft release. | The App-created tag starts the release caller. |
 | Artifact built | The producer runs on the tag. | GoReleaser builds once in that run, creates SBOMs and checksums, signs the checksum manifest, and uploads `release-assets`. | The artifact ID and digest pass to the publisher in the same workflow run. |
-| Draft populated | The publisher validates the artifact, signature, tag, and draft. | It attests the checksummed payloads, uploads the closed asset set, and verifies every GitHub-reported asset digest. | Asset names, states, and digests match the signed bundle. |
-| Rehearsal complete | `publish-release` is `false`. | The publisher verifies that the release remains a draft. | The populated draft is available for inspection or a later recovery run. |
-| Published | `publish-release` is `true`, asset verification succeeds, and any required digest-pinned OCI image reference is valid. | The publisher sets `draft: false` and verifies the resulting state. | The same release URL identifies a non-draft GitHub Release. |
+| Draft populated | The publisher validates the artifact, signature, tag, and draft. | After attestation, `release-cli publish github` uploads the expected closed asset set and verifies every GitHub-reported asset state and digest. | Asset count, unique names, uploaded states, and digests match the signed bundle. |
+| Rehearsal complete | `publish-release` is `false`. | The workflow passes `--no-undraft`; the CLI converges the draft and verifies that it remains a draft. | The populated draft is available for inspection or a later recovery run. |
+| Published | `publish-release` is `true`, asset verification succeeds, and any required digest-pinned OCI image reference is valid. | The CLI changes the draft to public as its last mutation and verifies the resulting state. | The same release URL identifies a non-draft GitHub Release. |
 
-The publisher does not create a release, generate release notes, change a tag, or upload an asset before validating the signed bundle. It does not set `draft: false` until the uploaded asset name and digest sets match the bundle. When `require-oci-image` is `true`, it also requires the successful OCI publisher's exact `ghcr.io/<owner>/<repository>@sha256:<digest>` output before any release mutation.
+The publisher does not create a release, generate release notes, change a tag, re-draft a public release, or delete an asset. It does not make a draft public until the uploaded asset name and digest sets match the bundle. When `require-oci-image` is `true`, it also requires the successful OCI publisher's exact `ghcr.io/<owner>/<repository>@sha256:<digest>` output before any release mutation.
 
 ## Retry and recovery behavior
 
-`verify handoff` uses the [`release-cli` metadata request retry policy](release-cli-contract.md#metadata-request-retries). That policy preserves the `retries: 3` behavior of the replaced artifact metadata block.
+`verify handoff` uses the [`release-cli` metadata request retry policy](release-cli-contract.md#metadata-request-retries). `publish github` uses the same four-attempt policy for retryable failures, with waits of 1 second, 2 seconds, and 4 seconds. It does not retry tag and commit mismatches, unexpected assets, or digest mismatches.
 
-The remaining draft lookup, upload, and final verification steps request three retries from `actions/github-script` for retryable API failures. Draft discovery additionally polls up to 24 times at five-second intervals. Final asset inspection polls up to 12 times at one-second intervals for every expected asset to report an `uploaded` state and a digest.
+Draft discovery makes up to 24 attempts, 5 seconds apart. Asset convergence makes up to 12 attempts, 1 second apart, for every expected asset to report an `uploaded` state and a digest.
 
-A failed run does not roll back uploaded assets or delete the draft. Recovery is convergent while the release remains a draft:
+A failure before the undraft operation is safe to rerun while the release remains a draft and the run's authoritative artifact is still valid. The CLI reads the tag, release, and asset state again instead of assuming the previous attempt made no changes:
 
 - The publisher accepts only an unexpired artifact whose workflow run ID equals `github.run_id`; an artifact from another run cannot be supplied. A new tag-triggered run builds and signs its own artifact.
-- Existing assets whose names are in the newly verified manifest may be replaced because upload uses `gh release upload --clobber`.
-- Existing assets whose names are outside the newly verified manifest block upload. The workflow does not delete them automatically.
-- After upload, the workflow verifies the complete name set and every GitHub-computed SHA-256 digest before it can publish.
-- The tag must still resolve to `github.sha`, and the release for that tag must still be a draft.
+- Existing assets whose names are in the expected closed set may be replaced because upload uses `gh release upload --clobber`.
+- Existing assets whose names are outside the expected closed set block upload. Neither the CLI nor the workflow deletes them.
+- After upload, the CLI verifies the complete name set, uploaded states, and every GitHub-computed SHA-256 digest before it can make the release public.
+- The tag must still resolve to `github.sha`, and exactly one release must still carry the tag.
 
-A complete draft rehearsal sets both `publish-image: false` and `publish-release: false`. To resume, the caller changes both inputs to `true`, commits that change, and uses authorized movement of the same unpublished tag name to trigger a new run against the existing populated draft; it does not delete and recreate the draft. The workflow replaces expected assets only after the new artifact, checksums, and Cosign bundle pass validation. Any source, workflow configuration, or tool-pin correction follows the same commit and tag-movement requirement. If the unpublished tag cannot be moved safely, the incomplete candidate must be abandoned and a new candidate cut. A plain Actions rerun is reserved for failures that require no repository-content change, such as artifact expiry or a transient service failure.
+A complete draft rehearsal sets both `publish-image: false` and `publish-release: false`. The workflow invokes `publish github --no-undraft`, which converges the asset set and stops while the release remains a draft. To resume, the caller changes both inputs to `true`, commits that change, and uses authorized movement of the same unpublished tag name to trigger a new run against the existing populated draft; it does not delete and recreate the draft. The workflow replaces expected assets only after the new artifact, checksums, and Cosign bundle pass validation. Any source, workflow configuration, or tool-pin correction follows the same commit and tag-movement requirement. If the unpublished tag cannot be moved safely, the incomplete candidate must be abandoned and a new candidate cut. A plain Actions rerun is reserved for failures that require no repository-content change, such as artifact expiry or a transient service failure.
 
-If the final API call has already changed the release to non-draft before a later failure, the workflow provides no rollback. A subsequent run rejects that published release because the draft invariant no longer holds.
+An undraft request has no rollback. A failure from the undraft call is indeterminate because the update may have applied. A failed final state read or an unexpected final draft flag is also indeterminate because the CLI cannot prove the requested outcome. An operator must inspect the release and its assets instead of rerunning blindly. A later invocation with `publish-release: true` against an already-public release reports success without mutation only when the release has the exact expected asset count, names, uploaded states, and digests. Under `publish-release: false`, an already-public release remains indeterminate even when its assets match, because a rehearsal must remain a draft. Any other public state also requires human handling. The CLI never re-drafts the release.
 
 ## Non-goals
 

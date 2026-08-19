@@ -55,6 +55,8 @@ In the Meigma organization settings, open **Secrets and variables** > **Actions*
 
 The variable and secret must each show the consumer repository in their selected repository list. GitHub never returns an Actions secret's stored value, so verification is limited to its name, visibility, selected repository access, and a workflow that successfully creates an App token. Do not print the private key or add it as a repository file.
 
+The publisher workflow uses the client ID and private key with `actions/create-github-app-token`. It passes only the resulting short-lived installation token to `release-cli publish github` through `RELEASE_APP_TOKEN`. The CLI holds the token as a redacted secret; it never receives the App private key or mints a token.
+
 Organization owners can administer organization variables and secrets through GitHub CLI only when their token has the required organization scopes and role. This guide uses the UI because repository-level authorization alone cannot perform or verify these organization-level writes.
 
 ## 3. Copy the release files
@@ -120,9 +122,9 @@ uploading either Actions artifact. Leave the optional `cli-path` input unset in
 a consumer repository. It is an unsupported escape hatch for this repository's
 dogfood release and for callers that own the workflow-to-binary pairing.
 
-After downloading the authoritative artifact, the publisher runs `release-cli verify bundle`. The command verifies the local closed file set before it verifies the detached Sigstore bundle against the exact certificate identity. The workflow then creates the GitHub build-provenance attestation with `dist/checksums.txt` and uploads the verified files. Keep this verify, attest, then upload order.
+After downloading the authoritative artifact, the publisher runs `release-cli verify bundle`. The command verifies the local closed file set before it verifies the detached Sigstore bundle against the exact certificate identity. The workflow then creates the GitHub build-provenance attestation with `dist/checksums.txt` and runs `release-cli publish github --dist dist --json`. The CLI rebuilds the expected names and digests from the verified local bundle, reconciles the matching draft, uploads expected names, and verifies GitHub's asset states and digests. Keep this verify, attest, then publish order.
 
-The copied release caller sets both `publish-image: false` and `publish-release: false`. Keep both values for the first rehearsal. Before a public release, change both to `true` and merge the change before Release Please creates the tag. The [rehearsal and recovery guide](rehearse-and-recover-github-releases.md) gives the safer first-run sequence.
+The copied release caller sets both `publish-image: false` and `publish-release: false`. Keep both values for the first rehearsal. With `publish-release: false`, the workflow passes `--no-undraft`; the CLI converges the populated draft and stops without making it public. Before a public release, change both inputs to `true` and merge the change before Release Please creates the tag. The [rehearsal and recovery guide](rehearse-and-recover-github-releases.md) gives the safer first-run sequence.
 
 ## 5. Generate and validate the tool lock
 
@@ -192,7 +194,7 @@ gh run list --repo "$REPOSITORY" --workflow release-please.yml --limit 5
 gh run list --repo "$REPOSITORY" --workflow release.yml --limit 5
 ```
 
-With both publishers enabled, the Release workflow builds the authoritative archives and OCI image, verifies their handoffs, and publishes and signs the GHCR image. For the GitHub Release, the publisher runs `release-cli verify bundle`, creates the release attestation with `dist/checksums.txt`, uploads the closed asset set to the draft, verifies GitHub's asset digests, and changes the draft to a published release. It does not create a second release.
+With both publishers enabled, the Release workflow builds the authoritative archives and OCI image, verifies their handoffs, and publishes and signs the GHCR image. For the GitHub Release, the publisher runs `release-cli verify bundle`, creates the release attestation with `dist/checksums.txt`, and then runs `release-cli publish github`. The CLI binds the tag to the workflow commit, uploads only expected assets with clobber semantics, verifies the exact asset set and GitHub-reported digests, and makes the draft public as its last mutation. It never creates or re-drafts a release and never deletes an asset.
 
 For an unmodified new example, the first tag is `v0.1.0`. For another repository, set `TAG` to the exact tag shown by the successful Release Please run:
 

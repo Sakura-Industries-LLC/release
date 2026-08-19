@@ -27,6 +27,22 @@ packages:
         config:
           dir: internal/adapter/cosign/mocks
           filename: blob_verifier.go
+      ReleaseReader:
+        config:
+          dir: internal/adapter/ghrel/mocks
+          filename: release_reader.go
+      Publisher:
+        config:
+          dir: internal/adapter/ghrel/mocks
+          filename: publisher.go
+      AssetReplacer:
+        config:
+          dir: internal/adapter/ghup/mocks
+          filename: asset_replacer.go
+      RefResolver:
+        config:
+          dir: internal/adapter/gitx/mocks
+          filename: ref_resolver.go
   github.com/meigma/release/internal/stage/puboci:
     config:
       dir: internal/adapter/reg/mocks

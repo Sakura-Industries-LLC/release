@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -70,6 +71,8 @@ type Settings struct {
 	DryRun bool
 	// PlainHTTP reports whether --plain-http requested HTTP.
 	PlainHTTP bool
+	// NoUndraft reports whether --no-undraft requested a draft-only publish.
+	NoUndraft bool
 	// JSON reports whether --json / RELEASE_JSON requested structured output.
 	JSON bool
 	// err is a flag or environment parse failure discovered while resolving settings.
@@ -135,6 +138,31 @@ type Options struct {
 	//
 	// An empty path resolves cosign from PATH.
 	NewBlobVerifier func(path, dir string) (pubgh.BlobVerifier, error)
+	// ReleaseReader, when set, is the GitHub release read port. Tests inject it.
+	ReleaseReader pubgh.ReleaseReader
+	// NewReleaseReader constructs the GitHub release read port from a token
+	// and API endpoint.
+	NewReleaseReader func(token rel.Secret, endpoint GitHubEndpoint) (pubgh.ReleaseReader, error)
+	// AssetReplacer, when set, is the GitHub release upload port. Tests inject it.
+	AssetReplacer pubgh.AssetReplacer
+	// NewAssetReplacer constructs the GitHub release upload port from a token,
+	// a gh binary path, and a working directory.
+	//
+	// An empty path resolves gh from PATH.
+	NewAssetReplacer func(token rel.Secret, path, dir string) (pubgh.AssetReplacer, error)
+	// Publisher, when set, is the GitHub release undraft port. Tests inject it.
+	Publisher pubgh.Publisher
+	// NewPublisher constructs the GitHub release undraft port from a token
+	// and API endpoint.
+	NewPublisher func(token rel.Secret, endpoint GitHubEndpoint) (pubgh.Publisher, error)
+	// RefResolver, when set, is the local tag-to-SHA port. Tests inject it.
+	RefResolver pubgh.RefResolver
+	// NewRefResolver constructs the local tag-to-SHA port from a git binary
+	// path and a working directory.
+	//
+	// An empty path resolves git from PATH. An empty directory inherits
+	// the process working directory.
+	NewRefResolver func(path, dir string) (pubgh.RefResolver, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -172,7 +200,9 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.AddCommand(newStageCommand(options))
 	root.AddCommand(newPlanCommand(options))
 	root.AddCommand(newVerifyCommand(options))
-	root.AddCommand(newPublishCommand(options))
+	publish := newPublishCommand(options)
+	publish.AddCommand(newGitHubCommand(options))
+	root.AddCommand(publish)
 	root.AddCommand(newVersionCommand(options))
 
 	return root
@@ -228,6 +258,7 @@ func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 		Digest:     resolveString(cmd, flagDigest, envDigest, lookup),
 		Layout:     resolveString(cmd, flagLayout, envLayout, lookup),
 		PlainHTTP:  resolveFlagBool(cmd, flagPlainHTTP),
+		NoUndraft:  resolveFlagBool(cmd, flagNoUndraft),
 	}
 	dryRun, err := resolveBool(cmd, flagDryRun, envDryRun, lookup)
 	if err != nil {

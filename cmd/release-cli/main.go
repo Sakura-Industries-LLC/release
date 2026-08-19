@@ -9,8 +9,12 @@ import (
 
 	"github.com/meigma/release/internal/adapter/cosign"
 	"github.com/meigma/release/internal/adapter/ghact"
+	"github.com/meigma/release/internal/adapter/ghrel"
+	"github.com/meigma/release/internal/adapter/ghup"
+	"github.com/meigma/release/internal/adapter/gitx"
 	"github.com/meigma/release/internal/adapter/reg"
 	"github.com/meigma/release/internal/cli"
+	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -55,6 +59,27 @@ func run() int {
 		},
 		NewBlobVerifier: func(path, dir string) (pubgh.BlobVerifier, error) {
 			return cosign.NewVerifier(cosign.VerifierOptions{
+				Path:   path,
+				Dir:    dir,
+				Stderr: os.Stderr,
+			}), nil
+		},
+		NewReleaseReader: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubgh.ReleaseReader, error) {
+			return ghrel.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
+		NewPublisher: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubgh.Publisher, error) {
+			return ghrel.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
+		NewAssetReplacer: func(token rel.Secret, path, dir string) (pubgh.AssetReplacer, error) {
+			return ghup.New(ghup.Options{
+				Path:   path,
+				Dir:    dir,
+				Token:  token,
+				Stderr: os.Stderr,
+			}), nil
+		},
+		NewRefResolver: func(path, dir string) (pubgh.RefResolver, error) {
+			return gitx.New(gitx.Options{
 				Path:   path,
 				Dir:    dir,
 				Stderr: os.Stderr,

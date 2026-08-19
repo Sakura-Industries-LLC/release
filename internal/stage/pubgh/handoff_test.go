@@ -3,6 +3,7 @@ package pubgh_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -487,6 +488,44 @@ func TestVerifyHandoffCancelDuringBackoff(t *testing.T) {
 	_, err := pubgh.VerifyHandoff(ctx, meta, expected, sleep)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestVerifyHandoffSleepFailureKeepsPrefix(t *testing.T) {
+	t.Parallel()
+
+	expected := mustHandoff(t, 100)
+	meta := ghactmocks.NewMockArtifactMeta(t)
+	meta.EXPECT().
+		Get(mock.Anything, expected.Repository, expected.Artifact).
+		Return(pubgh.ArtifactMetadata{}, pubgh.ErrRetryable).
+		Once()
+
+	sleepErr := errors.New("clock stopped")
+	sleep := func(_ context.Context, _ time.Duration) error {
+		return sleepErr
+	}
+	_, err := pubgh.VerifyHandoff(context.Background(), meta, expected, sleep)
+	require.Error(t, err)
+	require.ErrorIs(t, err, sleepErr)
+	assert.Contains(t, err.Error(), "verify handoff:")
+	assert.NotContains(t, err.Error(), "get artifact")
+}
+
+func TestVerifyHandoffPortCanceledKeepsGetPrefix(t *testing.T) {
+	t.Parallel()
+
+	expected := mustHandoff(t, 100)
+	meta := ghactmocks.NewMockArtifactMeta(t)
+	meta.EXPECT().
+		Get(mock.Anything, expected.Repository, expected.Artifact).
+		Return(pubgh.ArtifactMetadata{}, fmt.Errorf("lookup: %w", context.Canceled)).
+		Once()
+
+	_, err := pubgh.VerifyHandoff(context.Background(), meta, expected, instantSleep)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, err.Error(), "get artifact 1:")
+	assert.NotContains(t, err.Error(), "verify handoff:")
 }
 
 // instantSleep is a SleepFunc that never waits.

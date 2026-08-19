@@ -20,10 +20,6 @@ const (
 	// The replaced github-script blocks rejected identifiers outside
 	// Number.isSafeInteger. Artifact and run IDs must stay inside that range.
 	maxSafeID int64 = 1<<53 - 1
-	// retryAttempts is one initial Get plus three octokit retries.
-	retryAttempts = 4
-	// retryWait is the first backoff; later waits double (1s, 2s, 4s).
-	retryWait = time.Second
 )
 
 // Sentinel errors classified for the handoff check.
@@ -287,45 +283,26 @@ func verifyHandoff(
 	expected Handoff,
 	sleep SleepFunc,
 ) (ArtifactMetadata, error) {
-	var lastErr error
-	for attempt := 1; attempt <= retryAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
+	var observed ArtifactMetadata
+	err := retryOp(ctx, sleep, fmt.Sprintf("get artifact %s", expected.Artifact), func() error {
+		got, callErr := meta.Get(ctx, expected.Repository, expected.Artifact)
+		if callErr != nil {
+			return callErr
+		}
+		observed = got
+
+		return nil
+	})
+	if err != nil {
+		var backoff backoffError
+		if errors.As(err, &backoff) {
 			return ArtifactMetadata{}, fmt.Errorf("verify handoff: %w", err)
 		}
-		observed, err := meta.Get(ctx, expected.Repository, expected.Artifact)
-		if err != nil {
-			lastErr = err
-			if !errors.Is(err, ErrRetryable) || attempt == retryAttempts {
-				if errors.Is(err, ErrRetryable) {
-					return ArtifactMetadata{}, fmt.Errorf(
-						"get artifact %s after %d attempts: %w",
-						expected.Artifact,
-						attempt,
-						err,
-					)
-				}
 
-				return ArtifactMetadata{}, fmt.Errorf("get artifact %s: %w", expected.Artifact, err)
-			}
-			if err := sleep(ctx, retryWait<<(attempt-1)); err != nil {
-				return ArtifactMetadata{}, fmt.Errorf("verify handoff: %w", err)
-			}
-
-			continue
-		}
-
-		return matchHandoff(expected, observed)
-	}
-	if lastErr == nil {
-		return ArtifactMetadata{}, errors.New("get artifact: retry budget exhausted")
+		return ArtifactMetadata{}, err
 	}
 
-	return ArtifactMetadata{}, fmt.Errorf(
-		"get artifact %s after %d attempts: %w",
-		expected.Artifact,
-		retryAttempts,
-		lastErr,
-	)
+	return matchHandoff(expected, observed)
 }
 
 // matchHandoff compares observed metadata against the expected tuple.
@@ -364,18 +341,6 @@ func matchHandoff(expected Handoff, observed ArtifactMetadata) (ArtifactMetadata
 	}
 
 	return observed, nil
-}
-
-// sleepContext waits for d or returns ctx.Err() if the context ends first.
-func sleepContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 // validate rejects a zero or incomplete handoff tuple.

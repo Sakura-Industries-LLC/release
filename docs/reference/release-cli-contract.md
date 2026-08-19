@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` validates release data, reports machine-readable results, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` validates release data, reports machine-readable results, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
@@ -10,11 +10,12 @@
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
+| `release-cli publish github --dist PATH [--no-undraft] [--json]` | Reconcile a verified bundle with its matching GitHub Release and optionally publish the draft. |
 | `release-cli verify bundle --dist PATH --identity URL [--issuer URL] [--json]` | Verify a closed release bundle and its detached Sigstore signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
-`stage` and `verify bundle` require a distribution path. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+`stage`, `verify bundle`, and `publish github` require a distribution path. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
 
 Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
@@ -31,7 +32,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -81,6 +82,37 @@ For example, a verified bundle produces this result object:
       "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     }
   ]
+}
+```
+
+For `publish github --json`, `command` is exactly `publish github`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `release_id` | number | Positive GitHub Release ID. |
+| `tag` | string | Exact tag carried by the release. |
+| `url` | string | GitHub HTML URL for the release. |
+| `draft` | boolean | Final observed draft state. `false` means the release is public. |
+| `assets` | array of strings | Converged asset names, sorted lexicographically. |
+
+For example, a successful publication writes this envelope:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "publish github",
+  "ok": true,
+  "result": {
+    "release_id": 123456,
+    "tag": "v1.2.3",
+    "url": "https://github.com/owner/repo/releases/tag/v1.2.3",
+    "draft": false,
+    "assets": [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      "example_1.2.3_linux_amd64.tar.gz"
+    ]
+  }
 }
 ```
 
@@ -248,7 +280,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `plan tags`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -402,6 +434,50 @@ The command refuses a dry-run prepare result because its `authoritative` field i
 5. Independently resolve the exact tag and every applied tag and require each one to match the candidate index digest.
 
 Drift, an immutable exact-tag conflict, corrupt channel state, a registry failure, or a failed postcondition exits with code `1`. The commit and postcondition registry reads retry only retryable failures, with the same four-attempt and 1-second, 2-second, and 4-second wait pattern as preparation. A rerun can accept tags already applied to the candidate digest, but the command makes no general promise that arbitrary failures are safe to retry.
+
+## GitHub Release publication
+
+`release-cli publish github` reconciles the local closed bundle with the GitHub Release for the workflow tag. The default behavior publishes the draft after every asset check succeeds.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Distribution directory | `--dist` | `RELEASE_DIST` | None. A path is required. |
+| Keep the release as a draft | `--no-undraft` | None. The option is flag-only. | Disabled. |
+| GitHub CLI binary | None. | `RELEASE_GH_PATH` | Resolve `gh` from `PATH`. |
+| Git binary | None. | `RELEASE_GIT_PATH` | Resolve `git` from `PATH`. |
+| Release App installation token | None. | `RELEASE_APP_TOKEN` | None. A token is required. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+`--no-undraft` has no environment-variable form because it controls whether the release becomes public. With the flag, the command converges and verifies the assets, then verifies that the release remains a draft. Without the flag, the command publishes the draft only after asset convergence.
+
+The command requires this GitHub Actions context:
+
+| Variable | Value |
+| --- | --- |
+| `GITHUB_REPOSITORY` | Repository in `owner/name` form. |
+| `GITHUB_REF_NAME` | Exact release tag. |
+| `GITHUB_SHA` | Expected 40-character lowercase commit SHA for the workflow run. |
+| `GITHUB_API_URL` | Optional absolute GitHub API base URL. The public GitHub API is the default. |
+| `GITHUB_SERVER_URL` | Optional absolute GitHub server and upload base URL used with a custom API URL. |
+
+The workflow mints the short-lived Release App installation token and passes it through `RELEASE_APP_TOKEN`. The CLI holds the token as a redacted secret. It does not receive the App private key, mint an App token, or put the token in an argument or diagnostic.
+
+The command rebuilds the expected bundle from `--dist`: the payloads listed by `checksums.txt` plus `checksums.txt` and `checksums.txt.sigstore.json`, with their local SHA-256 digests. It repeats the closed-set and digest checks but does not repeat Sigstore verification. The publisher workflow runs `verify bundle` before attestation and invokes `publish github` only after attestation succeeds.
+
+Publication enforces these guarantees in order:
+
+1. Resolve the exact tag with Git and require it to equal `GITHUB_SHA`.
+2. Poll GitHub for the tag and require it to identify exactly one release. Draft discovery makes 24 attempts, 5 seconds apart. Absence after this budget fails; the command never creates a release.
+3. Require a draft before taking the mutation path. If `--no-undraft` was requested and the one matching release is already public, the state is indeterminate because the requested draft-only outcome was not preserved. Without `--no-undraft`, an already-public release is read without mutation: an exact match of count, names, uploaded states, and digests is a successful completed-publication rerun; any other state is indeterminate. The command never re-drafts a release.
+4. Read the draft's assets and refuse any name outside the expected closed set. The command never deletes an unexpected asset.
+5. Upload every expected local path with `gh release upload --clobber`. Clobber applies only to expected names that passed the closed-set check.
+6. Poll asset state up to 12 times, 1 second apart. Success requires the expected count, unique expected names, `uploaded` state, and the exact GitHub-reported `sha256:<hex>` digest for every asset.
+7. If `--no-undraft` is absent, change the release from draft to public. This is the last mutation. A failure from the undraft request is indeterminate because the update may have applied. If `--no-undraft` is present, do not change the draft state.
+8. Read the release again and require its final draft state to match the requested outcome before returning the release URL and sorted asset names. A failed final read or an unexpected state after an undraft request is indeterminate. A public final state under `--no-undraft` is also indeterminate.
+
+A retryable operation uses at most four attempts, waiting 1 second, 2 seconds, and 4 seconds between attempts. Tag and commit mismatches, unexpected assets, and digest mismatches are not retryable.
+
+A missing distribution path (`--dist` or `RELEASE_DIST`), a missing `RELEASE_APP_TOKEN`, missing or malformed `GITHUB_REPOSITORY`, `GITHUB_REF_NAME`, or `GITHUB_SHA`, and malformed GitHub endpoint configuration are configuration errors. They exit with code `2` before any publication request. An unresolvable `RELEASE_GIT_PATH` or `RELEASE_GH_PATH` is reported when the selected binary is first invoked and exits with code `1`. The Git path is first used for tag resolution; the GitHub CLI path is first used for upload, after tag resolution, draft discovery, and the pre-upload asset read. Every other post-configuration tag-resolution, GitHub API, upload, convergence, or release-contract failure also exits with code `1`. Success exits with code `0`. No other exit code is defined.
 
 ## Signed release bundle verification
 
