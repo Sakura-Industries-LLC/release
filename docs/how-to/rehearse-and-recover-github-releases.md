@@ -2,8 +2,7 @@
 
 Use this guide to populate a draft GitHub Release without publishing it, then resume publication through the same tag and draft. Complete [Configure GitHub Releases](configure-github-releases.md) first. The [GitHub Release contract](../reference/github-release-contract.md) defines the checks that each run enforces.
 
-`FULL_SHA` is the placeholder for the released commit and will be replaced when
-this program's final pull request lands.
+The documented workflow revision is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
 
 `release-cli publish github` owns draft discovery, tag and commit binding, expected-asset upload, asset convergence, and the optional undraft operation. It never creates a release, re-drafts a public release, or deletes an asset.
 
@@ -321,7 +320,7 @@ If the repository does not need a correction, rerun the complete top-level workf
 For the documented current revision, the publisher requires a nonempty `checksums.txt`, the exact closed payload list, matching payload hashes, a regular Cosign bundle file, issuer `https://token.actions.githubusercontent.com`, and this certificate identity:
 
 ```text
-https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
+https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
 ```
 
 For an upgrade rehearsal, replace the current-revision identity with the target value described in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).

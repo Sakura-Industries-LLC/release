@@ -795,7 +795,7 @@ The projection records staged facts only. The image builder recomputes each dige
 
 ## Release unit and consumer pin
 
-The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: $/.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. `FULL_SHA` is the documentation placeholder for the released commit and will be replaced when this program's final pull request lands. Consumers cannot select an independent CLI version.
+The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: $/.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. The current released pin is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`). Consumers cannot select an independent CLI version.
 
 The setup action has two optional inputs:
 

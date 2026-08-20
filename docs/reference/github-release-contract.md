@@ -1,6 +1,6 @@
 # GitHub release contract reference
 
-This page defines the cross-repository contract for the reusable Go producer and GitHub Release publisher at revision `FULL_SHA`. The placeholder will be replaced with the released commit when this program's final pull request lands.
+This page defines the cross-repository contract for the reusable Go producer and GitHub Release publisher at revision `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
 
 For configuration steps, see [Configure GitHub releases](../how-to/configure-github-releases.md). For draft rehearsals and recovery steps, see [Rehearse and recover GitHub releases](../how-to/rehearse-and-recover-github-releases.md). The [`release-cli` contract](release-cli-contract.md) defines the command, output, and exit-code surface used by the producer. The [OCI image contract](oci-image-contract.md) defines the image builder and publisher that gate the complete delivery caller. [Release trust boundaries](../explanation/release-trust-boundaries.md) explains why the workflows, setup action, and CLI have separate responsibilities. To adopt another immutable revision, see [Upgrade GitHub release workflows](../how-to/upgrade-github-release-workflows.md). A complete consumer repository is available in the [Go release example](../../examples/go-release/).
 
@@ -9,17 +9,17 @@ For configuration steps, see [Configure GitHub releases](../how-to/configure-git
 The complete caller pins all four reusable workflows to one full revision. The GitHub Release path directly calls the producer and GitHub publisher:
 
 ```yaml
-uses: meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
+uses: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
 ```
 
 ```yaml
-uses: meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA
+uses: meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
 ```
 
 The checksum signer identity input must name the same producer workflow revision:
 
 ```yaml
-checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
+checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
 ```
 
 ## Caller contract
@@ -48,7 +48,7 @@ jobs:
       attestations: read
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
+    uses: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
 
   oci-image:
     name: Build OCI image
@@ -57,7 +57,7 @@ jobs:
       actions: read
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/go-oci-build.yml@FULL_SHA
+    uses: meigma/release/.github/workflows/go-oci-build.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
     with:
       artifact-id: ${{ needs.release-assets.outputs.oci-input-artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.oci-input-artifact-digest }}
@@ -72,7 +72,7 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: meigma/release/.github/workflows/publish-oci-image.yml@FULL_SHA
+    uses: meigma/release/.github/workflows/publish-oci-image.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
     with:
       artifact-id: ${{ needs.oci-image.outputs.artifact-id }}
       artifact-digest: ${{ needs.oci-image.outputs.artifact-digest }}
@@ -91,11 +91,11 @@ jobs:
       attestations: write
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA
+    uses: meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
       require-oci-image: true
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
@@ -341,14 +341,14 @@ The checksum signature is accepted only when `release-cli verify bundle` invokes
 
 | Field | Required value |
 | --- | --- |
-| Certificate identity | `https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA` |
+| Certificate identity | `https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` |
 | Certificate OIDC issuer | `https://token.actions.githubusercontent.com` |
 | Signed blob | `checksums.txt` |
 | Bundle | `checksums.txt.sigstore.json` |
 
 The workflow adds the `https://github.com/` prefix to `checksum-signing-workflow-ref` and passes the resulting exact URL to `release-cli verify bundle` with `--identity`. A branch name, tag name, different commit, or different workflow path does not satisfy the documented identity.
 
-The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FULL_SHA` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. The workflow mints a short-lived Release App installation token with `contents: write` and passes it to `release-cli publish github`. The CLI stores the value as a redacted secret and uses it for release discovery and publication; it never mints an App token.
+The publisher at `meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. The workflow mints a short-lived Release App installation token with `contents: write` and passes it to `release-cli publish github`. The CLI stores the value as a redacted secret and uses it for release discovery and publication; it never mints an App token.
 
 ## Publication states
 

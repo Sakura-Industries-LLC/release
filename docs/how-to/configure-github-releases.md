@@ -2,8 +2,7 @@
 
 Use this guide to add the shared Meigma Go release workflows to a repository. The [GitHub Release contract](../reference/github-release-contract.md) defines the reusable workflow inputs, permissions, artifacts, and failure behavior.
 
-`FULL_SHA` is the placeholder for the released commit and will be replaced when
-this program's final pull request lands.
+The documented workflow revision is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
 
 ## Prerequisites
 
@@ -105,14 +104,14 @@ In the copied files, replace the example values with values from the consumer re
 
 Do not replace these shared contract values:
 
-- reusable workflow revision `FULL_SHA`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA`;
+- reusable workflow revision `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
+- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
 - variable name `MEIGMA_RELEASE_APP_CLIENT_ID`; or
 - secret name `MEIGMA_RELEASE_APP_PRIVATE_KEY`.
 
 To change the immutable revision later, follow [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md). Update all reusable workflow references and the checksum signing identity together; do not edit one reference in isolation.
 
-Keep `checksum-signing-workflow-ref` in `owner/repository/workflow@revision` form without a URL prefix. The publisher adds `https://github.com/` and passes the resulting exact certificate identity to `release-cli verify bundle` with `--identity`. For example, the documented input becomes `--identity https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA`.
+Keep `checksum-signing-workflow-ref` in `owner/repository/workflow@revision` form without a URL prefix. The publisher adds `https://github.com/` and passes the resulting exact certificate identity to `release-cli verify bundle` with `--identity`. For example, the documented input becomes `--identity https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`.
 
 The copied GoReleaser configuration builds Darwin, Linux, and Windows archives
 for amd64 and arm64. Confirm that the consumer command supports those targets
@@ -249,7 +248,7 @@ Verify that the checksum manifest was signed by the canonical reusable pre-publi
 ```bash
 mise exec -- cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@FULL_SHA' \
+  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 ```
@@ -265,7 +264,7 @@ while IFS= read -r entry; do
   mise exec -- gh attestation verify "$asset" \
     --repo "$REPOSITORY" \
     --signer-workflow meigma/release/.github/workflows/publish-github-release.yml \
-    --signer-digest FULL_SHA \
+    --signer-digest 5fb7584b465ab9c0ca4e1057c7b2ca694f950d59 \
     --source-ref "refs/tags/$TAG" \
     --deny-self-hosted-runners
 done < checksums.txt
