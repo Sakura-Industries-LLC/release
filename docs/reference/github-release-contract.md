@@ -2,7 +2,7 @@
 
 This page defines the cross-repository contract for the reusable Go producer and GitHub Release publisher at revision `FULL_SHA`. The placeholder will be replaced with the released commit when this program's final pull request lands.
 
-For configuration steps, see [Configure GitHub releases](../how-to/configure-github-releases.md). For draft rehearsals and recovery steps, see [Rehearse and recover GitHub releases](../how-to/rehearse-and-recover-github-releases.md). The [`release-cli` contract](release-cli-contract.md) defines the command, output, and exit-code surface used by the producer. The [OCI image contract](oci-image-contract.md) defines the image builder and publisher that gate the complete delivery caller. To adopt another immutable revision, see [Upgrade GitHub release workflows](../how-to/upgrade-github-release-workflows.md). A complete consumer repository is available in the [Go release example](../../examples/go-release/).
+For configuration steps, see [Configure GitHub releases](../how-to/configure-github-releases.md). For draft rehearsals and recovery steps, see [Rehearse and recover GitHub releases](../how-to/rehearse-and-recover-github-releases.md). The [`release-cli` contract](release-cli-contract.md) defines the command, output, and exit-code surface used by the producer. The [OCI image contract](oci-image-contract.md) defines the image builder and publisher that gate the complete delivery caller. [Release trust boundaries](../explanation/release-trust-boundaries.md) explains why the workflows, setup action, and CLI have separate responsibilities. To adopt another immutable revision, see [Upgrade GitHub release workflows](../how-to/upgrade-github-release-workflows.md). A complete consumer repository is available in the [Go release example](../../examples/go-release/).
 
 ## Canonical workflow references
 
@@ -140,6 +140,17 @@ The job requires these caller permissions:
 
 The workflow runs on `ubuntu-24.04` with a 20-minute timeout. It declares `permissions: {}` at workflow scope, so the caller must grant the job permissions explicitly. Its `release-assets` artifact is retained for seven days and is uploaded with compression disabled.
 
+After the tag gate and checkout, the producer's relevant sequence is:
+
+1. Install Go, GoReleaser, Syft, and Cosign with mise.
+2. Verify that `go`, `goreleaser`, `syft`, and `cosign` resolve to mise-managed executables, then report the Go version. This workflow-owned proof does not build the release bundle.
+3. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
+4. Run `setup-release-cli` from the same pinned release revision.
+5. Resolve the pinned GoReleaser executable with `mise which goreleaser`, require it to be executable, and pass it through `RELEASE_GORELEASER_PATH`. Run `release-cli stage --profile go --dist dist` under `mise exec`.
+6. Upload the canonical Linux binary artifact and the authoritative release asset artifact.
+
+The producer contains no direct GoReleaser command. `release-cli stage --profile go` owns the build, validation, and OCI input projection.
+
 ### `publish-github-release.yml`
 
 | Input | Type | Required | Default | Value |
@@ -235,7 +246,7 @@ The CLI polls the release list up to 24 times, with attempts 5 seconds apart. It
 
 ## Repository and toolchain contract
 
-The producer checks out the consumer repository with full history and runs GoReleaser in that repository. The consumer therefore supplies the Go module, command source, `.goreleaser.yaml`, `mise.toml`, and `mise.lock` used for its build.
+The producer checks out the consumer repository with full history and runs `release-cli stage --profile go` in that repository. The CLI invokes GoReleaser there, so the consumer supplies the Go module, command source, `.goreleaser.yaml`, `mise.toml`, and `mise.lock` used for the build.
 
 The repository must declare and lock these mise tool identifiers:
 
@@ -245,7 +256,7 @@ The repository must declare and lock these mise tool identifiers:
 - `aqua:sigstore/cosign`
 - `aqua:cli/cli`
 
-The producer installs the first four tools. The publisher installs GitHub CLI and Cosign. Both workflows set `MISE_EXEC_AUTO_INSTALL=false` and resolve managed tools through mise; undeclared tools are not installed as a fallback. The publisher passes the Cosign path resolved by mise to `release-cli verify bundle` through `RELEASE_COSIGN_PATH`. The producer also sets `GOTOOLCHAIN=local` and verifies that `go`, `goreleaser`, `syft`, and `cosign` resolve to their mise-managed executables. The setup action separately requires the runner's `gh` command with attestation support and fails closed if either is unavailable.
+The producer installs the first four tools. The publisher installs GitHub CLI and Cosign. Both workflows set `MISE_EXEC_AUTO_INSTALL=false` and resolve managed tools through mise; undeclared tools are not installed as a fallback. The publisher passes the Cosign path resolved by mise to `release-cli verify bundle` through `RELEASE_COSIGN_PATH`. The producer sets `GOTOOLCHAIN=local` and verifies that `go`, `goreleaser`, `syft`, and `cosign` resolve to their mise-managed executables. It then passes the managed GoReleaser path through `RELEASE_GORELEASER_PATH` and runs `release-cli stage` under mise's environment because GoReleaser shells out to Go, Syft, and Cosign. The setup action separately requires the runner's `gh` command with attestation support and fails closed if either is unavailable.
 
 The canonical workflows install mise `2026.8.8`. These repository pins are the current known-compatible baseline, not versions selected automatically by the reusable workflows:
 
@@ -261,13 +272,13 @@ The lock must contain entries that mise can install on the `ubuntu-24.04` runner
 
 ## GoReleaser contract
 
-The reusable producer runs this command in the consumer repository:
+`release-cli stage --profile go` invokes this command in the consumer repository before it validates the resulting bundle:
 
 ```text
 goreleaser release --clean --skip=publish
 ```
 
-A compatible `.goreleaser.yaml` uses schema version 2 and writes the release bundle under `dist`. The supported Go profile has these requirements:
+A compatible `.goreleaser.yaml` uses schema version 2 and writes the release bundle under the same distribution directory passed to `release-cli stage --dist`. The canonical workflow passes `--dist dist`. The supported Go profile has these requirements:
 
 - Build Darwin, Linux, and Windows binaries for `amd64` and `arm64` with `CGO_ENABLED=0`.
 - Package Darwin and Linux binaries as `tar.gz`; package Windows binaries as `zip`.
@@ -281,7 +292,7 @@ A compatible `.goreleaser.yaml` uses schema version 2 and writes the release bun
 - Sign `checksums.txt` with `cosign sign-blob --bundle=${signature} ${artifact} --yes` and name the bundle `checksums.txt.sigstore.json`.
 - Disable GoReleaser changelog generation and the GoReleaser release pipe. Release Please owns release notes and the draft; the reusable publisher owns asset upload and publication.
 
-The command also supplies `--skip=publish`. `release.disable: true` is the repository requirement; the command-line skip is a second boundary against GoReleaser publication.
+The GoReleaser invocation also supplies `--skip=publish`. `release.disable: true` is the repository requirement; the command-line skip is a second boundary against GoReleaser publication.
 
 The project name, command path, and binary name are consumer values. The [copyable example](../../examples/go-release/) uses `example`, `./cmd/example`, and `example`. They are not inputs to the reusable workflow.
 
@@ -304,7 +315,7 @@ dist/checksums.txt.sigstore.json
 
 For the supported three-operating-system, two-architecture Go profile, this is six archives, six archive SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`: fourteen files in total.
 
-Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, and verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md).
+Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command first builds the release bundle through GoReleaser. It then verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md), and writes the OCI input projection.
 
 The publisher's artifact handoff has three independent owners:
 
@@ -354,7 +365,7 @@ The publisher at `meigma/release/.github/workflows/publish-github-release.yml@FU
 | --- | --- | --- | --- |
 | Version prepared | Release Please runs on `main` or by manual dispatch. | Release Please updates its release pull request according to the manifest configuration. | The release change reaches `main`. |
 | Draft created | Release Please cuts the version through the Release App. | Release Please creates the `v*` tag and matching draft release. | The App-created tag starts the release caller. |
-| Artifact built | The producer runs on the tag. | GoReleaser builds once in that run, creates SBOMs and checksums, signs the checksum manifest, and uploads `release-assets`. | The artifact ID and digest pass to the publisher in the same workflow run. |
+| Artifact built | The producer runs on the tag. | `release-cli stage --profile go` invokes GoReleaser once to build the bundle, create SBOMs and checksums, and sign the checksum manifest. The producer then uploads `release-assets`. | The artifact ID and digest pass to the publisher in the same workflow run. |
 | Draft populated | The publisher validates the artifact, signature, tag, and draft. | After attestation, `release-cli publish github` uploads the expected closed asset set and verifies every GitHub-reported asset state and digest. | Asset count, unique names, uploaded states, and digests match the signed bundle. |
 | Rehearsal complete | `publish-release` is `false`. | The workflow passes `--no-undraft`; the CLI converges the draft and verifies that it remains a draft. | The populated draft is available for inspection or a later recovery run. |
 | Published | `publish-release` is `true`, asset verification succeeds, and any required digest-pinned OCI image reference is valid. | The CLI changes the draft to public as its last mutation and verifies the resulting state. | The same release URL identifies a non-draft GitHub Release. |

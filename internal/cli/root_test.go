@@ -2,9 +2,11 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meigma/release/internal/cli"
+	"github.com/meigma/release/internal/profile/goprof"
 )
 
 func TestVersionHuman(t *testing.T) {
@@ -62,7 +65,7 @@ func TestStageUnknownProfileIsUsage(t *testing.T) {
 	stdout, stderr, err := execute(
 		t,
 		nil,
-		[]string{"stage", "--profile", "rust", "--dist", t.TempDir()},
+		[]string{"stage", "--profile", "rust", "--dist", stageDist},
 		cli.BuildInfo{},
 	)
 	require.Error(t, err)
@@ -73,12 +76,10 @@ func TestStageUnknownProfileIsUsage(t *testing.T) {
 }
 
 func TestStageUnknownProfileJSON(t *testing.T) {
-	t.Parallel()
-
 	stdout, stderr, err := execute(
 		t,
-		nil,
-		[]string{"stage", "--profile", "rust", "--dist", t.TempDir(), "--json"},
+		map[string]string{"RELEASE_JSON": "true"},
+		[]string{"stage", "--profile", "rust", "--dist", stageDist},
 		cli.BuildInfo{},
 	)
 	require.Error(t, err)
@@ -88,11 +89,12 @@ func TestStageUnknownProfileJSON(t *testing.T) {
 }
 
 func TestStageEnvOnly(t *testing.T) {
-	stdout, stderr, err := execute(t, map[string]string{
+	dist := chdirDist(t)
+	stdout, stderr, err := executeStage(t, map[string]string{
 		"RELEASE_PROFILE": "go",
-		"RELEASE_DIST":    goodDist(t),
+		"RELEASE_DIST":    dist,
 		"RELEASE_JSON":    "true",
-	}, []string{"stage"}, cli.BuildInfo{})
+	}, []string{"stage"})
 	require.NoError(t, err)
 	assert.Empty(t, stderr)
 	assert.Equal(t, 1, countJSONDocuments(stdout))
@@ -110,13 +112,15 @@ func TestBareInvocationRequiresSubcommand(t *testing.T) {
 }
 
 func TestAssetNamedUnknownFlagIsExitOne(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	writeFile(t, filepath.Join(dist, "checksums.txt"), digest+"  unknown flag\n")
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "unknown flag")
@@ -124,16 +128,13 @@ func TestAssetNamedUnknownFlagIsExitOne(t *testing.T) {
 }
 
 func TestStageJSONValidationFailure(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dist, "archive.tar.gz"), []byte("mutated"), 0o644))
 
-	stdout, stderr, err := execute(
+	stdout, stderr, err := executeStage(
 		t,
 		nil,
 		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
-		cli.BuildInfo{},
 	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
@@ -163,10 +164,11 @@ func TestUnknownCommandNoEnvelope(t *testing.T) {
 }
 
 func TestStageFlagOverridesEnv(t *testing.T) {
-	stdout, _, err := execute(t, map[string]string{
+	dist := chdirDist(t)
+	stdout, _, err := executeStage(t, map[string]string{
 		"RELEASE_PROFILE": "rust",
-		"RELEASE_DIST":    t.TempDir(),
-	}, []string{"stage", "--profile", "go", "--dist", goodDist(t), "--json"}, cli.BuildInfo{})
+		"RELEASE_DIST":    "nested/dist",
+	}, []string{"stage", "--profile", "go", "--dist", dist, "--json"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, countJSONDocuments(stdout))
 	assert.Contains(t, stdout, `"ok":true`)
@@ -174,22 +176,21 @@ func TestStageFlagOverridesEnv(t *testing.T) {
 }
 
 func TestStageSuccessSilentWithoutJSON(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", goodDist(t)}, cli.BuildInfo{})
+	stdout, stderr, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", chdirDist(t)},
+	)
 	require.NoError(t, err)
 	assert.Empty(t, stdout)
 	assert.Empty(t, stderr)
 }
 
 func TestStageJSONSuccess(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr, err := execute(
+	stdout, stderr, err := executeStage(
 		t,
 		nil,
-		[]string{"stage", "--profile", "go", "--dist", goodDist(t), "--json"},
-		cli.BuildInfo{},
+		[]string{"stage", "--profile", "go", "--dist", chdirDist(t), "--json"},
 	)
 	require.NoError(t, err)
 	assert.Empty(t, stderr)
@@ -202,12 +203,14 @@ func TestStageJSONSuccess(t *testing.T) {
 }
 
 func TestStageBadChecksum(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dist, "archive.tar.gz"), []byte("mutated"), 0o644))
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "archive.tar.gz")
@@ -215,14 +218,16 @@ func TestStageBadChecksum(t *testing.T) {
 }
 
 func TestStageMissingArchitectureRecord(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	writeFile(t, filepath.Join(dist, "artifacts.json"), `[
 		{"type":"Binary","goos":"linux","goarch":"amd64","path":"dist/app_linux_amd64/app","name":"app"}
 	]`)
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "missing linux Binary record for arm64")
@@ -230,15 +235,17 @@ func TestStageMissingArchitectureRecord(t *testing.T) {
 }
 
 func TestStageEscapedPath(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	writeFile(t, filepath.Join(dist, "artifacts.json"), `[
 		{"type":"Binary","goos":"linux","goarch":"amd64","path":"dist/../secret","name":"secret"},
 		{"type":"Binary","goos":"linux","goarch":"arm64","path":"dist/app_linux_arm64/app","name":"app"}
 	]`)
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "escapes the dist root")
@@ -246,12 +253,14 @@ func TestStageEscapedPath(t *testing.T) {
 }
 
 func TestStageClearedExecuteBit(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	require.NoError(t, os.Chmod(filepath.Join(dist, "app_linux_arm64", "app"), 0o644))
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "is not executable")
@@ -259,16 +268,18 @@ func TestStageClearedExecuteBit(t *testing.T) {
 }
 
 func TestStageSymlinkEscape(t *testing.T) {
-	t.Parallel()
-
-	dist := goodDist(t)
+	dist := chdirDist(t)
 	outside := filepath.Join(t.TempDir(), "outside")
 	require.NoError(t, os.WriteFile(outside, []byte("secret"), 0o755))
 	link := filepath.Join(dist, "app_linux_amd64", "app")
 	require.NoError(t, os.Remove(link))
 	require.NoError(t, os.Symlink(outside, link))
 
-	stdout, _, err := execute(t, nil, []string{"stage", "--profile", "go", "--dist", dist, "--json"}, cli.BuildInfo{})
+	stdout, _, err := executeStage(
+		t,
+		nil,
+		[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Contains(t, err.Error(), "app_linux_amd64/app")
@@ -284,11 +295,74 @@ func TestExitCode(t *testing.T) {
 }
 
 // execute runs the command tree with injected streams and the given env.
+//
+// It injects a [cli.Options.RunGoReleaser] seam that fails the test if
+// invoked, so a case that never expected a build cannot spawn a process.
 func execute(
 	t *testing.T,
 	env map[string]string,
 	args []string,
 	build cli.BuildInfo,
+) (string, string, error) {
+	t.Helper()
+
+	return executeWith(t, env, args, build, unexpectedGoReleaser(t))
+}
+
+// executeStage runs stage with a recording no-op GoReleaser seam.
+//
+// The seam must be invoked; a case that never expected a build should
+// call [execute] instead.
+func executeStage(
+	t *testing.T,
+	env map[string]string,
+	args []string,
+) (string, string, error) {
+	t.Helper()
+
+	stdout, stderr, _, err := executeStageSeam(t, env, args, nil)
+	return stdout, stderr, err
+}
+
+// executeStageSeam runs stage with an injected GoReleaser seam.
+//
+// A nil run is a successful no-op. The returned options are the last
+// value the seam received. The seam must be invoked.
+func executeStageSeam(
+	t *testing.T,
+	env map[string]string,
+	args []string,
+	run func(context.Context, goprof.GoReleaserOptions) error,
+) (string, string, goprof.GoReleaserOptions, error) {
+	t.Helper()
+
+	var got goprof.GoReleaserOptions
+	called := false
+	stdout, stderr, err := executeWith(
+		t,
+		env,
+		args,
+		cli.BuildInfo{},
+		func(ctx context.Context, options goprof.GoReleaserOptions) error {
+			called = true
+			got = options
+			if run == nil {
+				return nil
+			}
+			return run(ctx, options)
+		},
+	)
+	require.True(t, called, "expected stage to invoke GoReleaser")
+	return stdout, stderr, got, err
+}
+
+// executeWith runs the command tree with an injected GoReleaser seam.
+func executeWith(
+	t *testing.T,
+	env map[string]string,
+	args []string,
+	build cli.BuildInfo,
+	run func(context.Context, goprof.GoReleaserOptions) error,
 ) (string, string, error) {
 	t.Helper()
 
@@ -299,14 +373,25 @@ func execute(
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	command := cli.NewRootCommand(cli.Options{
-		Out:   stdout,
-		Err:   stderr,
-		Build: build,
+		Out:           stdout,
+		Err:           stderr,
+		Build:         build,
+		RunGoReleaser: run,
 	})
 	command.SetArgs(args)
 	err := command.Execute()
 
 	return stdout.String(), stderr.String(), err
+}
+
+// unexpectedGoReleaser fails the test if stage tries to build.
+func unexpectedGoReleaser(t *testing.T) func(context.Context, goprof.GoReleaserOptions) error {
+	t.Helper()
+
+	return func(context.Context, goprof.GoReleaserOptions) error {
+		t.Error("unexpected GoReleaser invocation")
+		return errors.New("unexpected GoReleaser invocation")
+	}
 }
 
 // assertFailureEnvelope checks stdout is one ok:false stage envelope.
@@ -343,6 +428,17 @@ func countJSONDocuments(stdout string) int {
 	}
 
 	return count
+}
+
+// chdirDist writes a valid Go profile bundle as ./dist and chdirs into its parent.
+//
+// t.Chdir forbids t.Parallel in the same test.
+func chdirDist(t *testing.T) string {
+	t.Helper()
+
+	root := goodDist(t)
+	t.Chdir(filepath.Dir(root))
+	return filepath.Base(root)
 }
 
 // goodDist writes a valid Go profile bundle under a directory named dist.

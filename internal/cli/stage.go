@@ -1,9 +1,10 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
-	"path"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -27,10 +28,10 @@ const (
 func newStageCommand(options Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stage",
-		Short: "Verify a profile-specific dist directory",
+		Short: "Build and verify a profile-specific dist directory",
 		Args:  usageNoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return runStage(options)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runStage(cmd.Context(), options)
 		},
 	}
 	cmd.Flags().String(flagProfile, "", "release profile (only go is supported)")
@@ -39,9 +40,19 @@ func newStageCommand(options Options) *cobra.Command {
 	return cmd
 }
 
-// runStage validates flags and verifies the Go profile dist directory.
-func runStage(options Options) error {
+// runStage builds the Go profile dist directory with GoReleaser, then verifies it.
+//
+// A malformed RELEASE_* boolean, a missing or unknown --profile, a missing
+// --dist, and a --dist that is not a basename are [ErrUsage] and are
+// raised before GoReleaser runs. A GoReleaser failure is a command
+// failure. GoReleaser progress and diagnostics are written to stderr so
+// --json stdout stays a single envelope. Success writes the OCI
+// build-input projection and, without --json, writes nothing to stdout.
+func runStage(ctx context.Context, options Options) error {
 	settings := *options.settings
+	if err := settings.err; err != nil {
+		return writeCommandResult(options, "stage", nil, UsageError(err))
+	}
 	if settings.Profile == "" {
 		return writeCommandResult(options, "stage", nil, UsageError(fmt.Errorf("--%s is required", flagProfile)))
 	}
@@ -57,6 +68,30 @@ func runStage(options Options) error {
 	if settings.Dist == "" {
 		return writeCommandResult(options, "stage", nil, UsageError(fmt.Errorf("--%s is required", flagDist)))
 	}
+	rootName, err := goprof.ParseRootName(settings.Dist)
+	if err != nil {
+		return writeCommandResult(options, "stage", nil, UsageError(fmt.Errorf(
+			"--%s %q is not a basename; GoReleaser writes its distribution directory relative to the working directory",
+			flagDist,
+			settings.Dist,
+		)))
+	}
+
+	if options.RunGoReleaser == nil {
+		return writeCommandResult(options, "stage", nil, errors.New("goreleaser runner is not configured"))
+	}
+
+	// GoReleaser is chatty; both streams go to the CLI stderr so --json
+	// stdout stays exactly one envelope.
+	err = options.RunGoReleaser(ctx, goprof.GoReleaserOptions{
+		Path:   lookupValue(options.LookupEnv, envGoreleaserPath),
+		Dist:   rootName,
+		Stdout: options.Err,
+		Stderr: options.Err,
+	})
+	if err != nil {
+		return writeCommandResult(options, "stage", nil, err)
+	}
 
 	root, err := os.OpenRoot(settings.Dist)
 	if err != nil {
@@ -64,10 +99,6 @@ func runStage(options Options) error {
 	}
 	defer root.Close()
 
-	rootName, err := goprof.ParseRootName(path.Base(settings.Dist))
-	if err != nil {
-		return writeCommandResult(options, "stage", nil, err)
-	}
 	report, err := stage.Stage(root.FS(), rootName)
 	if err != nil {
 		return writeCommandResult(options, "stage", nil, err)

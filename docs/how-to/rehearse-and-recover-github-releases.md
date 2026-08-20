@@ -268,10 +268,12 @@ If recovery changes source, workflow configuration, or tool pins, merge that cor
 
 ### Release artifact staging fails
 
-The producer runs `release-cli stage --profile go --dist dist` after GoReleaser
-and before either Actions artifact upload. It stops on an invalid checksum
+The producer runs `release-cli stage --profile go --dist dist` before either
+Actions artifact upload. The command first invokes
+`goreleaser release --clean --skip=publish`, with GoReleaser progress and
+diagnostics routed to the workflow log. It then stops on an invalid checksum
 claim or bundle, an invalid Linux binary selection, an escaped path, or a binary
-that is not a regular executable file. The failed step writes the offending
+that is not a regular executable file. The failed step writes the GoReleaser or
 artifact diagnostic to stderr.
 
 Use the diagnostic and the [`release-cli` contract](../reference/release-cli-contract.md)

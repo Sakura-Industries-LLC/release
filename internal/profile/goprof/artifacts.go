@@ -82,11 +82,17 @@ type CanonicalBinary struct {
 }
 
 // ParseRootName constructs a [RootName] from a directory basename.
+//
+// Names must be nonempty, must not contain a path separator, and must
+// not be "." or "..".
 func ParseRootName(raw string) (RootName, error) {
 	if raw == "" || raw == "." || raw == string(filepath.Separator) {
 		return "", fmt.Errorf("dist root name %q is empty", raw)
 	}
-	if strings.ContainsRune(raw, filepath.Separator) {
+	if raw == ".." {
+		return "", fmt.Errorf("dist root name %q is not a basename", raw)
+	}
+	if strings.ContainsAny(raw, `/\`) {
 		return "", fmt.Errorf("dist root name %q is not a basename", raw)
 	}
 

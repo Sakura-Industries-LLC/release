@@ -2,13 +2,13 @@
 
 This page defines the cross-repository contract for the reusable Go OCI builder and GHCR publisher at revision `fb8c8098ff27968fb3070e928c00e925f38c698e`.
 
-For adoption steps, see [Configure OCI image publication](../how-to/configure-oci-images.md). The [GitHub Release contract](github-release-contract.md) defines the upstream GoReleaser producer and GitHub Release publisher. A complete consumer is available in the [Go release example](../../examples/go-release/).
+For adoption steps, see [Configure OCI image publication](../how-to/configure-oci-images.md). The [GitHub Release contract](github-release-contract.md) defines the upstream Go release producer and GitHub Release publisher. A complete consumer is available in the [Go release example](../../examples/go-release/).
 
 ## Pipeline boundary
 
 ```text
-GoReleaser producer
-  -> canonical linux/amd64 and linux/arm64 binaries
+release-cli stage --profile go
+  -> GoReleaser-built, CLI-validated linux/amd64 and linux/arm64 binaries
   -> verified oci-build-inputs artifact
   -> release-cli signed APK repositories
   -> release-cli locked apko multi-architecture OCI layout
@@ -20,7 +20,7 @@ GoReleaser producer
   -> public GitHub Release
 ```
 
-The image builder consumes prebuilt GoReleaser binaries. `release-cli image build` uses Melange to package them without compiling, stripping, or otherwise replacing them, then uses apko to compose the OCI layout. `release-cli image verify` checks the completed layout, runtime contract, and architecture SBOMs before upload. The publisher consumes that layout and does not check out or execute consumer repository code.
+The image builder consumes the canonical binaries built and selected by `release-cli stage --profile go`. During staging, the CLI invokes GoReleaser, validates its outputs, and records the canonical binary paths and digests. `release-cli image build` uses Melange to package those binaries without compiling, stripping, or otherwise replacing them, then uses apko to compose the OCI layout. `release-cli image verify` checks the completed layout, runtime contract, and architecture SBOMs before upload. The publisher consumes that layout and does not check out or execute consumer repository code.
 
 ## Reusable workflows
 
@@ -129,7 +129,7 @@ The workflow sets `image-reference` only for a publication run. It remains empty
 
 ### GoReleaser
 
-The upstream producer must emit exactly one canonical Linux binary for each pair:
+`release-cli stage --profile go` invokes GoReleaser and then requires exactly one canonical Linux binary for each pair:
 
 | GOOS | GOARCH | GOAMD64 |
 | --- | --- | --- |
@@ -290,7 +290,7 @@ The completed delivery state is public. Inspect `visibility` through the Package
 
 The current boundary is deliberately split:
 
-- `go-pre-publish.yml` compiles and signs release inputs without release or package write access;
+- `go-pre-publish.yml` runs `release-cli stage --profile go` to compile, sign, validate, and project release inputs without release or package write access;
 - `go-oci-build.yml` packages and composes the image without registry credentials;
 - `publish-oci-image.yml` does not check out consumer source and writes only to the caller's GHCR package and attestation store; and
 - `publish-github-release.yml` waits for image publication but uses a separate short-lived Release App token for release mutation.
@@ -298,6 +298,8 @@ The current boundary is deliberately split:
 The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The builder uses `release-cli image build` to verify the projected canonical binary digests and compose the OCI layout, then uses `release-cli image verify` to check the layout, runtime invariants, architecture SBOMs, and index digest. The three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
 
 The workflow artifact is temporary transport, not a public distribution channel. The OCI digest, registry content, Cosign identity, and attestation identities form the public verification boundary.
+
+See [Release trust boundaries](../explanation/release-trust-boundaries.md) for the reasons behind the workflow, setup-action, and CLI responsibility split.
 
 ## Unsupported cases
 

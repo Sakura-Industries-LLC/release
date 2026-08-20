@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/meigma/release/internal/profile/goprof"
 	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage/image"
 	"github.com/meigma/release/internal/stage/pubgh"
@@ -23,6 +25,8 @@ const (
 	envProfile = "RELEASE_PROFILE"
 	// envDist is the environment variable for --dist.
 	envDist = "RELEASE_DIST"
+	// envGoreleaserPath is the GoReleaser binary path override.
+	envGoreleaserPath = "RELEASE_GORELEASER_PATH"
 	// envJSON is the environment variable for --json.
 	envJSON = "RELEASE_JSON"
 	// envImage is the environment variable for --image.
@@ -207,6 +211,8 @@ type Options struct {
 	//
 	// An empty path resolves apko from PATH.
 	NewComposer func(path string) (image.Composer, error)
+	// RunGoReleaser builds the release bundle. Nil selects [goprof.RunGoReleaser].
+	RunGoReleaser func(ctx context.Context, options goprof.GoReleaserOptions) error
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -260,7 +266,8 @@ func flagParseError(cmd *cobra.Command, err error) error {
 	return UsageError(err)
 }
 
-// withDefaults fills nil streams, a nil LookupEnv, and blank build metadata.
+// withDefaults fills nil streams, a nil LookupEnv, a nil RunGoReleaser,
+// and blank build metadata.
 func (options Options) withDefaults() Options {
 	if options.In == nil {
 		options.In = strings.NewReader("")
@@ -285,6 +292,9 @@ func (options Options) withDefaults() Options {
 	}
 	if options.Build.Protocol == 0 {
 		options.Build.Protocol = Protocol
+	}
+	if options.RunGoReleaser == nil {
+		options.RunGoReleaser = goprof.RunGoReleaser
 	}
 
 	return options

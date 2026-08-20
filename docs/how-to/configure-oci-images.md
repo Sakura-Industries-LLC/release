@@ -75,7 +75,7 @@ Keep these contract values:
 - the CA certificate package and `SSL_CERT_FILE`; and
 - `/usr/bin` in `PATH`.
 
-Do not add a compiler or source build to either configuration. The authoritative executable comes from GoReleaser through the verified `oci-build-inputs` artifact.
+Do not add a compiler or source build to either configuration. The upstream `release-cli stage --profile go` command invokes GoReleaser and selects the authoritative executables in the verified `oci-build-inputs` artifact.
 
 ## 3. Add the builder and publisher jobs
 

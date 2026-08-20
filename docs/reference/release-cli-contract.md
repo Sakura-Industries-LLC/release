@@ -1,12 +1,12 @@
 # `release-cli` contract reference
 
-`release-cli` validates release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
+| `release-cli stage --profile go --dist PATH [--json]` | Build and validate a Go release bundle under `PATH`, then write its OCI input projection. |
 | `release-cli image build [--input DIR] [--work DIR] [--output DIR] [--melange-config PATH] [--apko-config PATH] [--build-date RFC3339] [--version VERSION] [--json]` | Build a locked multi-architecture OCI layout from staged Linux binaries. |
 | `release-cli image verify [--output DIR] [--work DIR] [--binary NAME] [--version VERSION] [--json]` | Verify the built OCI layout, runtime contract, and architecture SBOMs. |
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
@@ -387,7 +387,7 @@ Without `--json`, a successful `image build`, `image verify`, `plan tags`, `publ
 | Code | Meaning |
 | ---: | --- |
 | `0` | The command completed successfully. |
-| `1` | A release contract or verification check failed. The command fails closed. |
+| `1` | A tool invocation, release contract, or verification check failed. The command fails closed. |
 | `2` | Command usage or configuration is invalid. This includes an unsupported `--profile` value. |
 
 No other exit code is defined; in particular, code `3` has no meaning. An exit code does not make a general promise that a command is safe to run again.
@@ -750,15 +750,30 @@ Artifact handoff integrity has three owners:
 
 ## Go staging profile
 
-`stage --profile go` validates the files already written under the distribution directory. It performs these checks:
+`stage --profile go` builds the Go release bundle, validates the result, and writes the OCI input projection.
 
-- `checksums.txt` contains at least one payload entry, and every listed payload matches its SHA-256 digest.
-- `checksums.txt.sigstore.json` is a non-empty regular file. This stage requires the bundle but does not verify its signature.
-- `artifacts.json` contains exactly two Linux `Binary` records: one for `amd64` and one for `arm64`.
-- Each selected binary path starts with the distribution directory's basename; the remaining path is relative to that directory and remains confined beneath it.
-- Each selected binary is a regular executable file.
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Profile | `--profile` | `RELEASE_PROFILE` | None. The only accepted value is `go`. |
+| Distribution directory | `--dist` | `RELEASE_DIST` | None. A basename is required. |
+| GoReleaser binary | None. | `RELEASE_GORELEASER_PATH` | Resolve `goreleaser` from `PATH` when the build starts. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
 
-A failed check exits with code `1` and writes a diagnostic that identifies the offending artifact. After all checks succeed, the command writes `oci-build-inputs.json` into the distribution directory for the downstream OCI builder.
+An explicitly set flag takes precedence over its environment variable. `RELEASE_GORELEASER_PATH` is environment-only, as are `RELEASE_MELANGE_PATH`, `RELEASE_APKO_PATH`, `RELEASE_COSIGN_PATH`, `RELEASE_GH_PATH`, and `RELEASE_GIT_PATH`. The distribution directory must be a basename other than `.` or `..`; a value containing a path separator is invalid. It must name the same directory configured in `.goreleaser.yaml` because the GoReleaser invocation has no distribution-directory flag.
+
+The command performs these operations in order:
+
+1. Resolve and validate the CLI flags and environment variables. A missing profile or distribution directory, an unknown profile, a distribution value that is not a basename, or a malformed boolean environment value exits with code `2` before the build starts.
+2. Resolve the configured GoReleaser executable and run `goreleaser release --clean --skip=publish`.
+3. Read `checksums.txt`, require at least one payload entry, and verify every listed payload against its SHA-256 digest.
+4. Require a nonempty regular `checksums.txt.sigstore.json`. This stage requires the bundle but does not verify its signature.
+5. Read `artifacts.json` and require exactly two Linux `Binary` records: one for `amd64` and one for `arm64`.
+6. Require each selected binary path to start with the distribution directory's basename. The remaining path must stay confined beneath that directory, and each selected binary must be a regular executable file.
+7. Write `oci-build-inputs.json` into the distribution directory for the downstream OCI builder.
+
+The GoReleaser `--clean` option deletes and rebuilds the distribution directory. `stage --profile go` is therefore a build command, not read-only validation. An unresolvable GoReleaser executable or a failed GoReleaser process exits with code `1`; executable resolution fails before the process starts. A post-build validation or projection-write failure also exits with code `1` and identifies the offending artifact or operation.
+
+GoReleaser's stdout and stderr both go to the CLI's stderr stream. Under `--json`, the `release.dev/result/v1` envelope remains the only stdout content.
 
 The projection has schema `release.dev/oci-build-inputs/v1` and contains these fields:
 

@@ -81,7 +81,7 @@ jobs:
           add_shims_to_path: false
           export_path: false
 
-      - name: Build and sign release assets
+      - name: Verify Go release tools
         shell: bash
         run: |
           mise exec -- bash -euo pipefail -c '
@@ -92,7 +92,6 @@ jobs:
               printf "Using %s: %s\n" "${tool}" "${active}"
             done
             go version
-            goreleaser release --clean --skip=publish
           '
 
       - name: Download dogfood release-cli
@@ -123,7 +122,21 @@ jobs:
           RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
         shell: bash
         run: |
-          "${RELEASE_CLI}" stage --profile go --dist dist
+          set -euo pipefail
+          # mise runs here without shims and without exporting PATH, so hand the
+          # CLI the pinned goreleaser binary instead of putting it on PATH
+          # globally.
+          goreleaser_path="$(mise which goreleaser)"
+          if [ ! -x "${goreleaser_path}" ]; then
+            echo "::error::Resolved goreleaser path ${goreleaser_path} is not executable."
+            exit 1
+          fi
+
+          # The CLI builds the release bundle and then validates it. GoReleaser
+          # shells out to go, syft, and cosign, so the CLI runs under mise exec
+          # to give those grandchild processes the managed toolchain.
+          RELEASE_GORELEASER_PATH="${goreleaser_path}" \
+            mise exec -- "${RELEASE_CLI}" stage --profile go --dist dist
 
       - name: Upload canonical Linux binaries
         id: upload-oci-input

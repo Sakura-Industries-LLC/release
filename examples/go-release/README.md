@@ -25,6 +25,20 @@ To reproduce the complete minimal consumer in a new empty repository, also copy:
 
 Do not copy this README into the consumer repository.
 
+## Release build
+
+The producer workflow sets up `release-cli` and runs:
+
+```text
+release-cli stage --profile go --dist dist
+```
+
+The stage command runs `goreleaser release --clean --skip=publish` under mise's environment, then validates the release bundle and writes the OCI input projection. GoReleaser shells out to the mise-managed Go, Syft, and Cosign executables during the build.
+
+GoReleaser has no command-line distribution-directory option in this invocation. The consumer's `.goreleaser.yaml` must write the same distribution directory that the workflow passes to `release-cli stage --dist`. This example uses GoReleaser's default `dist` directory and passes `--dist dist`.
+
+The `--clean` option deletes and rebuilds `dist`. Keep `release.disable: true` in `.goreleaser.yaml`; `--skip=publish` is a second boundary against GoReleaser publication. Keep `changelog.disable: true` because Release Please owns release notes.
+
 ## Values to replace
 
 Replace these project-specific example values:

@@ -14,6 +14,65 @@ import (
 	"github.com/meigma/release/internal/profile/goprof"
 )
 
+func TestParseRootName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		raw     string
+		want    goprof.RootName
+		wantErr string
+	}{
+		{
+			name: "accepts a basename",
+			raw:  "dist",
+			want: "dist",
+		},
+		{
+			name:    "empty",
+			raw:     "",
+			wantErr: `dist root name "" is empty`,
+		},
+		{
+			name:    "dot",
+			raw:     ".",
+			wantErr: `dist root name "." is empty`,
+		},
+		{
+			name:    "dot-dot",
+			raw:     "..",
+			wantErr: `dist root name ".." is not a basename`,
+		},
+		{
+			name:    "slash",
+			raw:     "a/b",
+			wantErr: `dist root name "a/b" is not a basename`,
+		},
+		{
+			name:    "backslash",
+			raw:     "a\\b",
+			wantErr: "dist root name \"a\\\\b\" is not a basename",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := goprof.ParseRootName(test.raw)
+			if test.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), test.wantErr)
+				assert.Empty(t, got)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
+
 func TestParseArtifactsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
