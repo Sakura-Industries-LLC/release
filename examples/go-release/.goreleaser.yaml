@@ -44,12 +44,29 @@ archives:
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
 
+nfpms:
+  - id: example
+    ids:
+      - example
+    vendor: Meigma
+    homepage: https://github.com/meigma/release
+    maintainer: Meigma <contact@meigma.dev>
+    description: Example Go command using the Meigma release workflows.
+    license: LicenseRef-Proprietary
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+
 checksum:
   name_template: checksums.txt
 
 sboms:
   - id: archives
     artifacts: archive
+  - id: packages
+    artifacts: package
 
 signs:
   - id: checksums

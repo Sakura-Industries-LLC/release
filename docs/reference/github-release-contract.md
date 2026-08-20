@@ -1,6 +1,6 @@
 # GitHub release contract reference
 
-This page defines the cross-repository contract for the reusable Go producer and GitHub Release publisher at revision `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+This page defines the cross-repository contract for the reusable Go producer and GitHub Release publisher at revision `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
 
 For configuration steps, see [Configure GitHub releases](../how-to/configure-github-releases.md). For draft rehearsals and recovery steps, see [Rehearse and recover GitHub releases](../how-to/rehearse-and-recover-github-releases.md). The [`release-cli` contract](release-cli-contract.md) defines the command, output, and exit-code surface used by the producer. The [OCI image contract](oci-image-contract.md) defines the image builder and publisher that gate the complete delivery caller. [Release trust boundaries](../explanation/release-trust-boundaries.md) explains why the workflows, setup action, and CLI have separate responsibilities. To adopt another immutable revision, see [Upgrade GitHub release workflows](../how-to/upgrade-github-release-workflows.md). A complete consumer repository is available in the [Go release example](../../examples/go-release/).
 
@@ -9,17 +9,17 @@ For configuration steps, see [Configure GitHub releases](../how-to/configure-git
 The complete caller pins all four reusable workflows to one full revision. The GitHub Release path directly calls the producer and GitHub publisher:
 
 ```yaml
-uses: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+uses: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 ```yaml
-uses: meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+uses: meigma/release/.github/workflows/publish-github-release.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 The checksum signer identity input must name the same producer workflow revision:
 
 ```yaml
-checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 ## Caller contract
@@ -48,7 +48,7 @@ jobs:
       attestations: read
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 
   oci-image:
     name: Build OCI image
@@ -57,7 +57,7 @@ jobs:
       actions: read
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/go-oci-build.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/go-oci-build.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.release-assets.outputs.oci-input-artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.oci-input-artifact-digest }}
@@ -72,7 +72,7 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: meigma/release/.github/workflows/publish-oci-image.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/publish-oci-image.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.oci-image.outputs.artifact-id }}
       artifact-digest: ${{ needs.oci-image.outputs.artifact-digest }}
@@ -91,11 +91,11 @@ jobs:
       attestations: write
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/publish-github-release.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
       require-oci-image: true
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
@@ -273,12 +273,12 @@ A compatible `.goreleaser.yaml` uses schema version 2 and writes the release bun
 
 - Build Darwin, Linux, and Windows binaries for `amd64` and `arm64` with `CGO_ENABLED=0`.
 - Package Darwin and Linux binaries as `tar.gz`; package Windows binaries as `zip`.
-- Name archives `<project>_<version>_<os>_<arch>` before the format extension.
+- Package each canonical Linux binary as DEB, RPM, and APK through one GoReleaser nFPM definition. The package step reuses the build output and installs the binary in `/usr/bin`.
 - Build with `-trimpath` and linker flags `-s -w -buildid=`.
 - Populate `main.version` from `{{ .Version }}` and `main.commit` from `{{ .FullCommit }}`.
 - Set `mod_timestamp` to `{{ .CommitTimestamp }}`.
 - Use GoReleaser's module-proxy mode and the local Go toolchain. The current profile sets `GOPROXY=https://proxy.golang.org,direct` and `GOSUMDB=sum.golang.org` for module resolution.
-- Emit one archive SBOM per archive through GoReleaser's `artifacts: archive` SBOM configuration.
+- Emit one SBOM per archive and one per native package through GoReleaser's `artifacts: archive` and `artifacts: package` SBOM configurations.
 - Write the SHA-256 manifest as `checksums.txt`.
 - Sign `checksums.txt` with `cosign sign-blob --bundle=${signature} ${artifact} --yes` and name the bundle `checksums.txt.sigstore.json`.
 - Disable GoReleaser changelog generation and the GoReleaser release pipe. Release Please owns release notes and the draft; the reusable publisher owns asset upload and publication.
@@ -299,12 +299,15 @@ The producer uploads one Actions artifact named `release-assets`. Its upload set
 ```text
 dist/*.tar.gz
 dist/*.zip
+dist/*.deb
+dist/*.rpm
+dist/*.apk
 dist/*.sbom.json
 dist/checksums.txt
 dist/checksums.txt.sigstore.json
 ```
 
-For the supported three-operating-system, two-architecture Go profile, this is six archives, six archive SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`: fourteen files in total.
+For the supported three-operating-system, two-architecture Go profile, this is six archives, six native Linux packages, twelve SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`: 26 files in total.
 
 Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command first builds the release bundle through GoReleaser. It then verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md), and writes the OCI input projection.
 
@@ -341,14 +344,14 @@ The checksum signature is accepted only when `release-cli verify bundle` invokes
 
 | Field | Required value |
 | --- | --- |
-| Certificate identity | `https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` |
+| Certificate identity | `https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0` |
 | Certificate OIDC issuer | `https://token.actions.githubusercontent.com` |
 | Signed blob | `checksums.txt` |
 | Bundle | `checksums.txt.sigstore.json` |
 
 The workflow adds the `https://github.com/` prefix to `checksum-signing-workflow-ref` and passes the resulting exact URL to `release-cli verify bundle` with `--identity`. A branch name, tag name, different commit, or different workflow path does not satisfy the documented identity.
 
-The publisher at `meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. The workflow mints a short-lived Release App installation token with `contents: write` and passes it to `release-cli publish github`. The CLI stores the value as a redacted secret and uses it for release discovery and publication; it never mints an App token.
+The publisher at `meigma/release/.github/workflows/publish-github-release.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0` creates GitHub build-provenance attestations in the consumer repository. Its job token creates attestations but has only `contents: read`. The workflow mints a short-lived Release App installation token with `contents: write` and passes it to `release-cli publish github`. The CLI stores the value as a redacted secret and uses it for release discovery and publication; it never mints an App token, changes repository settings, or persists credentials.
 
 ## Publication states
 
@@ -387,7 +390,7 @@ This contract does not provide or imply:
 
 - OCI construction or publication behavior beyond the dependency ordering defined here; see the separate [OCI image contract](oci-image-contract.md).
 - Homebrew, MacPorts, Nix, Scoop, mise registry, or other package-manager publication.
-- DEB, RPM, APK, package-repository, or installer publication.
+- Native package repository publication or native package-manager signing. DEB, RPM, and APK files are standalone GitHub Release assets protected by the release checksum, Cosign, and attestation contract.
 - Release support for languages other than the documented Go producer profile.
 - Consumer CI policy or tests in the OIDC-enabled release job.
 - Release-note generation in GoReleaser.

@@ -22,7 +22,7 @@ jobs:
       attestations: read
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 
   oci-image:
     name: Build OCI image
@@ -33,7 +33,7 @@ jobs:
       # attestation while installing it; a callee cannot exceed this ceiling.
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/go-oci-build.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/go-oci-build.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.release-assets.outputs.oci-input-artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.oci-input-artifact-digest }}
@@ -47,7 +47,7 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: meigma/release/.github/workflows/publish-oci-image.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/publish-oci-image.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.oci-image.outputs.artifact-id }}
       artifact-digest: ${{ needs.oci-image.outputs.artifact-digest }}
@@ -67,11 +67,11 @@ jobs:
       attestations: write
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/publish-github-release.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+    uses: meigma/release/.github/workflows/publish-github-release.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
       require-oci-image: true
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}

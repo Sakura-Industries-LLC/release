@@ -1,6 +1,6 @@
 # OCI image contract
 
-This page defines the cross-repository contract for the reusable Go OCI builder and GHCR publisher at revision `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+This page defines the cross-repository contract for the reusable Go OCI builder and GHCR publisher at revision `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
 
 For adoption steps, see [Configure OCI image publication](../how-to/configure-oci-images.md). The [GitHub Release contract](github-release-contract.md) defines the upstream Go release producer and GitHub Release publisher. A complete consumer is available in the [Go release example](../../examples/go-release/).
 
@@ -27,11 +27,11 @@ The image builder consumes the canonical binaries built and selected by `release
 Consumers call both workflows at the same immutable revision:
 
 ```yaml
-uses: meigma/release/.github/workflows/go-oci-build.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+uses: meigma/release/.github/workflows/go-oci-build.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 ```yaml
-uses: meigma/release/.github/workflows/publish-oci-image.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+uses: meigma/release/.github/workflows/publish-oci-image.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 Moving branches and tags are not supported workflow references.
@@ -248,7 +248,7 @@ The publisher signs the index and both platform manifests with Cosign keyless si
 
 | Field | Value |
 | --- | --- |
-| Certificate identity | `https://github.com/meigma/release/.github/workflows/publish-oci-image.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` |
+| Certificate identity | `https://github.com/meigma/release/.github/workflows/publish-oci-image.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0` |
 | Certificate OIDC issuer | `https://token.actions.githubusercontent.com` |
 | Subject | Digest-pinned image or platform manifest. |
 

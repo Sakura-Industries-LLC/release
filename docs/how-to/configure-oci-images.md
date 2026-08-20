@@ -2,7 +2,7 @@
 
 Use this guide to add signed, multi-architecture GHCR images to a repository that already uses the Meigma Go release workflows. The [OCI image contract](../reference/oci-image-contract.md) defines the reusable workflow interfaces, image contents, tags, signatures, attestations, and recovery behavior.
 
-The documented workflow revision is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+The documented workflow revision is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Record the consumer repository and immutable workflow revision:
 
 ```bash
 export REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
-export RELEASE_REVISION=5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+export RELEASE_REVISION=611195c21fdd44ff2cf95c6a8833f84d095270b0
 export IMAGE="ghcr.io/${REPOSITORY,,}"
 ```
 
@@ -112,7 +112,7 @@ permissions:
 Pin every reusable workflow to the same full revision:
 
 ```text
-5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 Make `github-release` depend on `oci-publish`. That ordering keeps the GitHub Release in draft state when registry publication, signing, or attestation fails.

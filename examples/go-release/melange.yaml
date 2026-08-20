@@ -6,6 +6,9 @@ package:
   target-architecture:
     - x86_64
     - aarch64
+  vendor: Meigma
+  homepage: https://github.com/meigma/release
+  maintainer: Meigma <contact@meigma.dev>
   copyright:
     - license: LicenseRef-Proprietary
 

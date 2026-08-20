@@ -13,4 +13,4 @@ This repository defines the reusable workflows and repository contract that Meig
 - [OCI image contract reference](docs/reference/oci-image-contract.md)
 - [Copyable Go release example](examples/go-release/)
 
-Consumer repositories call the reusable workflows at one full commit SHA. The current released pin is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+Consumer repositories call the reusable workflows at one full commit SHA. The current released pin is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).

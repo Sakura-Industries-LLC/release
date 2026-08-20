@@ -2,7 +2,7 @@
 
 Use this guide to add the shared Meigma Go release workflows to a repository. The [GitHub Release contract](../reference/github-release-contract.md) defines the reusable workflow inputs, permissions, artifacts, and failure behavior.
 
-The documented workflow revision is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+The documented workflow revision is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
 
 ## Prerequisites
 
@@ -94,28 +94,29 @@ Do not overwrite an existing repository's `go.mod` or command source. Adapt its 
 
 In the copied files, replace the example values with values from the consumer repository:
 
-- In `.goreleaser.yaml`, replace project name, build ID, archive ID, command path, and binary name `example` with the consumer's values.
+- In `.goreleaser.yaml`, replace project name, build ID, archive ID, nFPM ID, command path, binary name, vendor, homepage, maintainer, description, and license with the consumer's values.
 - Keep the `main.version` and `main.commit` linker variable names only if the command's `main` package defines both variables and uses them for `--version`. Otherwise, change the ldflags to the consumer command's real linker variables.
 - If you copied the sample source, replace module path `example.com/meigma/release-consumer` and the literal command name and output in `cmd/example/main.go`.
 - In `release-please-config.json`, replace package name `example` and choose the intended first release in `initial-version`.
 - In `.release-please-manifest.json`, keep `0.0.0` only for a repository that has never released. For an existing project, set `.` to its latest released version without the `v` prefix.
 - In `.github/workflows/release-please.yml`, replace `main` if the consumer's default branch is different.
-- In `melange.yaml` and `apko.yaml`, replace the package name, command path, description, license, source URL, and image annotations as described in [Configure OCI image publication](configure-oci-images.md).
+- In `melange.yaml` and `apko.yaml`, replace package name, vendor, homepage, maintainer, command path, description, license, source URL, and image annotations as described in [Configure OCI image publication](configure-oci-images.md).
 
 Do not replace these shared contract values:
 
-- reusable workflow revision `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
+- reusable workflow revision `611195c21fdd44ff2cf95c6a8833f84d095270b0`;
+- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0`;
 - variable name `MEIGMA_RELEASE_APP_CLIENT_ID`; or
 - secret name `MEIGMA_RELEASE_APP_PRIVATE_KEY`.
 
 To change the immutable revision later, follow [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md). Update all reusable workflow references and the checksum signing identity together; do not edit one reference in isolation.
 
-Keep `checksum-signing-workflow-ref` in `owner/repository/workflow@revision` form without a URL prefix. The publisher adds `https://github.com/` and passes the resulting exact certificate identity to `release-cli verify bundle` with `--identity`. For example, the documented input becomes `--identity https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`.
+Keep `checksum-signing-workflow-ref` in `owner/repository/workflow@revision` form without a URL prefix. The publisher adds `https://github.com/` and passes the resulting exact certificate identity to `release-cli verify bundle` with `--identity`. For example, the documented input becomes `--identity https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0`.
 
 The copied GoReleaser configuration builds Darwin, Linux, and Windows archives
-for amd64 and arm64. Confirm that the consumer command supports those targets
-before releasing it. Keep both `changelog.disable: true` and
+for amd64 and arm64. It also packages each canonical Linux binary as DEB, RPM,
+and APK without rebuilding it. Confirm that the consumer command supports those
+targets before releasing it. Keep both `changelog.disable: true` and
 `release.disable: true`: Release Please owns the release notes and initial
 draft, and GoReleaser must not publish a release.
 
@@ -211,7 +212,7 @@ gh release view "$TAG" \
   --json tagName,isDraft,isPrerelease,publishedAt,url
 ```
 
-The final result must report the expected tag, `"isDraft": false`, and `"isPrerelease": false`. The release contains six platform archives, six archive SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`.
+The final result must report the expected tag, `"isDraft": false`, and `"isPrerelease": false`. The release contains six platform archives, six native Linux packages, twelve SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`.
 
 To stop before publication and inspect the populated draft, follow [Rehearse and recover GitHub Releases](rehearse-and-recover-github-releases.md).
 
@@ -241,14 +242,14 @@ On Linux, use:
 sha256sum --check checksums.txt
 ```
 
-Every listed archive and SBOM must report `OK`.
+Every listed archive, native package, and SBOM must report `OK`.
 
 Verify that the checksum manifest was signed by the canonical reusable pre-publish workflow revision:
 
 ```bash
 mise exec -- cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59' \
+  --certificate-identity 'https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 ```
@@ -264,10 +265,39 @@ while IFS= read -r entry; do
   mise exec -- gh attestation verify "$asset" \
     --repo "$REPOSITORY" \
     --signer-workflow meigma/release/.github/workflows/publish-github-release.yml \
-    --signer-digest 5fb7584b465ab9c0ca4e1057c7b2ca694f950d59 \
+    --signer-digest 611195c21fdd44ff2cf95c6a8833f84d095270b0 \
     --source-ref "refs/tags/$TAG" \
     --deny-self-hosted-runners
 done < checksums.txt
 ```
 
-Each invocation must exit successfully. The signer workflow names the reusable publisher rather than the consumer caller, and `--signer-digest` binds it to the canonical revision. GitHub attestations cover the twelve payloads in `checksums.txt`; the checksum manifest and Cosign bundle are control files and are not attestation subjects.
+Each invocation must exit successfully. The signer workflow names the reusable publisher rather than the consumer caller, and `--signer-digest` binds it to the canonical revision. GitHub attestations cover the 24 payloads in `checksums.txt`; the checksum manifest and Cosign bundle are control files and are not attestation subjects.
+
+## 8. Install a native Linux package
+
+Choose the package for the host architecture from the downloaded release
+directory. Package filenames follow
+`<project>_<version>_linux_<architecture>.<format>`.
+
+Install the DEB on Debian or Ubuntu:
+
+```bash
+sudo dpkg -i "<project>_<version>_linux_<architecture>.deb"
+```
+
+Install the RPM on Fedora or another RPM-based distribution:
+
+```bash
+sudo rpm -i "<project>_<version>_linux_<architecture>.rpm"
+```
+
+Install the APK on Alpine:
+
+```bash
+sudo apk add --allow-untrusted "<project>_<version>_linux_<architecture>.apk"
+```
+
+Run the installed command's version or health check after installation. These
+standalone packages are not signed with a native package-manager key and are
+not distributed through a package repository. Verify `checksums.txt`, its
+Cosign signature, and the package's GitHub attestation before installation.

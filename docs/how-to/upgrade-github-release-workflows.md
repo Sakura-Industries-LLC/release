@@ -178,7 +178,7 @@ Review the final diff and confirm that it contains no moving reusable workflow r
 
 After the upgrade reaches the default branch, perform the draft-only procedure in [Rehearse and recover GitHub Releases](rehearse-and-recover-github-releases.md). Do not enable either publisher until the target revision has populated and verified a draft and produced the expected OCI artifact.
 
-Use the linked guide for its release creation, exact run selection, draft lookup, resumption, and recovery mechanics. During an upgrade rehearsal, the target contract overrides every baseline constant in that guide. In particular, require the target asset names and count, the checksum certificate identity ending in `@$NEW_RELEASE_REVISION`, and the publisher `--signer-digest "$NEW_RELEASE_REVISION"`. Do not reject a target-compliant draft because it differs from the baseline fourteen-asset set or baseline revision.
+Use the linked guide for its release creation, exact run selection, draft lookup, resumption, and recovery mechanics. During an upgrade rehearsal, the target contract overrides every baseline constant in that guide. In particular, require the target asset names and count, the checksum certificate identity ending in `@$NEW_RELEASE_REVISION`, and the publisher `--signer-digest "$NEW_RELEASE_REVISION"`. Do not reject a target-compliant draft because it differs from the baseline 26-asset set or baseline revision.
 
 The rehearsal must produce these observable results:
 

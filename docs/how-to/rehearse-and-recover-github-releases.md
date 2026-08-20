@@ -2,7 +2,7 @@
 
 Use this guide to populate a draft GitHub Release without publishing it, then resume publication through the same tag and draft. Complete [Configure GitHub Releases](configure-github-releases.md) first. The [GitHub Release contract](../reference/github-release-contract.md) defines the checks that each run enforces.
 
-The documented workflow revision is `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59` (`v0.1.1`).
+The documented workflow revision is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
 
 `release-cli publish github` owns draft discovery, tag and commit binding, expected-asset upload, asset convergence, and the optional undraft operation. It never creates a release, re-drafts a public release, or deletes an asset.
 
@@ -106,7 +106,7 @@ gh run watch "$RELEASE_RUN_ID" \
   --exit-status
 ```
 
-At the documented current revision, a successful draft-only run leaves the Release workflow green, the release unpublished with six platform archives, six archive SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`, and GHCR unchanged. With `publish-release: false`, the workflow runs `release-cli publish github --no-undraft`; the CLI converges and verifies the expected asset set, then confirms that the release remains a draft. The run also retains the verified multi-architecture layout, signed APK repository, apko lock, and image SBOMs in the `oci-image` workflow artifact. When rehearsing another revision, use the target contracts in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).
+At the documented current revision, a successful draft-only run leaves the Release workflow green, the release unpublished with six platform archives, six native Linux packages, twelve SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`, and GHCR unchanged. With `publish-release: false`, the workflow runs `release-cli publish github --no-undraft`; the CLI converges and verifies the expected asset set, then confirms that the release remains a draft. The run also retains the verified multi-architecture layout, signed APK repository, apko lock, and image SBOMs in the `oci-image` workflow artifact. When rehearsing another revision, use the target contracts in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).
 
 ## 3. Inspect the populated draft
 
@@ -123,7 +123,7 @@ gh api "repos/$REPOSITORY/releases/$RELEASE_ID" \
   --jq '{id, tag_name, draft, prerelease, assets: [.assets[] | {name, state, digest}]}'
 ```
 
-For the documented current revision, the query must select exactly one release with the exact tag, `"draft": true`, `"prerelease": false`, and fourteen assets. Twelve asset names come from `checksums.txt`; the other two are the checksum manifest and its Cosign bundle. For an upgrade rehearsal, require the names and count defined by the target contract instead.
+For the documented current revision, the query must select exactly one release with the exact tag, `"draft": true`, `"prerelease": false`, and 26 assets. Twenty-four asset names come from `checksums.txt`; the other two are the checksum manifest and its Cosign bundle. For an upgrade rehearsal, require the names and count defined by the target contract instead.
 
 If this rehearsal query reports `"draft": false`, stop. A `publish-release: false` run requires the release to remain a draft, so `publish github --no-undraft` classifies an already-public release as indeterminate even when all assets match. Inspect how the release became public; do not rerun the rehearsal or ask the CLI to re-draft it.
 
@@ -320,7 +320,7 @@ If the repository does not need a correction, rerun the complete top-level workf
 For the documented current revision, the publisher requires a nonempty `checksums.txt`, the exact closed payload list, matching payload hashes, a regular Cosign bundle file, issuer `https://token.actions.githubusercontent.com`, and this certificate identity:
 
 ```text
-https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59
+https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
 ```
 
 For an upgrade rehearsal, replace the current-revision identity with the target value described in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).

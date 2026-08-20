@@ -35,6 +35,11 @@ release-cli stage --profile go --dist dist
 
 The stage command runs `goreleaser release --clean --skip=publish` under mise's environment, then validates the release bundle and writes the OCI input projection. GoReleaser shells out to the mise-managed Go, Syft, and Cosign executables during the build.
 
+The GoReleaser configuration packages each Linux build as DEB, RPM, and APK
+and emits one SBOM for every archive and native package. These standalone
+packages are GitHub Release assets; the example does not configure a package
+repository or native package-manager signing.
+
 GoReleaser has no command-line distribution-directory option in this invocation. The consumer's `.goreleaser.yaml` must write the same distribution directory that the workflow passes to `release-cli stage --dist`. This example uses GoReleaser's default `dist` directory and passes `--dist dist`.
 
 The `--clean` option deletes and rebuilds `dist`. Keep `release.disable: true` in `.goreleaser.yaml`; `--skip=publish` is a second boundary against GoReleaser publication. Keep `changelog.disable: true` because Release Please owns release notes.
@@ -45,8 +50,8 @@ Replace these project-specific example values:
 
 - `example.com/meigma/release-consumer` in `go.mod` with the consumer's module path.
 - `./cmd/example` in `.goreleaser.yaml` with the consumer command package.
-- Project name, build ID, archive ID, binary name, and Release Please package name `example` with the consumer's project and binary names.
-- Package name, description, license, and installed command path in `melange.yaml`.
+- Project name, build ID, archive ID, nFPM ID, binary name, and Release Please package name `example` with the consumer's project and binary names.
+- Package name, vendor, homepage, maintainer, description, license, and installed command path in `.goreleaser.yaml` and `melange.yaml`.
 - Package name, entrypoint, image annotations, and source URL in `apko.yaml`.
 - The literal command name and default output in `cmd/example/main.go` if you copy the sample command.
 - Branch name `main` in `.github/workflows/release-please.yml` if the consumer uses another default branch.
@@ -56,13 +61,13 @@ Replace these project-specific example values:
 
 The example uses one full commit SHA for every reusable workflow reference and
 the checksum signing identity. That SHA is the consumer pin for the complete
-release unit. The current pin is the `v0.1.1` release revision,
-`5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`.
+release unit. The current pin is the `v0.1.2` release revision,
+`611195c21fdd44ff2cf95c6a8833f84d095270b0`.
 
 Keep these contract values unchanged:
 
-- all four reusable workflow references at `5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@5fb7584b465ab9c0ca4e1057c7b2ca694f950d59`;
+- all four reusable workflow references at `611195c21fdd44ff2cf95c6a8833f84d095270b0`;
+- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0`;
 - organization variable `MEIGMA_RELEASE_APP_CLIENT_ID`;
 - organization secret `MEIGMA_RELEASE_APP_PRIVATE_KEY`; and
 - the locked Go 1.26.6, GoReleaser 2.17.1, Syft 1.51.0, Cosign 3.1.3, GitHub CLI 2.97.0, Melange 0.59.1, and apko 1.2.37 versions unless the shared workflow contract is deliberately updated.

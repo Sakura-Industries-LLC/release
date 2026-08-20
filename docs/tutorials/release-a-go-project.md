@@ -101,7 +101,7 @@ done
 
 You see one `copied` line for each of the eleven paths.
 
-## Adapt the Go command and archives
+## Adapt the Go command and packages
 
 Install the locked tools, then set the module path to the GitHub repository:
 
@@ -124,7 +124,7 @@ Edit `cmd/hello-release/main.go`. Replace the two user-facing occurrences of
 `example` with `hello-release`. Keep the `version` and `commit` variables: the
 copied GoReleaser configuration sets both at link time.
 
-Edit `.goreleaser.yaml` so its project, build, archive, and binary values read:
+Edit `.goreleaser.yaml` so its project, build, archive, nFPM, and binary values read:
 
 ```yaml
 project_name: hello-release
@@ -138,11 +138,21 @@ archives:
   - id: hello-release
     ids:
       - hello-release
-```
+
+nfpms:
+  - id: hello-release
+    ids:
+      - hello-release
+    vendor: Meigma
+    homepage: https://github.com/OWNER/hello-release
+    maintainer: Meigma <contact@meigma.dev>
+    description: Hello release tutorial command.
+    license: LicenseRef-Proprietary
 
 These lines replace the corresponding `example` values; keep the remaining
-build, archive, checksum, SBOM, signing, changelog, and release settings from the
-example. In particular, keep:
+build, archive, nFPM, checksum, SBOM, signing, changelog, and release settings
+from the example. Replace `OWNER` with the owner shown in `$REPOSITORY`. In
+particular, keep:
 
 ```yaml
 changelog:
@@ -173,7 +183,7 @@ The command prints:
 hello-release dev (none)
 ```
 
-## Adapt the image
+## Adapt the packages and image
 
 Edit `melange.yaml` for the same command:
 
@@ -181,6 +191,9 @@ Edit `melange.yaml` for the same command:
 package:
   name: hello-release
   description: Hello release tutorial command.
+  vendor: Meigma
+  homepage: https://github.com/OWNER/hello-release
+  maintainer: Meigma <contact@meigma.dev>
   copyright:
     - license: LicenseRef-Proprietary
 
@@ -211,7 +224,7 @@ annotations:
   org.opencontainers.image.licenses: LicenseRef-Proprietary
 ```
 
-Replace `OWNER` with the owner shown in `$REPOSITORY`. Keep the nonroot account,
+Keep the `OWNER` replacement consistent with the nFPM and Melange package metadata. Keep the nonroot account,
 architectures, certificate settings, and environment from the example.
 
 Validate the completed release configuration:
@@ -297,7 +310,7 @@ run-selection, and draft-query commands. Keep the `REPOSITORY`, `TAG`,
 At the end of the rehearsal:
 
 - the Release workflow is green;
-- the GitHub Release for `$TAG` is still a draft with fourteen assets;
+- the GitHub Release for `$TAG` is still a draft with 26 assets;
 - the `release-assets`, `oci-build-inputs`, and `oci-image` workflow artifacts
   exist; and
 - no image tag has been written to GHCR.
@@ -333,8 +346,9 @@ gh run download "$RELEASE_RUN_ID" \
 Check the release bundle:
 
 ```bash
-test "$(find "$INSPECT_DIR/release-assets" -maxdepth 1 -type f -name '*.sbom.json' | wc -l)" -eq 6
+test "$(find "$INSPECT_DIR/release-assets" -maxdepth 1 -type f -name '*.sbom.json' | wc -l)" -eq 12
 test "$(find "$INSPECT_DIR/release-assets" -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)" -eq 6
+test "$(find "$INSPECT_DIR/release-assets" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.apk' \) | wc -l)" -eq 6
 test -s "$INSPECT_DIR/release-assets/checksums.txt"
 test -s "$INSPECT_DIR/release-assets/checksums.txt.sigstore.json"
 printf 'release bundle complete\n'
