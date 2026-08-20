@@ -466,6 +466,7 @@ linters:
           - dupl
           - errcheck
           - funlen
+          - gochecknoglobals
           - goconst
           - gosec
           - noctx

@@ -152,178 +152,68 @@ jobs:
           path: oci-input
           digest-mismatch: error
 
-      - name: Stage OCI build inputs
-        id: stage
+      - name: Build the authoritative OCI layout
+        id: build
         env:
-          APKO_CONFIG: ${{ inputs.apko-config }}
-          MELANGE_CONFIG: ${{ inputs.melange-config }}
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+          RELEASE_INPUT: oci-input
+          RELEASE_WORK: ${{ runner.temp }}/oci-build
+          RELEASE_OUTPUT: ${{ github.workspace }}/oci-output
+          RELEASE_MELANGE_CONFIG: ${{ inputs.melange-config }}
+          RELEASE_APKO_CONFIG: ${{ inputs.apko-config }}
         shell: bash
         run: |
           set -euo pipefail
-          test -f "${APKO_CONFIG}"
-          test -f "${MELANGE_CONFIG}"
-          test -f oci-input/artifacts.json
+          # mise runs here without shims and without exporting PATH, so hand the
+          # CLI the pinned melange and apko binaries instead of putting them on
+          # PATH globally.
+          melange_path="$(mise which melange)"
+          if [ ! -x "${melange_path}" ]; then
+            echo "::error::Resolved melange path ${melange_path} is not executable."
+            exit 1
+          fi
+          apko_path="$(mise which apko)"
+          if [ ! -x "${apko_path}" ]; then
+            echo "::error::Resolved apko path ${apko_path} is not executable."
+            exit 1
+          fi
 
-          work=${RUNNER_TEMP}/oci-build
-          output=${GITHUB_WORKSPACE}/oci-output
-          rm -rf "${work}" "${output}"
-          mkdir -p \
-            "${work}/sources/x86_64" \
-            "${work}/sources/aarch64" \
-            "${output}/configuration" \
-            "${output}/packages" \
-            "${output}/layout" \
-            "${output}/sboms"
+          # Reproducible timestamp: the committer date of the tagged commit.
+          build_date="$(git show -s --format=%cI "${GITHUB_SHA}")"
 
-          input_root=$(realpath oci-input)
-          binary_name=
-          for mapping in amd64:x86_64 arm64:aarch64; do
-            goarch=${mapping%%:*}
-            apkarch=${mapping##*:}
-            record=$(jq -cer --arg arch "${goarch}" '
-              [
-                .[]
-                | select(
-                    .type == "Binary" and
-                    .goos == "linux" and
-                    .goarch == $arch
-                  )
-              ]
-              | if length == 1 then .[0] else error(
-                  "expected exactly one linux/" + $arch + " binary"
-                ) end
-            ' oci-input/artifacts.json)
-            artifact_path=$(jq -er '.path' <<<"${record}")
-            artifact_name=$(jq -er '.name' <<<"${record}")
-            relative_path=${artifact_path#dist/}
-            if [[ "${relative_path}" == "${artifact_path}" ]]; then
-              echo "::error::Unexpected GoReleaser artifact path: ${artifact_path}"
-              exit 1
-            fi
-            source_path=$(realpath "oci-input/${relative_path}")
-            if [[ "${source_path}" != "${input_root}/"* ]]; then
-              echo "::error::GoReleaser artifact escapes its handoff directory."
-              exit 1
-            fi
-            test -f "${source_path}"
-            description=$(file -b "${source_path}")
-            case "${goarch}" in
-              amd64) expected_machine='x86-64' ;;
-              arm64) expected_machine='ARM aarch64' ;;
-              *) echo "::error::Unexpected Go architecture: ${goarch}"; exit 1 ;;
-            esac
-            if [[
-              "${description}" != ELF\ 64-bit\ LSB\ executable* ||
-              "${description}" != *"${expected_machine}"* ||
-              "${description}" != *'statically linked'*
-            ]]; then
-              echo "::error::linux/${goarch} canonical input is not a static ${expected_machine} ELF executable: ${description}"
-              exit 1
-            fi
-            if [[ -n "${binary_name}" && "${artifact_name}" != "${binary_name}" ]]; then
-              echo '::error::Linux architecture binaries have different names.'
-              exit 1
-            fi
-            binary_name=${artifact_name}
-            install -m755 "${source_path}" "${work}/sources/${apkarch}/application"
-          done
+          # The CLI stages the canonical binaries, builds the signed APK
+          # repositories, and composes the locked multi-architecture layout.
+          # Version, namespace, provenance, and the local reference come from
+          # the Actions environment, so they are not passed as flags.
+          envelope="$(
+            RELEASE_MELANGE_PATH="${melange_path}" \
+            RELEASE_APKO_PATH="${apko_path}" \
+            RELEASE_BUILD_DATE="${build_date}" \
+              "${RELEASE_CLI}" image build --json
+          )"
+          printf '%s\n' "${envelope}"
 
-          version=${GITHUB_REF_NAME#v}
-          jq -n --arg version "${version}" '{version: $version}' > "${work}/vars.json"
-          build_date=$(git show -s --format=%cI "${GITHUB_SHA}")
-
-          install -m644 "${APKO_CONFIG}" "${output}/configuration/apko.yaml"
-          install -m644 "${MELANGE_CONFIG}" "${output}/configuration/melange.yaml"
-          (
-            cd "${work}"
-            sha256sum \
-              sources/x86_64/application \
-              sources/aarch64/application
-          ) > "${output}/canonical-binaries.sha256"
+          work="$(jq -er '.result.work' <<<"${envelope}")"
+          output="$(jq -er '.result.output' <<<"${envelope}")"
+          version="$(jq -er '.result.version' <<<"${envelope}")"
+          result_build_date="$(jq -er '.result.build_date' <<<"${envelope}")"
+          binary_name="$(jq -er '.result.binary' <<<"${envelope}")"
 
           {
-            echo "work=${work}"
-            echo "output=${output}"
-            echo "version=${version}"
-            echo "build-date=${build_date}"
-            echo "binary-name=${binary_name}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Build signed APK repositories
-        env:
-          BUILD_DATE: ${{ steps.stage.outputs.build-date }}
-          VERSION: ${{ steps.stage.outputs.version }}
-          WORK: ${{ steps.stage.outputs.work }}
-          OUTPUT: ${{ steps.stage.outputs.output }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mise exec -- melange compile \
-            --arch x86_64 \
-            --vars-file "${WORK}/vars.json" \
-            "${OUTPUT}/configuration/melange.yaml" >/dev/null
-          mise exec -- melange keygen "${WORK}/apk-signing.rsa"
-          install -m644 "${WORK}/apk-signing.rsa.pub" "${OUTPUT}/apk-signing.rsa.pub"
-
-          for arch in x86_64 aarch64; do
-            mise exec -- melange build \
-              --arch "${arch}" \
-              --runner docker \
-              --source-dir "${WORK}/sources/${arch}" \
-              --out-dir "${OUTPUT}/packages" \
-              --signing-key "${WORK}/apk-signing.rsa" \
-              --namespace "${GITHUB_REPOSITORY_OWNER}" \
-              --build-date "${BUILD_DATE}" \
-              --git-repo-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-              --git-commit "${GITHUB_SHA}" \
-              --vars-file "${WORK}/vars.json" \
-              --generate-provenance \
-              "${OUTPUT}/configuration/melange.yaml"
-          done
-
-          for arch in x86_64 aarch64; do
-            test -s "${OUTPUT}/packages/${arch}/APKINDEX.tar.gz"
-            package_count=$(compgen -G "${OUTPUT}/packages/${arch}/*.apk" | wc -l)
-            test "${package_count}" -eq 1
-          done
-
-      - name: Compose locked multi-architecture image
-        env:
-          BUILD_DATE: ${{ steps.stage.outputs.build-date }}
-          OUTPUT: ${{ steps.stage.outputs.output }}
-          VERSION: ${{ steps.stage.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "${OUTPUT}"
-          mise exec -- apko lock \
-            --arch x86_64 \
-            --arch aarch64 \
-            --repository-append packages \
-            --keyring-append apk-signing.rsa.pub \
-            --output apko.lock.json \
-            configuration/apko.yaml
-          mise exec -- apko build \
-            --arch x86_64 \
-            --arch aarch64 \
-            --repository-append packages \
-            --keyring-append apk-signing.rsa.pub \
-            --lockfile apko.lock.json \
-            --build-date "${BUILD_DATE}" \
-            --sbom-path sboms \
-            --annotations "org.opencontainers.image.version:${VERSION}" \
-            --annotations "org.opencontainers.image.revision:${GITHUB_SHA}" \
-            configuration/apko.yaml \
-            "local/${GITHUB_REPOSITORY#*/}:${VERSION}" \
-            layout/
+            printf 'work=%s\n' "${work}"
+            printf 'output=%s\n' "${output}"
+            printf 'version=%s\n' "${version}"
+            printf 'build-date=%s\n' "${result_build_date}"
+            printf 'binary-name=%s\n' "${binary_name}"
+          } >>"${GITHUB_OUTPUT}"
 
       - name: Verify authoritative OCI image
         id: verify
         env:
-          OUTPUT: ${{ steps.stage.outputs.output }}
-          VERSION: ${{ steps.stage.outputs.version }}
-          BINARY_NAME: ${{ steps.stage.outputs.binary-name }}
-          WORK: ${{ steps.stage.outputs.work }}
+          OUTPUT: ${{ steps.build.outputs.output }}
+          VERSION: ${{ steps.build.outputs.version }}
+          BINARY_NAME: ${{ steps.build.outputs.binary-name }}
+          WORK: ${{ steps.build.outputs.work }}
         shell: bash
         run: |
           set -euo pipefail

@@ -1,12 +1,13 @@
 # `release-cli` contract reference
 
-`release-cli` validates release data, reports machine-readable results, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` validates release data, reports machine-readable results, builds OCI layouts from staged binaries, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
+| `release-cli image build [--input DIR] [--work DIR] [--output DIR] [--melange-config PATH] [--apko-config PATH] [--build-date RFC3339] [--version VERSION] [--json]` | Build a locked multi-architecture OCI layout from staged Linux binaries. |
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
@@ -32,7 +33,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `image build`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -44,6 +45,54 @@ The `stage --json` result contains these fields:
 | `binaries` | object | Entries named `amd64` and `arm64` for the verified Linux binaries. |
 | `binaries.<arch>.path` | string | Original `<dist-basename>/`-prefixed path from `artifacts.json`. |
 | `binaries.<arch>.mode` | string | Observed permission bits in octal notation. |
+
+For `image build --json`, `command` is exactly `image build`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `schema` | string | Always `release.dev/image-build/v1`. |
+| `version` | string | Stable release version used for the APKs and image annotations. |
+| `binary` | string | Shared filename of the two canonical Linux binaries. |
+| `work` | string | Scratch workspace selected by `--work` or `RELEASE_WORK`. |
+| `output` | string | Authoritative artifact output root selected by `--output` or `RELEASE_OUTPUT`. |
+| `build_date` | string | Reproducible build time in RFC 3339 format. |
+| `packages` | array of objects | The two APKs, ordered as `linux/amd64` and then `linux/arm64`. |
+| `packages[].platform` | string | Canonical Linux platform: `linux/amd64` or `linux/arm64`. |
+| `packages[].arch` | string | Corresponding APK architecture: `x86_64` or `aarch64`. |
+| `packages[].package` | string | Output-root-relative path to the architecture's only APK. |
+| `packages[].binary_digest` | string | Verified canonical binary digest with the `sha256:` prefix. |
+
+For example, a successful build writes this envelope:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "image build",
+  "ok": true,
+  "result": {
+    "schema": "release.dev/image-build/v1",
+    "version": "1.2.3",
+    "binary": "release-cli",
+    "work": "/tmp/oci-build",
+    "output": "/tmp/oci-output",
+    "build_date": "2026-08-19T15:04:05Z",
+    "packages": [
+      {
+        "platform": "linux/amd64",
+        "arch": "x86_64",
+        "package": "packages/x86_64/release-cli-1.2.3-r0.apk",
+        "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "platform": "linux/arm64",
+        "arch": "aarch64",
+        "package": "packages/aarch64/release-cli-1.2.3-r0.apk",
+        "binary_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]
+  }
+}
+```
 
 The `verify bundle --json` result contains these fields:
 
@@ -280,7 +329,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `image build`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -291,6 +340,73 @@ Without `--json`, a successful `plan tags`, `publish github`, `publish oci prepa
 | `2` | Command usage or configuration is invalid. This includes an unsupported `--profile` value. |
 
 No other exit code is defined; in particular, code `3` has no meaning. An exit code does not make a general promise that a command is safe to run again.
+
+## OCI image build
+
+`release-cli image build` turns the canonical Linux binaries recorded by `stage --profile go` into signed APK repositories and a locked multi-architecture OCI layout.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Input artifact root | `--input` | `RELEASE_INPUT` | None. A path is required. |
+| Scratch workspace | `--work` | `RELEASE_WORK` | None. A path is required. |
+| Authoritative output root | `--output` | `RELEASE_OUTPUT` | None. A path is required. |
+| Melange configuration | `--melange-config` | `RELEASE_MELANGE_CONFIG` | `melange.yaml`. |
+| apko configuration | `--apko-config` | `RELEASE_APKO_CONFIG` | `apko.yaml`. |
+| Build date | `--build-date` | `RELEASE_BUILD_DATE` | None. An RFC 3339 value is required. |
+| Version | `--version` | `RELEASE_VERSION` | `GITHUB_REF_NAME` with one optional leading `v` stripped. |
+| Melange binary | None. | `RELEASE_MELANGE_PATH` | Resolve `melange` from `PATH` when invoked. |
+| apko binary | None. | `RELEASE_APKO_PATH` | Resolve `apko` from `PATH` when invoked. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+An explicitly set flag takes precedence over its environment variable. The version default applies only when `--version` and `RELEASE_VERSION` are absent. The command reads `oci-build-inputs.json` from the input artifact root.
+
+The command reads this GitHub Actions context:
+
+| Variable | Value |
+| --- | --- |
+| `GITHUB_REPOSITORY` | Repository in `owner/name` form. The name after the slash forms the local image reference `local/<name>:<version>`. |
+| `GITHUB_REPOSITORY_OWNER` | APK package namespace. |
+| `GITHUB_SERVER_URL` | Absolute GitHub server URL. Combined with `GITHUB_REPOSITORY` for the provenance source URL. |
+| `GITHUB_SHA` | Provenance commit SHA and OCI revision annotation. |
+| `GITHUB_REF_NAME` | Version source when neither the flag nor `RELEASE_VERSION` is set. |
+
+`--work` and `--output` must be disjoint. Equality is invalid, as is either path containing the other. The command exits with code `2` for any of these relationships. This separation keeps the ephemeral Melange signing key in the work directory and out of the output directory that becomes the authoritative uploaded artifact.
+
+The command performs these operations in order:
+
+1. Resolve and validate all flags, environment variables, and Actions context, including the work and output path relationship. Every configuration failure exits with code `2` before the command creates a directory or invokes a tool.
+2. Open the input artifact root, then decode and validate `oci-build-inputs.json`. A missing or malformed projection exits with code `1` without creating the work or output directory.
+3. Open the selected Melange and apko configuration files. An unopenable configuration file exits with code `1` without creating the work or output directory or invoking a tool.
+4. Construct the Melange and apko ports. Construction does not invoke either tool.
+5. Create the work and output roots when absent, then open them. Each root must be empty. The command refuses any pre-existing entry in either directory, so unrelated files cannot enter the build or the authoritative artifact.
+6. Create new source directories under the work root and new `configuration`, `packages`, `layout`, and `sboms` directories under the output root.
+7. Process `linux/amd64` and then `linux/arm64`. For each platform, stream the projected binary into `sources/<apk-arch>/application` while computing its SHA-256 digest, set mode `0755`, compare the computed digest with the projection, and inspect the copied executable.
+8. Write `vars.json` with the stable version and a trailing newline.
+9. Copy the selected Melange and apko configurations to `configuration/melange.yaml` and `configuration/apko.yaml` with mode `0644`.
+10. Write `canonical-binaries.sha256` in GNU coreutils form, with `x86_64` first and `aarch64` second.
+11. Use Melange to compile-check `x86_64`, generate an ephemeral signing key, and build the `x86_64` and `aarch64` APK repositories in that order.
+12. Require the builder's repository and public-key paths to match the requested paths, then inspect both APK repositories.
+13. Copy the generated public key to `apk-signing.rsa.pub` with mode `0644`. The private key remains in the scratch workspace.
+14. Use apko to write `apko.lock.json`, then compose the two-architecture layout and SBOMs with version and revision annotations.
+15. Require the lockfile, OCI layout marker and index, and both architecture SBOMs to be nonempty regular files.
+16. Return the build result, including both verified binary digests and APK paths.
+
+The build checks these boundaries:
+
+| Check | Requirement |
+| --- | --- |
+| Canonical binary digest | The SHA-256 digest computed from each downloaded binary must equal its digest in `oci-build-inputs.json`. |
+| Executable format | Each binary must be a statically linked, 64-bit, little-endian ELF executable with no interpreter or needed dynamic libraries. The `x86_64` source must have the x86-64 machine type; the `aarch64` source must have the AArch64 machine type. |
+| APK repository | Each architecture directory must contain a nonempty `APKINDEX.tar.gz` and exactly one nonempty `.apk` file. |
+| Composer outputs | `apko.lock.json`, `layout/index.json`, `layout/oci-layout`, `sboms/sbom-x86_64.spdx.json`, and `sboms/sbom-aarch64.spdx.json` must be nonempty regular files. |
+
+In this release, `image build` checks that the layout files and SBOMs exist but does not deeply verify their contents. The workflow's independent verifier checks layout structure, runtime invariants, and the digest of the exact `layout/index.json` bytes. That verifier also writes `image-digest.txt`; `image build` does not.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | The image build completed successfully. |
+| `1` | The input projection is missing or malformed; a Melange or apko configuration file cannot be opened; or a staged-content contract, executable, tool invocation, APK repository, or composer-output check failed. |
+| `2` | Command usage or configuration is invalid. |
 
 ## OCI tag planning
 
@@ -551,7 +667,21 @@ Artifact handoff integrity has three owners:
 - Each selected binary path starts with the distribution directory's basename; the remaining path is relative to that directory and remains confined beneath it.
 - Each selected binary is a regular executable file.
 
-A failed check exits with code `1` and writes a diagnostic that identifies the offending artifact. The command does not persist a staging manifest or modify the files it validates.
+A failed check exits with code `1` and writes a diagnostic that identifies the offending artifact. After all checks succeed, the command writes `oci-build-inputs.json` into the distribution directory for the downstream OCI builder.
+
+The projection has schema `release.dev/oci-build-inputs/v1` and contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `schema` | string | Always `release.dev/oci-build-inputs/v1`. |
+| `profile` | string | Staging profile that produced the projection. For this profile, the value is `go`. |
+| `binaries` | array of objects | Exactly one canonical binary for `linux/amd64` and one for `linux/arm64`. |
+| `binaries[].platform` | string | Canonical platform: `linux/amd64` or `linux/arm64`. |
+| `binaries[].name` | string | Shared, nonempty binary filename. Both Linux binaries must have the same name. |
+| `binaries[].path` | string | Confined, artifact-root-relative path to the canonical binary. |
+| `binaries[].digest` | string | SHA-256 digest of the canonical binary, as `sha256:` followed by 64 lowercase hexadecimal digits. |
+
+The projection records staged facts only. The image builder recomputes each digest from the downloaded bytes before packaging.
 
 ## Profiles
 

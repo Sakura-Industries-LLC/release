@@ -30,8 +30,11 @@ const (
 	testPayload       = "checksums.txt"
 	testBundle        = "checksums.txt.sigstore.json"
 	testArtifact      = "release.tar.gz"
-	// cancelWait is how long the cancel test waits for the fake to start
-	// and then for Replace to return.
+	// startWait is how long cancelAfterStart waits for the fake to
+	// create its start marker. The budget is load-dependent, not a
+	// contract, and only bounds how a hung fixture is reported.
+	startWait = 30 * time.Second
+	// cancelWait is how long Replace must return after cancel.
 	cancelWait = 2 * time.Second
 	// cancelPoll is the interval used while waiting for the fake to start.
 	cancelPoll = 10 * time.Millisecond
@@ -77,7 +80,7 @@ func TestReplaceInvokesGH(t *testing.T) {
 	record := filepath.Join(dir, "args")
 	cwdFile := filepath.Join(dir, "cwd")
 	tokenFile := filepath.Join(dir, "token")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	err := New(Options{
 		Path:    path,
@@ -106,7 +109,7 @@ func TestReplaceDropsInheritedGHToken(t *testing.T) {
 	dir := t.TempDir()
 	record := filepath.Join(dir, "args")
 	tokenFile := filepath.Join(dir, "token")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	err := New(Options{
 		Path:  path,
@@ -129,8 +132,7 @@ func TestReplaceNonzeroExitIncludesCodeAndOmitsToken(t *testing.T) {
 	skipWindows(t)
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	err := New(Options{
 		Path:  path,
@@ -152,7 +154,7 @@ func TestReplaceTruncatesLargeStderr(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	head := bytes.Repeat([]byte("H"), stderrTailLimit)
 	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
 	stderrFile := filepath.Join(dir, "stderr.txt")
@@ -180,8 +182,7 @@ func TestReplaceResolvesEmptyPath(t *testing.T) {
 	t.Run("finds gh on PATH", func(t *testing.T) {
 		dir := t.TempDir()
 		record := filepath.Join(dir, "args")
-		writeFake(t, dir)
-		t.Setenv("PATH", dir)
+		t.Setenv("PATH", filepath.Dir(fakePath))
 		t.Setenv("GHUP_RECORD", record)
 
 		err := New(Options{
@@ -212,7 +213,7 @@ func TestReplaceCanceledContextReturnsPromptly(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	err := cancelAfterStart(
 		t,
-		writeFake(t, dir),
+		writeFake(t),
 		fakeEnviron(t, "GHUP_STARTED="+started, "GHUP_SLEEP=30"),
 		started,
 	)
@@ -227,7 +228,7 @@ func TestReplaceRejectsBeforeStart(t *testing.T) {
 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	environ := fakeEnviron(t, "GHUP_STARTED="+started)
 	replacer := New(Options{Path: path, Token: rel.NewSecret(testToken), Environ: environ})
 	repo := mustRepo(t)
@@ -339,7 +340,7 @@ func skipWindows(t *testing.T) {
 
 // cancelAfterStart runs Replace, cancels after the fake starts, and
 // returns the call error. It fails the test if the call exceeds
-// [cancelWait].
+// [cancelWait] after cancel. Waiting for the start marker uses [startWait].
 func cancelAfterStart(
 	t *testing.T,
 	path string,
@@ -366,7 +367,7 @@ func cancelAfterStart(
 		_, statErr := os.Stat(started)
 
 		return statErr == nil
-	}, cancelWait, cancelPoll)
+	}, startWait, cancelPoll)
 	cancel()
 
 	select {
@@ -379,15 +380,35 @@ func cancelAfterStart(
 	return nil
 }
 
-// writeFake installs an executable fake gh script in dir.
-func writeFake(t *testing.T, dir string) string {
+// fakePath is the shared fake gh executable. TestMain writes it once
+// because a parallel sibling's fork/exec can inherit an open write
+// descriptor and fail with ETXTBSY on Linux.
+var fakePath string
+
+// TestMain writes the fake gh executable once before any test can exec
+// it. Writing per test races on Linux: a parallel sibling's fork/exec
+// can inherit an open write descriptor and fail with ETXTBSY.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "ghup-fake-")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(dir, defaultBinary)
+	if err := os.WriteFile(path, []byte(fakeGHScript), 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	fakePath = path
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// writeFake returns the shared fake gh executable written by TestMain.
+func writeFake(t *testing.T) string {
 	t.Helper()
 
-	path := filepath.Join(dir, defaultBinary)
-	require.NoError(t, os.WriteFile(path, []byte(fakeGHScript), 0o755))
-	require.NoError(t, os.Chmod(path, 0o755))
-
-	return path
+	return fakePath
 }
 
 // mkdirWork creates the child working directory used as [Options.Dir].

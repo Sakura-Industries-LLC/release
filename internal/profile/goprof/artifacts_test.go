@@ -134,8 +134,34 @@ func TestSelectBinaries(t *testing.T) {
 			},
 			wantErr: "is not dist/-relative",
 		},
+		{
+			name:     "differing binary names",
+			rootName: "dist",
+			records: []goprof.Record{
+				linuxBinaryNamed("amd64", "dist/release-cli_linux_amd64/release-cli", "release-cli"),
+				linuxBinaryNamed("arm64", "dist/release-cli_linux_arm64/other", "other"),
+			},
+			wantErr: `linux architecture binaries have different names "release-cli" and "other"`,
+		},
+		{
+			name:     "empty binary name",
+			rootName: "dist",
+			records: []goprof.Record{
+				linuxBinaryNamed("amd64", "dist/release-cli_linux_amd64/release-cli", ""),
+				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
+			},
+			wantErr: "binary name is empty",
+		},
+		{
+			name:     "binary name contains a path separator",
+			rootName: "dist",
+			records: []goprof.Record{
+				linuxBinaryNamed("amd64", "dist/release-cli_linux_amd64/release-cli", "foo/bar"),
+				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
+			},
+			wantErr: "contains a path separator",
+		},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -188,6 +214,8 @@ func TestParseArtifactsRealFixture(t *testing.T) {
 	require.Len(t, selected, 2)
 	assert.Equal(t, "amd64", selected[0].Arch.String())
 	assert.Equal(t, "arm64", selected[1].Arch.String())
+	assert.Equal(t, "release-cli", selected[0].Name.String())
+	assert.Equal(t, "release-cli", selected[1].Name.String())
 	assert.True(t, strings.HasPrefix(selected[0].Path.String(), "dist/"))
 	assert.True(t, strings.HasPrefix(selected[1].Path.String(), "dist/"))
 }
@@ -254,12 +282,17 @@ func TestCanonicalBinaryJSONRoundTripFields(t *testing.T) {
 
 // linuxBinary builds a linux Binary record for tests.
 func linuxBinary(arch, path string) goprof.Record {
+	return linuxBinaryNamed(arch, path, "release-cli")
+}
+
+// linuxBinaryNamed builds a linux Binary record with an explicit filename.
+func linuxBinaryNamed(arch, path, name string) goprof.Record {
 	return goprof.Record{
 		Type:   "Binary",
 		GOOS:   "linux",
 		GOARCH: arch,
 		Path:   path,
-		Name:   "release-cli",
+		Name:   name,
 	}
 }
 
@@ -269,6 +302,7 @@ func canonical(arch, path, relative string) goprof.CanonicalBinary {
 		Arch:         goprof.Arch(arch),
 		Path:         goprof.ArtifactPath(path),
 		RelativePath: goprof.RelativePath(relative),
+		Name:         goprof.BinaryName("release-cli"),
 	}
 }
 

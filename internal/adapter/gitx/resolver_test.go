@@ -21,8 +21,11 @@ const (
 	testLightweightTag = "v1.2.3"
 	testAnnotatedTag   = "v1.2.3-annotated"
 	testMissingTag     = "missing-tag"
-	// cancelWait is how long the cancel test waits for the fake to start
-	// and then for Resolve to return.
+	// startWait is how long cancelAfterStart waits for the fake to
+	// create its start marker. The budget is load-dependent, not a
+	// contract, and only bounds how a hung fixture is reported.
+	startWait = 30 * time.Second
+	// cancelWait is how long Resolve must return after cancel.
 	cancelWait = 2 * time.Second
 	// cancelPoll is the interval used while waiting for the fake to start.
 	cancelPoll    = 10 * time.Millisecond
@@ -91,7 +94,7 @@ func TestResolveMalformedSHANamesOutput(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	const garbage = "not-a-commit-sha"
 
 	_, err := New(Options{
@@ -111,7 +114,7 @@ func TestResolveEmptyTagRejectedBeforeStart(t *testing.T) {
 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	_, err := New(Options{
 		Path:    path,
@@ -131,7 +134,7 @@ func TestResolveCanceledContextReturnsPromptly(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	err := cancelAfterStart(
 		t,
-		writeFake(t, dir),
+		writeFake(t),
 		dir,
 		fakeEnviron(t, "GIT_STARTED="+started, "GIT_SLEEP=30"),
 		started,
@@ -145,7 +148,7 @@ func TestResolveRejectsNilGuardsBeforeStart(t *testing.T) {
 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	environ := fakeEnviron(t, "GIT_STARTED="+started)
 	resolver := New(Options{Path: path, Dir: dir, Environ: environ})
 	var nilCtx context.Context
@@ -266,7 +269,7 @@ func mustTag(t *testing.T, raw string) rel.Tag {
 
 // cancelAfterStart runs Resolve, cancels after the fake starts, and
 // returns the call error. It fails the test if the call exceeds
-// [cancelWait].
+// [cancelWait] after cancel. Waiting for the start marker uses [startWait].
 func cancelAfterStart(
 	t *testing.T,
 	path string,
@@ -289,7 +292,7 @@ func cancelAfterStart(
 		_, statErr := os.Stat(started)
 
 		return statErr == nil
-	}, cancelWait, cancelPoll)
+	}, startWait, cancelPoll)
 	cancel()
 
 	select {
@@ -302,15 +305,35 @@ func cancelAfterStart(
 	return nil
 }
 
-// writeFake installs an executable fake git script in dir.
-func writeFake(t *testing.T, dir string) string {
+// fakePath is the shared fake git executable. TestMain writes it once
+// because a parallel sibling's fork/exec can inherit an open write
+// descriptor and fail with ETXTBSY on Linux.
+var fakePath string
+
+// TestMain writes the fake git executable once before any test can exec
+// it. Writing per test races on Linux: a parallel sibling's fork/exec
+// can inherit an open write descriptor and fail with ETXTBSY.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "gitx-fake-")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(dir, defaultBinary)
+	if err := os.WriteFile(path, []byte(fakeGitScript), 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	fakePath = path
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// writeFake returns the shared fake git executable written by TestMain.
+func writeFake(t *testing.T) string {
 	t.Helper()
 
-	path := filepath.Join(dir, defaultBinary)
-	require.NoError(t, os.WriteFile(path, []byte(fakeGitScript), 0o755))
-	require.NoError(t, os.Chmod(path, 0o755))
-
-	return path
+	return fakePath
 }
 
 // fakeEnviron copies the process environment and appends extra KEY=value pairs.

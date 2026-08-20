@@ -16,6 +16,10 @@ jobs:
     name: Build release assets
     if: github.event.deleted == false
     permissions:
+      actions: read
+      # Required because the called workflow verifies the release-cli
+      # attestation while installing it; a callee cannot exceed this ceiling.
+      attestations: read
       contents: read
       id-token: write
     uses: meigma/release/.github/workflows/go-pre-publish.yml@fb8c8098ff27968fb3070e928c00e925f38c698e

@@ -38,9 +38,9 @@ cp examples/go-release/melange.yaml "$CONSUMER/"
 cp examples/go-release/apko.yaml "$CONSUMER/"
 ```
 
-The shared workflow uses Melange to package the canonical GoReleaser Linux binaries as signed APKs. apko composes those packages into one OCI index for `linux/amd64` and `linux/arm64`. It does not compile the command again.
+The shared builder runs `release-cli image build`. The workflow passes its `melange-config` and `apko-config` inputs to the command; their defaults remain `melange.yaml` and `apko.yaml`. The command uses Melange to package the canonical GoReleaser Linux binaries as signed APKs and apko to compose one OCI index for `linux/amd64` and `linux/arm64`. It does not compile the command again.
 
-Ensure the consumer's `mise.toml` and `mise.lock` contain the Melange and apko versions required by the target workflow revision. The current example uses Melange `0.59.1` and apko `1.2.37`.
+Ensure the consumer's `mise.toml` and `mise.lock` contain the tool versions required by the target workflow revision. The current workflow pins Melange `0.59.1` and apko `1.2.37`, resolves both executable paths with `mise which`, and supplies them to `release-cli image build` through `RELEASE_MELANGE_PATH` and `RELEASE_APKO_PATH`.
 
 ## 2. Set project values
 
@@ -75,13 +75,13 @@ Keep these contract values:
 - the CA certificate package and `SSL_CERT_FILE`; and
 - `/usr/bin` in `PATH`.
 
-Do not add a compiler or source build to either configuration. The authoritative executable comes from GoReleaser through the verified `oci-input` artifact.
+Do not add a compiler or source build to either configuration. The authoritative executable comes from GoReleaser through the verified `oci-build-inputs` artifact.
 
 ## 3. Add the builder and publisher jobs
 
 Use the complete caller in `examples/go-release/.github/workflows/release.yml` as the source. The image path consists of two jobs:
 
-1. `oci-image` calls `go-oci-build.yml` with the canonical Linux artifact ID and digest from `release-assets`.
+1. `oci-image` calls `go-oci-build.yml` with the `oci-build-inputs` artifact ID and digest exposed by the `release-assets` job.
 2. `oci-publish` calls `publish-oci-image.yml` with the authoritative OCI artifact ID, artifact digest, and image index digest from `oci-image`.
 
 The builder job must grant these permissions:
@@ -126,7 +126,7 @@ publish-image: false
 publish-release: false
 ```
 
-The run still builds the APK repository and OCI index, verifies the canonical binaries and image metadata, validates the publisher's artifact handoff, and runs `release-cli publish oci prepare --dry-run`. The dry run validates the layout, digest, registry state, and tag plan without a registry write. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release. The publisher's `image-reference` output remains empty.
+The run still executes `release-cli image build` to build the APK repository and OCI index and to verify the projected canonical binary digests. The workflow then verifies the image metadata and index digest, validates the publisher's artifact handoff, and runs `release-cli publish oci prepare --dry-run`. The dry run validates the layout, digest, registry state, and tag plan without a registry write. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release. The publisher's `image-reference` output remains empty.
 
 Inspect the `oci-image` workflow artifact. It must contain:
 

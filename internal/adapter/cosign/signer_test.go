@@ -20,8 +20,11 @@ import (
 const (
 	testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	testImage  = "ghcr.io/owner/repo"
-	// cancelWait is how long the cancel test waits for the fake to start
-	// and then for SignRecursive to return.
+	// startWait is how long cancelAfterStart waits for the fake to
+	// create its start marker. The budget is load-dependent, not a
+	// contract, and only bounds how a hung fixture is reported.
+	startWait = 30 * time.Second
+	// cancelWait is how long SignRecursive must return after cancel.
 	cancelWait = 2 * time.Second
 	// cancelPoll is the interval used while waiting for the fake to start.
 	cancelPoll       = 10 * time.Millisecond
@@ -55,7 +58,7 @@ func TestSignRecursiveInvokesCosign(t *testing.T) {
 
 	dir := t.TempDir()
 	record := filepath.Join(dir, "args")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	err := New(Options{
 		Path:    path,
@@ -69,8 +72,7 @@ func TestSignRecursiveNonzeroExitIncludesCodeAndStderr(t *testing.T) {
 	skipWindows(t)
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 
 	err := New(Options{
 		Path: path,
@@ -89,7 +91,7 @@ func TestSignRecursiveTruncatesLargeStderr(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	head := bytes.Repeat([]byte("H"), stderrTailLimit)
 	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
 	stderrFile := filepath.Join(dir, "stderr.txt")
@@ -115,8 +117,7 @@ func TestSignRecursiveResolvesEmptyPath(t *testing.T) {
 	t.Run("finds cosign on PATH", func(t *testing.T) {
 		dir := t.TempDir()
 		record := filepath.Join(dir, "args")
-		writeFake(t, dir)
-		t.Setenv("PATH", dir)
+		t.Setenv("PATH", filepath.Dir(fakeSignPath))
 		t.Setenv("COSIGN_RECORD", record)
 
 		err := New(Options{}).SignRecursive(context.Background(), mustRef(t))
@@ -142,7 +143,7 @@ func TestSignRecursiveCanceledContextReturnsPromptly(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	err := cancelAfterStart(
 		t,
-		writeFake(t, dir),
+		writeFake(t),
 		fakeEnviron(t, "COSIGN_STARTED="+started, "COSIGN_SLEEP=30"),
 		started,
 		cancelWait,
@@ -159,7 +160,7 @@ func TestSignRecursiveCanceledContextUnblocksOrphanGrandchild(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	err := cancelAfterStart(
 		t,
-		writeFake(t, dir),
+		writeFake(t),
 		fakeEnviron(t, "COSIGN_STARTED="+started, "COSIGN_ORPHAN=1", "COSIGN_SLEEP=30"),
 		started,
 		waitDelay+cancelWait,
@@ -172,8 +173,7 @@ func TestSignRecursiveWritesStderrSink(t *testing.T) {
 	skipWindows(t)
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	var sink bytes.Buffer
 
 	err := New(Options{
@@ -191,7 +191,7 @@ func TestSignRecursiveRejectsBeforeStart(t *testing.T) {
 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
-	path := writeFake(t, dir)
+	path := writeFake(t)
 	environ := fakeEnviron(t, "COSIGN_STARTED="+started)
 	signer := New(Options{Path: path, Environ: environ})
 
@@ -261,7 +261,8 @@ func skipWindows(t *testing.T) {
 }
 
 // cancelAfterStart runs SignRecursive, cancels after the fake starts, and
-// returns the call error. It fails the test if the call exceeds bound.
+// returns the call error. It fails the test if the call exceeds bound
+// after cancel. Waiting for the start marker uses [startWait].
 func cancelAfterStart(
 	t *testing.T,
 	path string,
@@ -283,7 +284,7 @@ func cancelAfterStart(
 		_, err := os.Stat(started)
 
 		return err == nil
-	}, bound, cancelPoll)
+	}, startWait, cancelPoll)
 	cancel()
 
 	select {
@@ -296,15 +297,57 @@ func cancelAfterStart(
 	return nil
 }
 
-// writeFake installs an executable fake cosign script in dir.
-func writeFake(t *testing.T, dir string) string {
+// fakeSignPath is the shared fake cosign used by Signer tests.
+// TestMain writes it once because a parallel sibling's fork/exec can
+// inherit an open write descriptor and fail with ETXTBSY on Linux.
+var fakeSignPath string
+
+// fakeVerifyPath is the shared fake cosign used by Verifier tests.
+// TestMain writes it once because a parallel sibling's fork/exec can
+// inherit an open write descriptor and fail with ETXTBSY on Linux.
+var fakeVerifyPath string
+
+// TestMain writes the package's fake cosign executables once before any
+// test can exec them. Writing per test races on Linux: a parallel
+// sibling's fork/exec can inherit an open write descriptor and fail
+// with ETXTBSY.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "cosign-fake-")
+	if err != nil {
+		panic(err)
+	}
+	signDir := filepath.Join(dir, "sign")
+	verifyDir := filepath.Join(dir, "verify")
+	if err := os.Mkdir(signDir, 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	if err := os.Mkdir(verifyDir, 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	signPath := filepath.Join(signDir, defaultBinary)
+	if err := os.WriteFile(signPath, []byte(fakeCosignScript), 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	verifyPath := filepath.Join(verifyDir, defaultBinary)
+	if err := os.WriteFile(verifyPath, []byte(verifyFakeScript), 0o755); err != nil {
+		os.RemoveAll(dir)
+		panic(err)
+	}
+	fakeSignPath = signPath
+	fakeVerifyPath = verifyPath
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// writeFake returns the shared fake cosign executable written by TestMain.
+func writeFake(t *testing.T) string {
 	t.Helper()
 
-	path := filepath.Join(dir, defaultBinary)
-	require.NoError(t, os.WriteFile(path, []byte(fakeCosignScript), 0o755))
-	require.NoError(t, os.Chmod(path, 0o755))
-
-	return path
+	return fakeSignPath
 }
 
 // fakeEnviron copies the process environment and appends extra KEY=value pairs.

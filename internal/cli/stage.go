@@ -72,6 +72,9 @@ func runStage(options Options) error {
 	if err != nil {
 		return writeCommandResult(options, "stage", nil, err)
 	}
+	if err := writeImageInputs(root, report); err != nil {
+		return writeCommandResult(options, "stage", nil, err)
+	}
 	if !settings.JSON {
 		return nil
 	}
@@ -88,4 +91,27 @@ func runStage(options Options) error {
 	}
 
 	return writeCommandResult(options, "stage", result, nil)
+}
+
+// writeImageInputs persists the OCI build-input projection under dist.
+func writeImageInputs(root *os.Root, report stage.Report) error {
+	inputs, err := stage.NewImageInputs(profileGo, report)
+	if err != nil {
+		return err
+	}
+
+	file, err := root.Create(stage.ImageInputsName)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", stage.ImageInputsName, err)
+	}
+	err = stage.EncodeImageInputs(file, inputs)
+	closeErr := file.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close %s: %w", stage.ImageInputsName, closeErr)
+	}
+
+	return nil
 }

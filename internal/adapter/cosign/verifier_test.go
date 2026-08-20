@@ -51,7 +51,7 @@ func TestVerifyInvokesCosign(t *testing.T) {
 	work := mkdirWork(t, dir)
 	record := filepath.Join(dir, "args")
 	cwdFile := filepath.Join(dir, "cwd")
-	path := writeVerifyFake(t, dir)
+	path := writeVerifyFake(t)
 
 	err := NewVerifier(VerifierOptions{
 		Path:    path,
@@ -68,7 +68,7 @@ func TestVerifyNonzeroExitIncludesCodeAndStderr(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := writeVerifyFake(t, dir)
+	path := writeVerifyFake(t)
 
 	err := NewVerifier(VerifierOptions{
 		Path: path,
@@ -88,7 +88,7 @@ func TestVerifyTruncatesLargeStderr(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := writeVerifyFake(t, dir)
+	path := writeVerifyFake(t)
 	head := bytes.Repeat([]byte("H"), stderrTailLimit)
 	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
 	stderrFile := filepath.Join(dir, "stderr.txt")
@@ -116,8 +116,7 @@ func TestVerifyResolvesEmptyPath(t *testing.T) {
 		dir := t.TempDir()
 		work := mkdirWork(t, dir)
 		record := filepath.Join(dir, "args")
-		writeVerifyFake(t, dir)
-		t.Setenv("PATH", dir)
+		t.Setenv("PATH", filepath.Dir(fakeVerifyPath))
 		t.Setenv("COSIGN_RECORD", record)
 
 		err := NewVerifier(VerifierOptions{Dir: work}).Verify(context.Background(), mustRequest())
@@ -143,7 +142,7 @@ func TestVerifyCanceledContextReturnsPromptly(t *testing.T) {
 	started := filepath.Join(dir, "started")
 	err := cancelVerifyAfterStart(
 		t,
-		writeVerifyFake(t, dir),
+		writeVerifyFake(t),
 		mkdirWork(t, dir),
 		fakeEnviron(t, "COSIGN_STARTED="+started, "COSIGN_SLEEP=30"),
 		started,
@@ -159,7 +158,7 @@ func TestVerifyRejectsBeforeStart(t *testing.T) {
 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
-	path := writeVerifyFake(t, dir)
+	path := writeVerifyFake(t)
 	work := mkdirWork(t, dir)
 	environ := fakeEnviron(t, "COSIGN_STARTED="+started)
 	verifier := NewVerifier(VerifierOptions{Path: path, Dir: work, Environ: environ})
@@ -236,7 +235,8 @@ func TestVerifyRejectsBeforeStart(t *testing.T) {
 }
 
 // cancelVerifyAfterStart runs Verify, cancels after the fake starts, and
-// returns the call error. It fails the test if the call exceeds bound.
+// returns the call error. It fails the test if the call exceeds bound
+// after cancel. Waiting for the start marker uses [startWait].
 func cancelVerifyAfterStart(
 	t *testing.T,
 	path string,
@@ -262,7 +262,7 @@ func cancelVerifyAfterStart(
 		_, statErr := os.Stat(started)
 
 		return statErr == nil
-	}, bound, cancelPoll)
+	}, startWait, cancelPoll)
 	cancel()
 
 	select {
@@ -275,15 +275,11 @@ func cancelVerifyAfterStart(
 	return nil
 }
 
-// writeVerifyFake installs an executable fake cosign script in dir.
-func writeVerifyFake(t *testing.T, dir string) string {
+// writeVerifyFake returns the shared fake cosign executable written by TestMain.
+func writeVerifyFake(t *testing.T) string {
 	t.Helper()
 
-	path := filepath.Join(dir, defaultBinary)
-	require.NoError(t, os.WriteFile(path, []byte(verifyFakeScript), 0o755))
-	require.NoError(t, os.Chmod(path, 0o755))
-
-	return path
+	return fakeVerifyPath
 }
 
 // mkdirWork creates the child working directory used as [VerifierOptions.Dir].

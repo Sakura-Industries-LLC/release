@@ -7,14 +7,17 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/meigma/release/internal/adapter/apko"
 	"github.com/meigma/release/internal/adapter/cosign"
 	"github.com/meigma/release/internal/adapter/ghact"
 	"github.com/meigma/release/internal/adapter/ghrel"
 	"github.com/meigma/release/internal/adapter/ghup"
 	"github.com/meigma/release/internal/adapter/gitx"
+	"github.com/meigma/release/internal/adapter/melange"
 	"github.com/meigma/release/internal/adapter/reg"
 	"github.com/meigma/release/internal/cli"
 	"github.com/meigma/release/internal/rel"
+	"github.com/meigma/release/internal/stage/image"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -82,6 +85,18 @@ func run() int {
 			return gitx.New(gitx.Options{
 				Path:   path,
 				Dir:    dir,
+				Stderr: os.Stderr,
+			}), nil
+		},
+		NewAPKBuilder: func(path string) (image.APKBuilder, error) {
+			return melange.New(melange.Options{
+				Path:   path,
+				Stderr: os.Stderr,
+			}), nil
+		},
+		NewComposer: func(path string) (image.Composer, error) {
+			return apko.New(apko.Options{
+				Path:   path,
 				Stderr: os.Stderr,
 			}), nil
 		},

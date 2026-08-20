@@ -9,9 +9,9 @@ For adoption steps, see [Configure OCI image publication](../how-to/configure-oc
 ```text
 GoReleaser producer
   -> canonical linux/amd64 and linux/arm64 binaries
-  -> verified oci-input artifact
-  -> Melange signed APK repository
-  -> locked apko multi-architecture OCI layout
+  -> verified oci-build-inputs artifact
+  -> release-cli signed APK repositories
+  -> release-cli locked apko multi-architecture OCI layout
   -> verified oci-image artifact
   -> release-cli digest-addressed GHCR preparation and recursive Cosign signatures
   -> GitHub and registry provenance/SBOM attestations
@@ -19,7 +19,7 @@ GoReleaser producer
   -> public GitHub Release
 ```
 
-The image builder consumes prebuilt GoReleaser binaries. Melange packages them without compiling, stripping, or otherwise replacing them. The publisher consumes the builder's OCI layout and does not check out or execute consumer repository code.
+The image builder consumes prebuilt GoReleaser binaries. `release-cli image build` uses Melange to package them without compiling, stripping, or otherwise replacing them, then uses apko to compose the OCI layout. The publisher consumes that layout and does not check out or execute consumer repository code.
 
 ## Reusable workflows
 
@@ -41,8 +41,8 @@ Moving branches and tags are not supported workflow references.
 
 | Input | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `artifact-id` | yes | none | Numeric ID of the canonical Linux binary artifact from `go-pre-publish.yml`. |
-| `artifact-digest` | yes | none | GitHub artifact SHA-256 digest for that artifact. |
+| `artifact-id` | yes | none | Numeric ID of the verified `oci-build-inputs` artifact from `go-pre-publish.yml`. |
+| `artifact-digest` | yes | none | GitHub artifact SHA-256 digest for the `oci-build-inputs` artifact. |
 | `cli-path` | no | empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `melange-config` | no | `melange.yaml` | Consumer-relative Melange configuration path. |
 | `apko-config` | no | `apko.yaml` | Consumer-relative apko configuration path. |
@@ -56,14 +56,19 @@ It returns:
 | `artifact-digest` | GitHub artifact SHA-256 digest. This covers the uploaded ZIP transport, not the OCI index. |
 | `image-digest` | `sha256:` digest of the exact bytes in `layout/index.json`. |
 
-The caller grants `actions: read` and `contents: read`. The builder has no registry credentials, package write permission, attestation permission, or release credential.
+The caller grants `actions: read`, `attestations: read`, and `contents: read`. `attestations: read` is required because the builder verifies the `release-cli` attestation while installing it, and a called workflow can never exceed its caller's ceiling. The builder has no registry credentials, package write permission, attestation write permission, or release credential.
 
 After the tag gate, checkout, mise, QEMU, and tool proof, the builder's relevant sequence is:
 
 1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
 2. Run `setup-release-cli`.
 3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
-4. Download the canonical Linux binaries with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+4. Download the `oci-build-inputs` artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+5. Run `release-cli image build` to verify the projected canonical binary digests, build the signed APK repositories, and compose the locked OCI layout.
+6. Run the workflow's independent verifier to check the layout, runtime invariants, and OCI index digest.
+7. Upload the verified `oci-image` artifact.
+
+The producer artifact is named `oci-build-inputs`. It contains `oci-build-inputs.json` beside `artifacts.json` and the canonical `linux/amd64` and `linux/arm64` binary trees. The projection records the shared binary name, confined path, and SHA-256 digest for each platform. Before packaging, `release-cli image build` recomputes both digests from the downloaded bytes and requires them to match the projection.
 
 ## Publisher interface
 
@@ -140,7 +145,7 @@ The binaries must be static and executable. The OCI builder rejects a missing ta
 - preserve mode `0755` and ownership `0:0`; and
 - name the package consumed by `apko.yaml`.
 
-The workflow injects the stable tag version and writes an ephemeral APK signing key. It retains the public key, signed APKs, signed repository indexes, package SBOMs, and Melange provenance in the workflow artifact. The private signing key is never uploaded.
+`release-cli image build` injects the stable tag version and writes an ephemeral APK signing key. The workflow artifact retains the public key, signed APKs, signed repository indexes, package SBOMs, and Melange provenance. The private signing key is never uploaded.
 
 ### apko
 
@@ -180,7 +185,7 @@ Artifact handoff integrity has three independent owners:
 
 1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
 2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
-3. The SHA-pinned `actions/github-script` staging step verifies the extracted OCI content. It requires the recorded, recomputed, and caller-supplied OCI index digests to be identical, one Linux manifest for `amd64`, one for `arm64`, all referenced blobs, and parseable SPDX JSON for each architecture.
+3. The publisher's SHA-pinned `actions/github-script` content verifier checks the extracted OCI artifact. It requires the recorded, recomputed, and caller-supplied OCI index digests to be identical, one Linux manifest for `amd64`, one for `arm64`, all referenced blobs, and parseable SPDX JSON for each architecture.
 
 `release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
 
@@ -227,7 +232,7 @@ ghcr.io/owner/repository@sha256:<index-digest>
 
 ### Runtime invariants
 
-For both platforms, the builder verifies:
+For both platforms, the workflow's independent verifier checks:
 
 - Linux operating system and expected architecture;
 - one apko index containing exactly two platform manifests;
@@ -288,7 +293,7 @@ The current boundary is deliberately split:
 - `publish-oci-image.yml` does not check out consumer source and writes only to the caller's GHCR package and attestation store; and
 - `publish-github-release.yml` waits for image publication but uses a separate short-lived Release App token for release mutation.
 
-The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The SHA-pinned `actions/github-script` staging step verifies the OCI layout, and the three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
+The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The builder uses `release-cli image build` to verify the projected canonical binary digests and compose the OCI layout. The builder workflow's independent verifier checks the layout, runtime invariants, and index digest, and the three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
 
 The workflow artifact is temporary transport, not a public distribution channel. The OCI digest, registry content, Cosign identity, and attestation identities form the public verification boundary.
 

@@ -132,6 +132,7 @@ jobs:
           name: oci-build-inputs
           path: |
             dist/artifacts.json
+            dist/oci-build-inputs.json
             dist/*_linux_amd64*/**
             dist/*_linux_arm64*/**
           if-no-files-found: error

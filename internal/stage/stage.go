@@ -1,8 +1,11 @@
 package stage
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 
 	"github.com/meigma/release/internal/profile/goprof"
@@ -13,8 +16,9 @@ import (
 // It parses checksums.txt, streams every claimed payload through SHA-256,
 // requires a nonempty regular checksums.txt.sigstore.json, selects exactly
 // one linux/amd64 and one linux/arm64 Binary from artifacts.json, and
-// confirms each selected path is a confined regular executable. A nil
-// filesystem is rejected.
+// confirms each selected path is a confined regular executable. Each
+// selected binary is then streamed through SHA-256 so the report can
+// carry its digest and filename. A nil filesystem is rejected.
 func Stage(fsys fs.FS, root goprof.RootName) (Report, error) {
 	if fsys == nil {
 		return Report{}, errors.New("filesystem is nil")
@@ -68,12 +72,35 @@ func stage(fsys fs.FS, root goprof.RootName) (Report, error) {
 		if err != nil {
 			return Report{}, fmt.Errorf("%s: %w", binary.Path, err)
 		}
+		digest, err := hashBinary(fsys, binary.RelativePath.String())
+		if err != nil {
+			return Report{}, err
+		}
 		report.Binaries = append(report.Binaries, Binary{
-			Arch: binary.Arch.String(),
-			Path: binary.Path.String(),
-			Mode: info.Mode().Perm(),
+			Arch:         binary.Arch.String(),
+			Path:         binary.Path.String(),
+			RelativePath: binary.RelativePath.String(),
+			Name:         binary.Name.String(),
+			Digest:       digest,
+			Mode:         info.Mode().Perm(),
 		})
 	}
 
 	return report, nil
+}
+
+// hashBinary streams name through SHA-256 and returns the lowercase hex digest.
+func hashBinary(fsys fs.FS, name string) (Digest, error) {
+	file, err := fsys.Open(name)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", name, err)
+	}
+	defer file.Close()
+
+	sum := sha256.New()
+	if _, err := io.Copy(sum, file); err != nil {
+		return "", fmt.Errorf("hash %s: %w", name, err)
+	}
+
+	return Digest(hex.EncodeToString(sum.Sum(nil))), nil
 }

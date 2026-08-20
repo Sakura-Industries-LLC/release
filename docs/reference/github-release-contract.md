@@ -45,6 +45,7 @@ jobs:
     name: Build release assets
     if: github.event.deleted == false
     permissions:
+      actions: read
       attestations: read
       contents: read
       id-token: write
@@ -55,6 +56,7 @@ jobs:
     needs: release-assets
     permissions:
       actions: read
+      attestations: read
       contents: read
     uses: meigma/release/.github/workflows/go-oci-build.yml@FULL_SHA
     with:
@@ -131,6 +133,7 @@ The job requires these caller permissions:
 
 | Permission | Access | Use |
 | --- | --- | --- |
+| `actions` | `read` | Download the same-run `release-cli` artifact when the unsupported `cli-path` input is used. |
 | `attestations` | `read` | Verify the downloaded `release-cli` archive attestation during setup. |
 | `contents` | `read` | Check out the consumer repository and its tag history. |
 | `id-token` | `write` | Obtain the OIDC identity used by keyless Cosign signing. |

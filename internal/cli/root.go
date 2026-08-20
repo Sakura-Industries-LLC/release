@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meigma/release/internal/rel"
+	"github.com/meigma/release/internal/stage/image"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -36,6 +37,20 @@ const (
 	envIdentity = "RELEASE_IDENTITY"
 	// envIssuer is the environment variable for --issuer.
 	envIssuer = "RELEASE_ISSUER"
+	// envInput is the environment variable for --input.
+	envInput = "RELEASE_INPUT"
+	// envWork is the environment variable for --work.
+	envWork = "RELEASE_WORK"
+	// envOutput is the environment variable for --output.
+	envOutput = "RELEASE_OUTPUT"
+	// envMelangeConfig is the environment variable for --melange-config.
+	envMelangeConfig = "RELEASE_MELANGE_CONFIG"
+	// envApkoConfig is the environment variable for --apko-config.
+	envApkoConfig = "RELEASE_APKO_CONFIG"
+	// envBuildDate is the environment variable for --build-date.
+	envBuildDate = "RELEASE_BUILD_DATE"
+	// envRepositoryOwner is the Actions repository owner used as the APK namespace.
+	envRepositoryOwner = "GITHUB_REPOSITORY_OWNER"
 )
 
 // LookupEnv looks up an environment variable.
@@ -67,6 +82,18 @@ type Settings struct {
 	Digest string
 	// Layout is the selected --layout / RELEASE_LAYOUT path.
 	Layout string
+	// Input is the selected --input / RELEASE_INPUT path.
+	Input string
+	// Work is the selected --work / RELEASE_WORK path.
+	Work string
+	// Output is the selected --output / RELEASE_OUTPUT path.
+	Output string
+	// MelangeConfig is the selected --melange-config / RELEASE_MELANGE_CONFIG path.
+	MelangeConfig string
+	// ApkoConfig is the selected --apko-config / RELEASE_APKO_CONFIG path.
+	ApkoConfig string
+	// BuildDate is the selected --build-date / RELEASE_BUILD_DATE value.
+	BuildDate string
 	// DryRun reports whether --dry-run / RELEASE_DRY_RUN requested a dry run.
 	DryRun bool
 	// PlainHTTP reports whether --plain-http requested HTTP.
@@ -163,6 +190,18 @@ type Options struct {
 	// An empty path resolves git from PATH. An empty directory inherits
 	// the process working directory.
 	NewRefResolver func(path, dir string) (pubgh.RefResolver, error)
+	// APKBuilder, when set, is the Melange APK-build port. Tests inject it.
+	APKBuilder image.APKBuilder
+	// NewAPKBuilder constructs the Melange APK-build port from a binary path.
+	//
+	// An empty path resolves melange from PATH.
+	NewAPKBuilder func(path string) (image.APKBuilder, error)
+	// Composer, when set, is the apko compose port. Tests inject it.
+	Composer image.Composer
+	// NewComposer constructs the apko compose port from a binary path.
+	//
+	// An empty path resolves apko from PATH.
+	NewComposer func(path string) (image.Composer, error)
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -203,6 +242,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	publish := newPublishCommand(options)
 	publish.AddCommand(newGitHubCommand(options))
 	root.AddCommand(publish)
+	root.AddCommand(newImageCommand(options))
 	root.AddCommand(newVersionCommand(options))
 
 	return root
@@ -248,17 +288,23 @@ func (options Options) withDefaults() Options {
 // resolveSettings applies flag-over-env precedence for the executing command.
 func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 	settings := Settings{
-		Profile:    resolveString(cmd, flagProfile, envProfile, lookup),
-		Dist:       resolveString(cmd, flagDist, envDist, lookup),
-		Identity:   resolveString(cmd, flagIdentity, envIdentity, lookup),
-		Issuer:     resolveString(cmd, flagIssuer, envIssuer, lookup),
-		ArtifactID: resolveString(cmd, flagArtifactID, envArtifactID, lookup),
-		Image:      resolveString(cmd, flagImage, envImage, lookup),
-		Version:    resolveString(cmd, flagVersion, envVersion, lookup),
-		Digest:     resolveString(cmd, flagDigest, envDigest, lookup),
-		Layout:     resolveString(cmd, flagLayout, envLayout, lookup),
-		PlainHTTP:  resolveFlagBool(cmd, flagPlainHTTP),
-		NoUndraft:  resolveFlagBool(cmd, flagNoUndraft),
+		Profile:       resolveString(cmd, flagProfile, envProfile, lookup),
+		Dist:          resolveString(cmd, flagDist, envDist, lookup),
+		Identity:      resolveString(cmd, flagIdentity, envIdentity, lookup),
+		Issuer:        resolveString(cmd, flagIssuer, envIssuer, lookup),
+		ArtifactID:    resolveString(cmd, flagArtifactID, envArtifactID, lookup),
+		Image:         resolveString(cmd, flagImage, envImage, lookup),
+		Version:       resolveString(cmd, flagVersion, envVersion, lookup),
+		Digest:        resolveString(cmd, flagDigest, envDigest, lookup),
+		Layout:        resolveString(cmd, flagLayout, envLayout, lookup),
+		Input:         resolveString(cmd, flagInput, envInput, lookup),
+		Work:          resolveString(cmd, flagWork, envWork, lookup),
+		Output:        resolveString(cmd, flagOutput, envOutput, lookup),
+		MelangeConfig: resolveString(cmd, flagMelangeConfig, envMelangeConfig, lookup),
+		ApkoConfig:    resolveString(cmd, flagApkoConfig, envApkoConfig, lookup),
+		BuildDate:     resolveString(cmd, flagBuildDate, envBuildDate, lookup),
+		PlainHTTP:     resolveFlagBool(cmd, flagPlainHTTP),
+		NoUndraft:     resolveFlagBool(cmd, flagNoUndraft),
 	}
 	dryRun, err := resolveBool(cmd, flagDryRun, envDryRun, lookup)
 	if err != nil {

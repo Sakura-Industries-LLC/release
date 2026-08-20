@@ -71,6 +71,12 @@ type Binary struct {
 	Arch string
 	// Path is the original GoReleaser path, including the --dist basename prefix.
 	Path string
+	// RelativePath is Path with the leading dist root name stripped.
+	RelativePath string
+	// Name is the binary filename, identical across selected platforms.
+	Name string
+	// Digest is the SHA-256 digest of the staged binary.
+	Digest Digest
 	// Mode is the observed permission bits.
 	Mode fs.FileMode
 }

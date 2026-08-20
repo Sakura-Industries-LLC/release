@@ -60,3 +60,13 @@ packages:
       TagCommitter:
         config:
           filename: tag_committer.go
+  github.com/meigma/release/internal/stage/image:
+    interfaces:
+      APKBuilder:
+        config:
+          dir: internal/adapter/melange/mocks
+          filename: apk_builder.go
+      Composer:
+        config:
+          dir: internal/adapter/apko/mocks
+          filename: composer.go

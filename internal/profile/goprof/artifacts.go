@@ -61,6 +61,11 @@ type ArtifactPath string
 // The zero value is invalid; construct with [ParseRelativePath].
 type RelativePath string
 
+// BinaryName is the filename of a selected Linux binary.
+//
+// The only constructor is [ParseBinaryName]. The zero value is invalid.
+type BinaryName string
+
 // CanonicalBinary is a selected linux/{amd64,arm64} Binary record.
 //
 // Values are produced only by [SelectBinaries]. A zero CanonicalBinary is
@@ -72,6 +77,8 @@ type CanonicalBinary struct {
 	Path ArtifactPath
 	// RelativePath is Path with the leading root name stripped for [io/fs.FS] lookup.
 	RelativePath RelativePath
+	// Name is the binary filename, identical across selected platforms.
+	Name BinaryName
 }
 
 // ParseRootName constructs a [RootName] from a directory basename.
@@ -133,6 +140,29 @@ func (p RelativePath) String() string {
 	return string(p)
 }
 
+// ParseBinaryName constructs a [BinaryName] from an artifact filename.
+//
+// Names must be nonempty, must not contain a path separator, and must not
+// be "." or "..".
+func ParseBinaryName(raw string) (BinaryName, error) {
+	if raw == "" {
+		return "", errors.New("binary name is empty")
+	}
+	if raw == "." || raw == ".." {
+		return "", fmt.Errorf("binary name %q is not a filename", raw)
+	}
+	if strings.ContainsAny(raw, `/\`) {
+		return "", fmt.Errorf("binary name %q contains a path separator", raw)
+	}
+
+	return BinaryName(raw), nil
+}
+
+// String returns the binary filename.
+func (n BinaryName) String() string {
+	return string(n)
+}
+
 // requiredArchs returns the closed set of Linux GOARCH values that must
 // each appear exactly once as a Binary record.
 func requiredArchs() []string {
@@ -166,48 +196,26 @@ func parseArtifacts(r io.Reader) ([]Record, error) {
 //
 // Zero, duplicate, or missing architectures fail with a diagnostic that names
 // the architectures that were found. Paths must be relative to root, the
-// basename of the --dist directory (GoReleaser writes "<dir>/...").
+// basename of the --dist directory (GoReleaser writes "<dir>/..."). After
+// selection succeeds, every binary must carry the same [BinaryName].
 func SelectBinaries(records []Record, root RootName) ([]CanonicalBinary, error) {
 	if root == "" {
 		return nil, errors.New("dist root name is empty")
 	}
 	required := requiredArchs()
 	selected := make(map[Arch]CanonicalBinary, len(required))
+	rawNames := make(map[Arch]string, len(required))
 	var found []string
 
 	for _, record := range records {
 		if record.Type != binaryType || record.GOOS != linuxOS {
 			continue
 		}
-		found = append(found, record.GOARCH)
-		arch, err := ParseArch(record.GOARCH)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"unexpected linux/%s Binary record; found %s",
-				record.GOARCH,
-				joinArchs(found),
-			)
-		}
-		if _, exists := selected[arch]; exists {
-			return nil, fmt.Errorf(
-				"duplicate linux/%s Binary record; found %s",
-				record.GOARCH,
-				joinArchs(found),
-			)
-		}
-		relative, err := rootRelative(record.Path, root)
+		next, err := selectLinuxBinary(record, root, selected, rawNames, found)
 		if err != nil {
 			return nil, err
 		}
-		artifactPath, err := ParseArtifactPath(record.Path)
-		if err != nil {
-			return nil, err
-		}
-		selected[arch] = CanonicalBinary{
-			Arch:         arch,
-			Path:         artifactPath,
-			RelativePath: relative,
-		}
+		found = next
 	}
 
 	var missing []string
@@ -229,7 +237,73 @@ func SelectBinaries(records []Record, root RootName) ([]CanonicalBinary, error) 
 		)
 	}
 
-	return out, nil
+	return assignSharedNames(out, rawNames)
+}
+
+// selectLinuxBinary records one linux Binary for its architecture.
+//
+// found is the architectures seen so far, including this record's GOARCH.
+func selectLinuxBinary(
+	record Record,
+	root RootName,
+	selected map[Arch]CanonicalBinary,
+	rawNames map[Arch]string,
+	found []string,
+) ([]string, error) {
+	found = append(found, record.GOARCH)
+	arch, err := ParseArch(record.GOARCH)
+	if err != nil {
+		return found, fmt.Errorf(
+			"unexpected linux/%s Binary record; found %s",
+			record.GOARCH,
+			joinArchs(found),
+		)
+	}
+	if _, exists := selected[arch]; exists {
+		return found, fmt.Errorf(
+			"duplicate linux/%s Binary record; found %s",
+			record.GOARCH,
+			joinArchs(found),
+		)
+	}
+	relative, err := rootRelative(record.Path, root)
+	if err != nil {
+		return found, err
+	}
+	artifactPath, err := ParseArtifactPath(record.Path)
+	if err != nil {
+		return found, err
+	}
+	selected[arch] = CanonicalBinary{
+		Arch:         arch,
+		Path:         artifactPath,
+		RelativePath: relative,
+	}
+	rawNames[arch] = record.Name
+
+	return found, nil
+}
+
+// assignSharedNames requires every selected binary to share one filename.
+func assignSharedNames(binaries []CanonicalBinary, rawNames map[Arch]string) ([]CanonicalBinary, error) {
+	var shared BinaryName
+	for i, binary := range binaries {
+		parsed, err := ParseBinaryName(rawNames[binary.Arch])
+		if err != nil {
+			return nil, err
+		}
+		if i > 0 && parsed != shared {
+			return nil, fmt.Errorf(
+				"linux architecture binaries have different names %q and %q",
+				shared,
+				parsed,
+			)
+		}
+		shared = parsed
+		binaries[i].Name = parsed
+	}
+
+	return binaries, nil
 }
 
 // VerifyBinaries checks each selected path against fsys.
