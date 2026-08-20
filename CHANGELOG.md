@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/meigma/release/compare/v0.1.1...v0.1.2) (2026-08-20)
+
+
+### Features
+
+* **release:** attach native Linux packages ([#21](https://github.com/meigma/release/issues/21)) ([956fb30](https://github.com/meigma/release/commit/956fb30c73915c31abd11227f893ee9d4ef360c7))
+
 ## [0.1.1](https://github.com/meigma/release/compare/v0.1.0...v0.1.1) (2026-08-20)
 
 
