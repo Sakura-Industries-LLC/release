@@ -44,7 +44,6 @@ Moving branches and tags are not supported workflow references.
 | --- | --- | --- | --- |
 | `artifact-id` | yes | none | Numeric ID of the verified `oci-build-inputs` artifact from `go-pre-publish.yml`. |
 | `artifact-digest` | yes | none | GitHub artifact SHA-256 digest for the `oci-build-inputs` artifact. |
-| `cli-path` | no | empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `melange-config` | no | `melange.yaml` | Consumer-relative Melange configuration path. |
 | `apko-config` | no | `apko.yaml` | Consumer-relative apko configuration path. |
 
@@ -57,17 +56,16 @@ It returns:
 | `artifact-digest` | GitHub artifact SHA-256 digest. This covers the uploaded ZIP transport, not the OCI index. |
 | `image-digest` | `sha256:` digest of the exact bytes in `layout/index.json`. |
 
-The caller grants `actions: read`, `attestations: read`, and `contents: read`. `attestations: read` is required because the builder verifies the `release-cli` attestation while installing it, and a called workflow can never exceed its caller's ceiling. The builder has no registry credentials, package write permission, attestation write permission, or release credential.
+The caller grants `actions: read`, `attestations: read`, and `contents: read`. `attestations: read` lets consumer repositories verify the released `release-cli` archive; the release repository's source build does not use it. A called workflow can never exceed its caller's ceiling. The builder has no registry credentials, package write permission, attestation write permission, or release credential.
 
 After the tag gate, checkout, mise, QEMU, and tool proof, the builder's relevant sequence is:
 
-1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
-2. Run `setup-release-cli`.
-3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
-4. Download the `oci-build-inputs` artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
-5. Run `release-cli image build` to verify the projected canonical binary digests, build the signed APK repositories, and compose the locked OCI layout.
-6. Run `release-cli image verify` to check the layout, runtime invariants, architecture SBOMs, and digest of the exact OCI index bytes.
-7. Upload the verified `oci-image` artifact.
+1. Run `setup-release-cli`.
+2. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+3. Download the `oci-build-inputs` artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+4. Run `release-cli image build` to verify the projected canonical binary digests, build the signed APK repositories, and compose the locked OCI layout.
+5. Run `release-cli image verify` to check the layout, runtime invariants, architecture SBOMs, and digest of the exact OCI index bytes.
+6. Upload the verified `oci-image` artifact.
 
 `release-cli image verify` writes `image-digest.txt` in the authoritative output root. The builder workflow delegates all image-contract checks to this command and contains no shell verification logic. The upload step remains unchanged and includes `image-digest.txt` in the `oci-image` artifact.
 
@@ -81,7 +79,6 @@ The producer artifact is named `oci-build-inputs`. It contains `oci-build-inputs
 | --- | --- | --- | --- |
 | `artifact-id` | yes | none | Numeric ID of the `oci-image` artifact from `go-oci-build.yml`. |
 | `artifact-digest` | yes | none | Expected GitHub artifact SHA-256 digest. |
-| `cli-path` | no | empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `image-digest` | yes | none | Expected OCI index digest. |
 | `publish-image` | no | `false` | When `true`, push, sign, and attest the verified image. When `false`, stop after verification. |
 
@@ -112,16 +109,15 @@ permissions:
 
 After the stable-tag gate and tool setup, the publisher's relevant sequence is:
 
-1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
-2. Run `setup-release-cli`.
-3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
-4. Download the authoritative OCI image with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
-5. Verify the OCI layout contents and expose the image, version, index, and platform values used by later steps.
-6. When `publish-image` is `true`, log in to GHCR for Cosign and registry-backed attestations.
-7. Run `release-cli publish oci prepare`. Publication runs push and sign the digest-addressed image; verification-only runs add `--dry-run` and make no registry writes. The workflow captures the command's JSON envelope for finalization.
-8. When `publish-image` is `true`, run the three SHA-pinned `actions/attest` steps for index provenance and the two platform SBOMs.
-9. When `publish-image` is `true`, pipe the captured prepare envelope to `release-cli publish oci finalize --result -`.
-10. After a publication attempt, remove the GHCR entry from the Docker configuration even when an earlier publication step failed.
+1. Run `setup-release-cli`.
+2. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+3. Download the authoritative OCI image with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+4. Verify the OCI layout contents and expose the image, version, index, and platform values used by later steps.
+5. When `publish-image` is `true`, log in to GHCR for Cosign and registry-backed attestations.
+6. Run `release-cli publish oci prepare`. Publication runs push and sign the digest-addressed image; verification-only runs add `--dry-run` and make no registry writes. The workflow captures the command's JSON envelope for finalization.
+7. When `publish-image` is `true`, run the three SHA-pinned `actions/attest` steps for index provenance and the two platform SBOMs.
+8. When `publish-image` is `true`, pipe the captured prepare envelope to `release-cli publish oci finalize --result -`.
+9. After a publication attempt, remove the GHCR entry from the Docker configuration even when an earlier publication step failed.
 
 The workflow sets `image-reference` only for a publication run. It remains empty when `publish-image` is `false`.
 

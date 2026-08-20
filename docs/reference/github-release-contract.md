@@ -45,7 +45,6 @@ jobs:
     name: Build release assets
     if: github.event.deleted == false
     permissions:
-      actions: read
       attestations: read
       contents: read
       id-token: write
@@ -113,11 +112,7 @@ The caller concurrency key serializes runs for the same workflow and tag. `cance
 
 ### `go-pre-publish.yml`
 
-The Go producer accepts one optional input and no secrets.
-
-| Input | Type | Required | Default | Value |
-| --- | --- | --- | --- | --- |
-| `cli-path` | string | No | Empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
+The Go producer accepts no inputs and no secrets.
 
 The producer loads `setup-release-cli` from the same pinned release revision
 with `uses: $/.github/actions/setup-release-cli`. The caller does not pin the
@@ -133,8 +128,7 @@ The job requires these caller permissions:
 
 | Permission | Access | Use |
 | --- | --- | --- |
-| `actions` | `read` | Download the same-run `release-cli` artifact when the unsupported `cli-path` input is used. |
-| `attestations` | `read` | Verify the downloaded `release-cli` archive attestation during setup. |
+| `attestations` | `read` | Verify the released `release-cli` archive for consumer repositories; self-release source builds do not use this permission. |
 | `contents` | `read` | Check out the consumer repository and its tag history. |
 | `id-token` | `write` | Obtain the OIDC identity used by keyless Cosign signing. |
 
@@ -144,10 +138,9 @@ After the tag gate and checkout, the producer's relevant sequence is:
 
 1. Install Go, GoReleaser, Syft, and Cosign with mise.
 2. Verify that `go`, `goreleaser`, `syft`, and `cosign` resolve to mise-managed executables, then report the Go version. This workflow-owned proof does not build the release bundle.
-3. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
-4. Run `setup-release-cli` from the same pinned release revision.
-5. Resolve the pinned GoReleaser executable with `mise which goreleaser`, require it to be executable, and pass it through `RELEASE_GORELEASER_PATH`. Run `release-cli stage --profile go --dist dist` under `mise exec`.
-6. Upload the canonical Linux binary artifact and the authoritative release asset artifact.
+3. Run `setup-release-cli` from the same pinned release revision.
+4. Resolve the pinned GoReleaser executable with `mise which goreleaser`, require it to be executable, and pass it through `RELEASE_GORELEASER_PATH`. Run `release-cli stage --profile go --dist dist` under `mise exec`.
+5. Upload the canonical Linux binary artifact and the authoritative release asset artifact.
 
 The producer contains no direct GoReleaser command. `release-cli stage --profile go` owns the build, validation, and OCI input projection.
 
@@ -157,7 +150,6 @@ The producer contains no direct GoReleaser command. `release-cli stage --profile
 | --- | --- | --- | --- | --- |
 | `artifact-id` | string | Yes | None | Positive integer ID from `go-pre-publish.yml`. |
 | `artifact-digest` | string | Yes | None | Expected SHA-256 digest from `go-pre-publish.yml`. The comparison accepts the digest with or without a `sha256:` prefix. |
-| `cli-path` | string | No | Empty | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. Normal consumers omit this input. |
 | `checksum-signing-workflow-ref` | string | Yes | None | Exact owner, repository, workflow path, and revision used as the checksum certificate identity after the `https://github.com/` prefix is added. |
 | `release-app-client-id` | string | Yes | None | Client ID used to mint the Release App installation token. |
 | `publish-release` | boolean | No | `true` | Whether to change the populated draft to a non-draft release after verification. |
@@ -187,13 +179,12 @@ The workflow runs on `ubuntu-24.04` with a 10-minute timeout. The reusable workf
 
 After the tag gate, checkout, tool setup, and Release App token step, the publisher's relevant sequence is:
 
-1. If `cli-path` is nonempty, place the same-run dogfood binary at that path.
-2. Run `setup-release-cli` from the same pinned release revision.
-3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
-4. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
-5. Run `release-cli verify bundle --dist dist --identity https://github.com/<checksum-signing-workflow-ref> --json`.
-6. Create the GitHub build-provenance attestation with `dist/checksums.txt` as `subject-checksums`.
-7. Run `release-cli publish github --dist dist --json`. When `publish-release` is `false`, also pass `--no-undraft`.
+1. Run `setup-release-cli` from the same pinned release revision.
+2. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
+3. Download the artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
+4. Run `release-cli verify bundle --dist dist --identity https://github.com/<checksum-signing-workflow-ref> --json`.
+5. Create the GitHub build-provenance attestation with `dist/checksums.txt` as `subject-checksums`.
+6. Run `release-cli publish github --dist dist --json`. When `publish-release` is `false`, also pass `--no-undraft`.
 
 The final CLI command rebuilds the expected closed asset set from `dist`, binds the tag to the workflow commit, discovers the release, uploads and converges expected assets, and conditionally makes the release public. Its result URL becomes the workflow's `release-url` output.
 

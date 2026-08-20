@@ -797,15 +797,20 @@ The projection records staged facts only. The image builder recomputes each dige
 
 The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: $/.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. `FULL_SHA` is the documentation placeholder for the released commit and will be replaced when this program's final pull request lands. Consumers cannot select an independent CLI version.
 
-The setup action has one optional input:
+The setup action has two optional inputs:
 
 | Input | Required | Meaning |
 | --- | --- | --- |
 | `cli-path` | No | Unsupported path to a caller-supplied `release-cli` binary. The caller owns the workflow-to-binary pairing. |
+| `local-build` | No | Acquisition policy: `auto`, `always`, or `never`. The default is `auto`. |
 
-With no `cli-path`, the action requires `github.action_repository` and a runner-provided `gh` with attestation support. It downloads exactly one Linux amd64 archive and `checksums.txt`, verifies the archive's unique SHA-256 entry, and runs `gh attestation verify` against the action repository with `--signer-workflow <action_repository>/.github/workflows/publish-github-release.yml` and `--deny-self-hosted-runners`. It then requires the binary's reported version and protocol to match the action stamps. A mismatch fails before the workflow invokes a CLI command.
+With `local-build: auto`, the action builds from source only when the caller and reusable workflow belong to the same repository and the current version tag matches the action's stamped version. `always` forces a source build, and `never` forces installation of the stamped release. A nonempty `cli-path` takes precedence unless it conflicts with `local-build: always`.
 
-With `cli-path`, the action requires the supplied path to exist, be a regular file, and be executable, then runs `version --json`. A version or protocol mismatch produces a warning and continues. This path supports this repository's dogfood release, but it is not a compatibility promise.
+For a source build, the action requires the sibling action and reusable workflow to come from the same repository, uses the source beside that action, and requires the runner-provided reusable workflow SHA. It reads the pinned Go patch version from `go.mod`, restores exact OS, architecture, Go version, and source SHA caches for `GOCACHE` and `GOMODCACHE`, and builds with the stamped version and workflow SHA. A cache miss performs a complete build. The executable itself is not cached.
+
+For an installed release, the action requires `github.action_repository` and a runner-provided `gh` with attestation support. It downloads exactly one Linux amd64 archive and `checksums.txt`, verifies the archive's unique SHA-256 entry, and runs `gh attestation verify` against the action repository with `--signer-workflow <action_repository>/.github/workflows/publish-github-release.yml` and `--deny-self-hosted-runners`.
+
+Both supported acquisition modes require the binary's reported version and protocol to match the action stamps before a workflow invokes a CLI command. With `cli-path`, the supplied path must exist, be a regular file, and be executable. A version or protocol mismatch warns and continues because the caller owns that unsupported pairing.
 
 The action exposes `cli-path`, `reported-version`, and `reported-protocol` as outputs.
 

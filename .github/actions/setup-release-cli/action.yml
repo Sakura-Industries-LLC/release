@@ -1,8 +1,8 @@
 name: Set up release-cli
 description: >
-  Acquires release-cli either from the release stamped into this file
-  (supported path) or from a caller-supplied binary (unsupported escape
-  hatch), then enforces the version/protocol guard.
+  Acquires release-cli from a cached local build, the release stamped into
+  this file, or a caller-supplied binary, then enforces the version/protocol
+  guard.
 
 inputs:
   cli-path:
@@ -12,6 +12,12 @@ inputs:
       failing.
     required: false
     default: ''
+  local-build:
+    description: >
+      Selects source acquisition: auto builds a matching version-tag self-release,
+      always builds the action source, and never installs the stamped release.
+    required: false
+    default: auto
 
 outputs:
   cli-path:
@@ -27,35 +33,160 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Resolve and verify the CLI
-      id: resolve
+    - name: Select CLI acquisition mode
+      id: select
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        CALLER_REPOSITORY: ${{ github.repository }}
+        CLI_PATH_INPUT: ${{ inputs.cli-path }}
+        LOCAL_BUILD: ${{ inputs.local-build }}
+        REF_NAME: ${{ github.ref_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+        WORKFLOW_SHA: ${{ job.workflow_sha }}
         # Release Please keeps this value in step with the released binary.
         # x-release-please-start-version
         DEFAULT_VERSION: 0.1.0
         # x-release-please-end
-        EXPECTED_PROTOCOL: 1
-        CLI_PATH_INPUT: ${{ inputs.cli-path }}
-        SOURCE_REPOSITORY: ${{ github.action_repository }}
-        GH_TOKEN: ${{ inputs.cli-path == '' && github.token || '' }}
       run: |
         set -euo pipefail
 
+        if [[ ! "${DEFAULT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error::Invalid stamped release-cli version ${DEFAULT_VERSION}."
+          exit 1
+        fi
+
+        case "${LOCAL_BUILD}" in
+          auto|always|never) ;;
+          *)
+            echo "::error::local-build must be auto, always, or never; got ${LOCAL_BUILD}."
+            exit 1
+            ;;
+        esac
+
         if [[ -n "${CLI_PATH_INPUT}" ]]; then
-          # Caller-supplied binary: no download, no attestation, no token.
-          unset GH_TOKEN
+          if [[ "${LOCAL_BUILD}" == "always" ]]; then
+            echo '::error::cli-path and local-build=always are mutually exclusive.'
+            exit 1
+          fi
           mode=cli-path
+        elif [[ "${LOCAL_BUILD}" == "always" ]]; then
+          mode=local-build
+        elif [[ "${LOCAL_BUILD}" == "never" ]]; then
+          mode=installed
+        elif [[
+          -n "${WORKFLOW_REPOSITORY}" &&
+          "${CALLER_REPOSITORY}" == "${WORKFLOW_REPOSITORY}" &&
+          "${REF_TYPE}" == "tag" &&
+          "${REF_NAME}" == "v${DEFAULT_VERSION}"
+        ]]; then
+          mode=local-build
+        else
+          mode=installed
+        fi
+
+        {
+          echo "mode=${mode}"
+          echo "default-version=${DEFAULT_VERSION}"
+        } >>"${GITHUB_OUTPUT}"
+
+        if [[ "${mode}" != "local-build" ]]; then
+          exit 0
+        fi
+
+        if [[ -z "${ACTION_REPOSITORY}" || "${ACTION_REPOSITORY}" != "${WORKFLOW_REPOSITORY}" ]]; then
+          echo '::error::Local builds require the action and reusable workflow to come from the same repository.'
+          exit 1
+        fi
+
+        if [[ ! "${WORKFLOW_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::Cannot derive an exact reusable-workflow source SHA; got ${WORKFLOW_SHA}."
+          exit 1
+        fi
+
+        source_root="$(realpath "${ACTION_PATH}/../../..")"
+        test -f "${source_root}/go.mod"
+        test -f "${source_root}/mise.toml"
+        test -d "${source_root}/cmd/release-cli"
+
+        go_version="$(awk '$1 == "go" { print $2; exit }' "${source_root}/go.mod")"
+        if [[ ! "${go_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Cannot derive a pinned Go patch version from go.mod."
+          exit 1
+        fi
+
+        mkdir -p \
+          "${RUNNER_TEMP}/release-cli-go-cache/build" \
+          "${RUNNER_TEMP}/release-cli-go-cache/mod" \
+          "${RUNNER_TEMP}/release-cli-local"
+
+        {
+          echo "source-root=${source_root}"
+          echo "source-sha=${WORKFLOW_SHA}"
+          echo "go-version=${go_version}"
+          echo "cache-key=release-cli-go-${RUNNER_OS}-${RUNNER_ARCH}-go${go_version}-${WORKFLOW_SHA}"
+        } >>"${GITHUB_OUTPUT}"
+
+    - name: Set up local Go toolchain
+      if: steps.select.outputs.mode == 'local-build'
+      uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+      with:
+        version: 2026.8.8
+        working_directory: ${{ steps.select.outputs.source-root }}
+        install_args: go
+        cache: true
+        cache_key: mise-release-cli-go-{{platform}}-{{version}}-{{file_hash}}
+        add_shims_to_path: false
+        export_path: false
+
+    - name: Restore local Go caches
+      if: steps.select.outputs.mode == 'local-build'
+      id: go-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ runner.temp }}/release-cli-go-cache/build
+          ${{ runner.temp }}/release-cli-go-cache/mod
+        key: ${{ steps.select.outputs.cache-key }}
+
+    - name: Resolve and verify the CLI
+      id: resolve
+      shell: bash
+      env:
+        CLI_PATH_INPUT: ${{ inputs.cli-path }}
+        DEFAULT_VERSION: ${{ steps.select.outputs.default-version }}
+        EXPECTED_PROTOCOL: 1
+        GOCACHE: ${{ runner.temp }}/release-cli-go-cache/build
+        GOMODCACHE: ${{ runner.temp }}/release-cli-go-cache/mod
+        MISE_EXEC_AUTO_INSTALL: 'false'
+        MODE: ${{ steps.select.outputs.mode }}
+        SOURCE_REPOSITORY: ${{ github.action_repository }}
+        SOURCE_ROOT: ${{ steps.select.outputs.source-root }}
+        SOURCE_SHA: ${{ steps.select.outputs.source-sha }}
+        GH_TOKEN: ${{ steps.select.outputs.mode == 'installed' && github.token || '' }}
+      run: |
+        set -euo pipefail
+
+        mode="${MODE}"
+        if [[ "${mode}" == "local-build" ]]; then
+          unset GH_TOKEN
+          binary="${RUNNER_TEMP}/release-cli-local/release-cli"
+          (
+            cd "${SOURCE_ROOT}"
+            mise exec -- go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${DEFAULT_VERSION} -X main.commit=${SOURCE_SHA}" \
+              -o "${binary}" \
+              ./cmd/release-cli
+          )
+        elif [[ "${mode}" == "cli-path" ]]; then
+          unset GH_TOKEN
           binary="$(cd "$(dirname "${CLI_PATH_INPUT}")" && pwd)/$(basename "${CLI_PATH_INPUT}")"
           test -f "${binary}"
           test -x "${binary}"
         else
-          mode=installed
-
-          # Download source and attestation trust root are the same value.
-          # Never fall back to GITHUB_REPOSITORY: that is the consumer on
-          # an external call, and a missing action_repository would verify
-          # an archive against the consumer itself.
           if [[ -z "${SOURCE_REPOSITORY:-}" ]]; then
             echo '::error::Cannot derive the release-cli distribution repository. Reference this action as $/.github/actions/setup-release-cli from a reusable workflow, or as owner/repo/path@ref. A local ./.github/actions path leaves github.action_repository empty.'
             exit 1
@@ -119,9 +250,22 @@ runs:
           chmod +x "${binary}"
         fi
 
+        if [[ "${binary}" == *$'\n'* || "${binary}" == *$'\r'* ]]; then
+          echo '::error::release-cli path contains a line break.'
+          exit 1
+        fi
+
         report="$("${binary}" version --json)"
-        reported_version="$(printf '%s' "${report}" | jq -r .result.version)"
-        reported_protocol="$(printf '%s' "${report}" | jq -r .result.protocol)"
+        reported_version="$(jq -er '.result.version | strings' <<<"${report}")"
+        reported_protocol="$(jq -er '.result.protocol | numbers' <<<"${report}")"
+        if [[ ! "${reported_version}" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]]; then
+          echo '::error::release-cli reported an invalid version value.'
+          exit 1
+        fi
+        if [[ ! "${reported_protocol}" =~ ^[0-9]+$ ]]; then
+          echo '::error::release-cli reported a non-integer protocol value.'
+          exit 1
+        fi
 
         {
           echo "cli-path=${binary}"
@@ -131,19 +275,17 @@ runs:
 
         echo "mode=${mode} version=${reported_version} protocol=${reported_protocol}"
 
-        if [[ "${mode}" == "installed" ]]; then
-          # Supported path: fail closed before any command runs.
+        if [[ "${mode}" == "installed" || "${mode}" == "local-build" ]]; then
           if [[ "${reported_version}" != "${DEFAULT_VERSION}" ]]; then
-            echo "::error::Installed CLI reported version ${reported_version}, expected ${DEFAULT_VERSION}."
+            echo "::error::${mode} CLI reported version ${reported_version}, expected ${DEFAULT_VERSION}."
             exit 1
           fi
           if [[ "${reported_protocol}" != "${EXPECTED_PROTOCOL}" ]]; then
-            echo "::error::Installed CLI reported protocol ${reported_protocol}, expected ${EXPECTED_PROTOCOL}."
+            echo "::error::${mode} CLI reported protocol ${reported_protocol}, expected ${EXPECTED_PROTOCOL}."
             exit 1
           fi
-          echo "installed path verified: version and protocol match the release unit"
+          echo "${mode} path verified: version and protocol match the release unit"
         else
-          # Unsupported path: report, warn, and continue.
           if [[ "${reported_protocol}" != "${EXPECTED_PROTOCOL}" ]]; then
             echo "::warning::Off-contract binary: protocol ${reported_protocol} != expected ${EXPECTED_PROTOCOL}. You supplied the binary, you own the pairing."
           fi

@@ -45,6 +45,8 @@ jobs:
       - name: Set up release-cli
         id: setup-cli
         uses: $/.github/actions/setup-release-cli
+        with:
+          local-build: never
 
       - name: Assert installed version and protocol
         env:

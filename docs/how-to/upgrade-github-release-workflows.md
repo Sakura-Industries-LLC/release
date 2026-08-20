@@ -106,9 +106,8 @@ Keep both `publish-image: false` and `publish-release: false` for the upgrade re
 
 The one full commit SHA selects the workflows, their composite setup action, and
 the `release-cli` version used by those workflows. Do not add a separate CLI
-version setting. Leave the optional `cli-path` input unset in a normal consumer.
-It is an unsupported escape hatch for this repository's dogfood release and for
-callers that own the workflow-to-binary pairing.
+version setting or CLI path. A consumer repository automatically installs the
+verified CLI release stamped into that revision.
 
 Apply every other target-contract change in that same upgrade:
 

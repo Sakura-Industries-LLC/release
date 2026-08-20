@@ -125,9 +125,9 @@ The producer obtains `release-cli` through the shared setup action and runs
 artifact. The `stage` command builds the release bundle by invoking exactly
 `goreleaser release --clean --skip=publish`, then validates and projects the
 result. `release.disable: true` and `--skip=publish` are independent publication
-controls. Leave the optional `cli-path` input unset in a consumer repository.
-It is an unsupported escape hatch for this repository's dogfood release and for
-callers that own the workflow-to-binary pairing.
+controls. Do not add a separate CLI path or version to the reusable workflow
+calls. A consumer repository automatically installs the verified CLI release
+stamped into the pinned workflow revision.
 
 After downloading the authoritative artifact, the publisher runs `release-cli verify bundle`. The command verifies the local closed file set before it verifies the detached Sigstore bundle against the exact certificate identity. The workflow then creates the GitHub build-provenance attestation with `dist/checksums.txt` and runs `release-cli publish github --dist dist --json`. The CLI rebuilds the expected names and digests from the verified local bundle, reconciles the matching draft, uploads expected names, and verifies GitHub's asset states and digests. Keep this verify, attest, then publish order. For the reasoning behind these separate responsibilities, see [Why release trust is split across workflows and the CLI](../explanation/release-trust-boundaries.md).
 

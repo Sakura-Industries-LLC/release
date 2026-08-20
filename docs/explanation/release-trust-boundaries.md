@@ -50,10 +50,10 @@ forwarder of the callee's request.
 
 The distinction matters for both safety and operation. A producer cannot gain
 `packages: write` merely because a future edit requests it inside the reusable
-workflow. Conversely, omitting `attestations: read` from a calling producer or
-builder job prevents the setup action from verifying the CLI archive. The run
-fails at that boundary rather than silently continuing with broader or
-unverified behavior.
+workflow. Consumer repositories also must grant `attestations: read` so the
+setup action can verify the released CLI archive. The release repository builds
+the CLI from its matching tag instead, but the reusable contract keeps the
+permission needed by consumers. Missing permissions fail at that boundary.
 
 The publisher ceilings differ because their effects differ. The OCI publisher
 has package, attestation, and OIDC permissions but receives no GitHub App key.
@@ -69,27 +69,35 @@ artifact would leave the verifier and publisher executable unauthenticated.
 `setup-release-cli` therefore establishes the CLI's identity before any workflow
 invokes it.
 
-On the supported path, the composite action derives the distribution repository
-from `github.action_repository`. It downloads the stamped release archive and
-`checksums.txt` from that repository, requires one checksum entry for the
-archive, and verifies the archive's SHA-256 digest. The checksum detects changed
-bytes, but a checksum downloaded beside an archive is not an independent
-provenance statement. The action consequently runs `gh attestation verify`
+When the release repository runs its own matching version tag, the composite
+action builds `release-cli` from the source beside the pinned action. It requires
+the runner-provided reusable workflow SHA, installs the Go patch version pinned
+by the release unit, and stamps that SHA into the executable. Exact-key
+`GOCACHE` and `GOMODCACHE` entries accelerate later jobs in the sequential
+release graph. A cache miss remains a complete build, and the executable itself
+is never restored from a cache.
+
+This source path removes the same-run CLI artifact handoff, but it deliberately
+puts a Go compiler and source execution in each publishing job. The workflow SHA
+and version/protocol check bind each executable to the release unit. The cache
+is only an optimization and is not part of that identity.
+
+Consumer repositories use the installed path. The action derives the
+distribution repository from `github.action_repository`, downloads the stamped
+release archive and `checksums.txt`, requires one checksum entry for the
+archive, and verifies its SHA-256 digest. It then runs `gh attestation verify`
 against the release repository and its `publish-github-release.yml` signer,
 with self-hosted runners denied, before extracting and executing the binary.
 
-After extraction, `release-cli version --json` must report the version and
-protocol stamped into the action. Provenance answers where the archive came
-from; the version and protocol guard answers whether that archive is the member
-of the release unit that the workflow expects. Both checks are needed before
-the CLI can be trusted to verify another artifact.
+Both supported paths require `release-cli version --json` to report the version
+and protocol stamped into the action. Source identity or release provenance
+answers where the executable came from; the version and protocol guard answers
+whether it is the member of the release unit that the workflow expects.
 
-This acquisition path depends on GitHub Releases and GitHub attestation
-verification at run time. The optional `cli-path` input is an explicit escape
-from that model: a caller-supplied binary is not downloaded or attested, and a
-stamp mismatch warns instead of failing. The workflows describe that path as
-unsupported because its caller, rather than the release unit, owns the binary
-pairing.
+The action's optional `cli-path` input is an explicit escape from these models.
+A caller-supplied binary is not built, downloaded, or attested, and a stamp
+mismatch warns instead of failing. Direct action callers that use this input own
+the workflow-to-binary pairing.
 
 ## Policy lives in the CLI; platform capabilities stay in YAML
 
