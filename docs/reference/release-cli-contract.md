@@ -797,6 +797,11 @@ The projection records staged facts only. The image builder recomputes each dige
 
 The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: ./.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. The current released pin is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`). Consumers cannot select an independent CLI version.
 
+Direct CLI users can install a tagged release through mise's built-in GitHub
+backend. See [Install `release-cli` with mise](../how-to/install-release-cli-with-mise.md).
+This installation path does not change the release-unit pin used by reusable
+workflow consumers.
+
 The setup action has two optional inputs:
 
 | Input | Required | Meaning |

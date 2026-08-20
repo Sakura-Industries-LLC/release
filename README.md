@@ -4,6 +4,7 @@ This repository defines the reusable workflows and repository contract that Meig
 
 ## Documentation
 
+- [Install `release-cli` with mise](docs/how-to/install-release-cli-with-mise.md)
 - [Configure GitHub releases](docs/how-to/configure-github-releases.md)
 - [Configure OCI image publication](docs/how-to/configure-oci-images.md)
 - [Rehearse and recover GitHub releases](docs/how-to/rehearse-and-recover-github-releases.md)

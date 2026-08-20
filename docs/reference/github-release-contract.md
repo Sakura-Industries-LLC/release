@@ -389,7 +389,7 @@ An undraft request has no rollback. A failure from the undraft call is indetermi
 This contract does not provide or imply:
 
 - OCI construction or publication behavior beyond the dependency ordering defined here; see the separate [OCI image contract](oci-image-contract.md).
-- Homebrew, MacPorts, Nix, Scoop, mise registry, or other package-manager publication.
+- Homebrew, MacPorts, Nix, Scoop, mise registry, or other package-manager publication. Tagged `release-cli` archives remain installable through mise's built-in GitHub backend; see [Install `release-cli` with mise](../how-to/install-release-cli-with-mise.md).
 - Native package repository publication or native package-manager signing. DEB, RPM, and APK files are standalone GitHub Release assets protected by the release checksum, Cosign, and attestation contract.
 - Release support for languages other than the documented Go producer profile.
 - Consumer CI policy or tests in the OIDC-enabled release job.
