@@ -1,7 +1,6 @@
 package cosign
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -81,32 +80,6 @@ func TestVerifyNonzeroExitIncludesCodeAndStderr(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exit 3")
 	assert.Contains(t, err.Error(), "identity mismatch")
-}
-
-func TestVerifyTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeVerifyFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	err := NewVerifier(VerifierOptions{
-		Path: path,
-		Dir:  mkdirWork(t, dir),
-		Environ: fakeEnviron(t,
-			"COSIGN_EXIT=1",
-			"COSIGN_STDERR_FILE="+stderrFile,
-		),
-	}).Verify(context.Background(), mustRequest())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
 }
 
 func TestVerifyResolvesEmptyPath(t *testing.T) {

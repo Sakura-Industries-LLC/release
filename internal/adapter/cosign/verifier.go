@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 
+	"github.com/meigma/release/internal/execx"
 	"github.com/meigma/release/internal/stage/pubgh"
 )
 
@@ -68,12 +68,12 @@ func NewVerifier(options VerifierOptions) *Verifier {
 //
 // It runs `cosign verify-blob --bundle --certificate-identity
 // --certificate-oidc-issuer` as an explicit argument slice through
-// [exec.CommandContext], with [exec.Cmd.Dir] set to the configured
-// distribution directory. A nil context, a nil receiver, an empty Dir,
-// or an empty payload, bundle, identity, or issuer is rejected before
-// any process starts. A nonzero exit returns an error that names the
-// exit code and a tail of stderr limited to [stderrTailLimit] bytes.
-// Cosign's stdout is discarded.
+// [execx.Run], with the configured distribution directory as the child
+// working directory. A nil context, a nil receiver, an empty Dir, or an
+// empty payload, bundle, identity, or issuer is rejected before any
+// process starts. A nonzero exit returns an error that names the exit
+// code and includes a bounded tail of stderr. Cosign's stdout is
+// discarded.
 func (v *Verifier) Verify(ctx context.Context, request pubgh.BlobVerification) error {
 	if ctx == nil {
 		return errors.New("context is nil")
@@ -97,60 +97,52 @@ func (v *Verifier) Verify(ctx context.Context, request pubgh.BlobVerification) e
 		return errors.New("certificate issuer is empty")
 	}
 
-	path, err := resolveBinary(v.path)
+	err := execx.Run(ctx, execx.Command{
+		Program: defaultBinary,
+		Path:    v.path,
+		Args: []string{
+			"verify-blob",
+			"--bundle",
+			request.Bundle,
+			"--certificate-identity",
+			request.Identity,
+			"--certificate-oidc-issuer",
+			request.Issuer,
+			request.Payload,
+		},
+		Dir:    v.dir,
+		Env:    v.environ,
+		Stderr: v.stderr,
+	})
 	if err != nil {
-		return err
-	}
-
-	// Path is a resolved executable. The argument list is a fixed slice,
-	// never a shell string.
-	cmd := exec.CommandContext(
-		ctx,
-		path,
-		"verify-blob",
-		"--bundle",
-		request.Bundle,
-		"--certificate-identity",
-		request.Identity,
-		"--certificate-oidc-issuer",
-		request.Issuer,
-		request.Payload,
-	)
-	cmd.Dir = v.dir
-	if v.environ != nil {
-		cmd.Env = v.environ
-	}
-	cmd.Stdout = io.Discard
-
-	tail := newTailBuffer(stderrTailLimit)
-	stderr := io.Writer(tail)
-	if v.stderr != nil {
-		stderr = io.MultiWriter(v.stderr, tail)
-	}
-	cmd.Stderr = stderr
-	// WaitDelay unblocks Wait if a grandchild still holds the stderr pipe
-	// after CommandContext kills only the direct child.
-	cmd.WaitDelay = waitDelay
-	if runErr := cmd.Run(); runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("verify %s: %w", request.Payload, ctxErr)
 		}
 
-		return verifyError(request, tail, runErr)
+		return verifyError(request, err)
 	}
 
 	return nil
 }
 
 // verifyError formats a cosign verify-blob process failure.
-func verifyError(request pubgh.BlobVerification, tail *tailBuffer, err error) error {
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
+func verifyError(request pubgh.BlobVerification, err error) error {
+	var runErr *execx.RunError
+	if !errors.As(err, &runErr) {
 		return fmt.Errorf("cosign verify-blob %s: %w", request.Payload, err)
 	}
-	if tail.String() == "" {
-		return fmt.Errorf("cosign verify-blob %s: exit %d", request.Payload, exitErr.ExitCode())
+	exitCode, exited := runErr.ExitCode()
+	if !exited {
+		return fmt.Errorf("cosign verify-blob %s: %w", request.Payload, err)
+	}
+	if runErr.StderrTail() == "" {
+		return fmt.Errorf("cosign verify-blob %s: exit %d", request.Payload, exitCode)
 	}
 
-	return fmt.Errorf("cosign verify-blob %s: exit %d: %s", request.Payload, exitErr.ExitCode(), tail.String())
+	return fmt.Errorf(
+		"cosign verify-blob %s: exit %d: %s",
+		request.Payload,
+		exitCode,
+		runErr.StderrTail(),
+	)
 }

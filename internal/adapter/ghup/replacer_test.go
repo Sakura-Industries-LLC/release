@@ -1,7 +1,6 @@
 package ghup
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -147,33 +146,6 @@ func TestReplaceNonzeroExitIncludesCodeAndOmitsToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "HTTP 403: Resource not accessible by integration")
 	assert.NotContains(t, err.Error(), testToken)
 	assert.NotContains(t, err.Error(), envGHToken+"=")
-}
-
-func TestReplaceTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	err := New(Options{
-		Path:  path,
-		Token: rel.NewSecret(testToken),
-		Environ: fakeEnviron(t,
-			"GHUP_EXIT=1",
-			"GHUP_STDERR_FILE="+stderrFile,
-		),
-	}).Replace(context.Background(), mustRepo(t), mustTag(t), mustAssets())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
-	assert.NotContains(t, err.Error(), testToken)
 }
 
 func TestReplaceResolvesEmptyPath(t *testing.T) {

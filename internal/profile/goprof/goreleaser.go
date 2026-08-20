@@ -5,31 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
-	"time"
+
+	"github.com/meigma/release/internal/execx"
 )
 
 const (
 	// defaultBinary is the PATH name used when [GoReleaserOptions.Path]
 	// is empty.
 	defaultBinary = "goreleaser"
-	// bytesPerKiB is the number of bytes in a kibibyte.
-	bytesPerKiB = 1024
-	// stderrTailKiB is the stderr tail retained in a nonzero-exit error.
-	stderrTailKiB = 4
-	// stderrTailLimit is the maximum number of trailing stderr bytes
-	// included in a nonzero-exit error.
-	stderrTailLimit = stderrTailKiB * bytesPerKiB
-	// waitDelay is how long [exec.Cmd] waits for leaked child I/O after
-	// the process exits or the context is canceled.
-	//
-	// Stderr is a tail buffer, not an [*os.File], so [os/exec] copies
-	// through a pipe and [exec.Cmd.Wait] blocks until EOF.
-	// [exec.CommandContext] kills only the direct child; a grandchild
-	// holding the write end would hang [RunGoReleaser] forever without
-	// this bound.
-	waitDelay = 5 * time.Second
+
 	// escapeByte is the ASCII ESC that starts a CSI sequence.
 	escapeByte = 0x1b
 	// csiIntroducer is the byte that follows ESC in a CSI sequence.
@@ -69,17 +54,16 @@ type GoReleaserOptions struct {
 // RunGoReleaser builds the release bundle with GoReleaser.
 //
 // It runs `goreleaser release --clean --skip=publish` as an explicit
-// argument slice through [exec.CommandContext]. `--clean` removes the
-// distribution directory first. `--skip=publish` is a command-line
-// boundary against publication that complements `release.disable: true`
-// in the consumer's configuration. Changelog and release-note behavior
-// also come from that configuration, not from this argv. GoReleaser has
-// no --dist flag, so [GoReleaserOptions.Dist] is validated as a
-// [RootName] and never forwarded. A nil context or a zero Dist is
-// rejected before any process starts. A nonzero exit returns an error
-// that names the exit code and a tail of stderr limited to
-// [stderrTailLimit] bytes, with ANSI color sequences stripped. Child
-// stdout and stderr are copied to the supplied writers unchanged,
+// argument slice through [execx.Run]. `--clean` removes the distribution
+// directory first. `--skip=publish` is a command-line boundary against
+// publication that complements `release.disable: true` in the consumer's
+// configuration. Changelog and release-note behavior also come from that
+// configuration, not from this argv. GoReleaser has no --dist flag, so
+// [GoReleaserOptions.Dist] is validated as a [RootName] and never
+// forwarded. A nil context or a zero Dist is rejected before any process
+// starts. A nonzero exit returns an error that names the exit code and
+// includes a bounded tail of stderr with ANSI color sequences stripped.
+// Child stdout and stderr are copied to the supplied writers unchanged,
 // including color; nil writers discard that stream. The error never
 // includes the child environment.
 func RunGoReleaser(ctx context.Context, options GoReleaserOptions) error {
@@ -87,39 +71,20 @@ func RunGoReleaser(ctx context.Context, options GoReleaserOptions) error {
 		return err
 	}
 
-	path, err := resolveBinary(options.Path)
+	err := execx.Run(ctx, execx.Command{
+		Program: defaultBinary,
+		Path:    options.Path,
+		Args:    []string{"release", "--clean", "--skip=publish"},
+		Env:     options.Environ,
+		Stdout:  options.Stdout,
+		Stderr:  options.Stderr,
+	})
 	if err != nil {
-		return err
-	}
-
-	// Path is a resolved executable. The argument list is a fixed
-	// slice, never a shell string.
-	cmd := exec.CommandContext(ctx, path, "release", "--clean", "--skip=publish")
-	if options.Environ != nil {
-		cmd.Env = options.Environ
-	}
-
-	stdout := io.Discard
-	if options.Stdout != nil {
-		stdout = options.Stdout
-	}
-	cmd.Stdout = stdout
-
-	tail := newTailBuffer(stderrTailLimit)
-	stderr := io.Writer(tail)
-	if options.Stderr != nil {
-		stderr = io.MultiWriter(options.Stderr, tail)
-	}
-	cmd.Stderr = stderr
-	// WaitDelay unblocks Wait if a grandchild still holds the stderr
-	// pipe after CommandContext kills only the direct child.
-	cmd.WaitDelay = waitDelay
-	if err := cmd.Run(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("goreleaser release: %w", ctxErr)
 		}
 
-		return goreleaserError(tail, err)
+		return goreleaserError(err)
 	}
 
 	return nil
@@ -143,43 +108,26 @@ func validateGoReleaser(ctx context.Context, options GoReleaserOptions) error {
 	return nil
 }
 
-// resolveBinary returns the GoReleaser executable path.
-//
-// An empty path looks up [defaultBinary] on PATH.
-func resolveBinary(path string) (string, error) {
-	name := path
-	if name == "" {
-		name = defaultBinary
-	}
-
-	resolved, err := exec.LookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s: %w", name, err)
-	}
-
-	return resolved, nil
-}
-
 // goreleaserError formats a GoReleaser process failure.
 //
-// The retained stderr tail is stripped of ANSI before it is copied
-// into the error so a --json envelope does not embed escape
-// sequences. The live [GoReleaserOptions.Stderr] stream is not
-// filtered.
-func goreleaserError(tail *tailBuffer, err error) error {
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
+// The retained stderr tail is stripped of ANSI before it is copied into
+// the error so a --json envelope does not embed escape sequences. The
+// live [GoReleaserOptions.Stderr] stream is not filtered.
+func goreleaserError(err error) error {
+	var runErr *execx.RunError
+	if !errors.As(err, &runErr) {
 		return fmt.Errorf("goreleaser release: %w", err)
 	}
-	text := stripANSI(tail.String())
-	if len(text) > stderrTailLimit {
-		text = text[len(text)-stderrTailLimit:]
+	exitCode, exited := runErr.ExitCode()
+	if !exited {
+		return fmt.Errorf("goreleaser release: %w", err)
 	}
+	text := stripANSI(runErr.StderrTail())
 	if text == "" {
-		return fmt.Errorf("goreleaser release: exit %d", exitErr.ExitCode())
+		return fmt.Errorf("goreleaser release: exit %d", exitCode)
 	}
 
-	return fmt.Errorf("goreleaser release: exit %d: %s", exitErr.ExitCode(), text)
+	return fmt.Errorf("goreleaser release: exit %d: %s", exitCode, text)
 }
 
 // stripANSI removes CSI sequences and bare ESC bytes from s.
@@ -218,43 +166,4 @@ func stripANSI(s string) string {
 	}
 
 	return b.String()
-}
-
-// tailBuffer keeps the last limit bytes written to it.
-type tailBuffer struct {
-	// limit is the maximum number of bytes retained.
-	limit int
-
-	// buf holds the retained tail.
-	buf []byte
-}
-
-// newTailBuffer returns a writer that retains the last limit bytes.
-func newTailBuffer(limit int) *tailBuffer {
-	return &tailBuffer{limit: limit}
-}
-
-// Write appends p, discarding older bytes when the tail exceeds the limit.
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	if len(p) >= b.limit {
-		b.buf = append(b.buf[:0], p[len(p)-b.limit:]...)
-
-		return len(p), nil
-	}
-
-	need := len(b.buf) + len(p) - b.limit
-	if need > 0 {
-		b.buf = b.buf[need:]
-	}
-	b.buf = append(b.buf, p...)
-
-	return len(p), nil
-}
-
-// String returns the retained tail as a string.
-func (b *tailBuffer) String() string {
-	return string(b.buf)
 }

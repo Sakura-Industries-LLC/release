@@ -172,32 +172,6 @@ func TestBuildNonzeroExitIncludesSubcommandCodeAndStderr(t *testing.T) {
 	})
 }
 
-func TestBuildTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	err := New(Options{
-		Path: path,
-		Environ: fakeEnviron(t,
-			"APKO_EXIT=1",
-			"APKO_STDERR_FILE="+stderrFile,
-		),
-	}).Build(context.Background(), validRequest(t))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "lock")
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
-}
-
 func TestBuildResolvesEmptyPath(t *testing.T) {
 	skipWindows(t)
 
@@ -238,23 +212,6 @@ func TestBuildCanceledContextReturnsPromptly(t *testing.T) {
 		fakeEnviron(t, "APKO_STARTED="+started, "APKO_SLEEP=30"),
 		started,
 		cancelWait,
-	)
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestBuildCanceledContextUnblocksOrphanGrandchild(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	started := filepath.Join(dir, "started")
-	err := cancelAfterStart(
-		t,
-		writeFake(t),
-		fakeEnviron(t, "APKO_STARTED="+started, "APKO_ORPHAN=1", "APKO_SLEEP=30"),
-		started,
-		waitDelay+cancelWait,
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)

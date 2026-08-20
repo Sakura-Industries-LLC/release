@@ -179,32 +179,6 @@ func TestBuildNonzeroExitIncludesSubcommandCodeAndStderr(t *testing.T) {
 	})
 }
 
-func TestBuildTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	_, err := New(Options{
-		Path: path,
-		Environ: fakeEnviron(t,
-			"MELANGE_EXIT=1",
-			"MELANGE_STDERR_FILE="+stderrFile,
-		),
-	}).Build(context.Background(), validRequest())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "compile")
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
-}
-
 func TestBuildResolvesEmptyPath(t *testing.T) {
 	skipWindows(t)
 
@@ -245,23 +219,6 @@ func TestBuildCanceledContextReturnsPromptly(t *testing.T) {
 		fakeEnviron(t, "MELANGE_STARTED="+started, "MELANGE_SLEEP=30"),
 		started,
 		cancelWait,
-	)
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestBuildCanceledContextUnblocksOrphanGrandchild(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	started := filepath.Join(dir, "started")
-	err := cancelAfterStart(
-		t,
-		writeFake(t),
-		fakeEnviron(t, "MELANGE_STARTED="+started, "MELANGE_ORPHAN=1", "MELANGE_SLEEP=30"),
-		started,
-		waitDelay+cancelWait,
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)

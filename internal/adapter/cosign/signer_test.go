@@ -86,31 +86,6 @@ func TestSignRecursiveNonzeroExitIncludesCodeAndStderr(t *testing.T) {
 	assert.Contains(t, err.Error(), "denied by fulcio")
 }
 
-func TestSignRecursiveTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	err := New(Options{
-		Path: path,
-		Environ: fakeEnviron(t,
-			"COSIGN_EXIT=1",
-			"COSIGN_STDERR_FILE="+stderrFile,
-		),
-	}).SignRecursive(context.Background(), mustRef(t))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
-}
-
 func TestSignRecursiveResolvesEmptyPath(t *testing.T) {
 	skipWindows(t)
 
@@ -147,23 +122,6 @@ func TestSignRecursiveCanceledContextReturnsPromptly(t *testing.T) {
 		fakeEnviron(t, "COSIGN_STARTED="+started, "COSIGN_SLEEP=30"),
 		started,
 		cancelWait,
-	)
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestSignRecursiveCanceledContextUnblocksOrphanGrandchild(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	started := filepath.Join(dir, "started")
-	err := cancelAfterStart(
-		t,
-		writeFake(t),
-		fakeEnviron(t, "COSIGN_STARTED="+started, "COSIGN_ORPHAN=1", "COSIGN_SLEEP=30"),
-		started,
-		waitDelay+cancelWait,
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)

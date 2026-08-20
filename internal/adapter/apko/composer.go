@@ -5,31 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
-	"time"
 
+	"github.com/meigma/release/internal/execx"
 	"github.com/meigma/release/internal/stage/image"
 )
 
 const (
 	// defaultBinary is the PATH name used when [Options.Path] is empty.
 	defaultBinary = "apko"
-	// bytesPerKiB is the number of bytes in a kibibyte.
-	bytesPerKiB = 1024
-	// stderrTailKiB is the stderr tail retained in a nonzero-exit error.
-	stderrTailKiB = 4
-	// stderrTailLimit is the maximum number of trailing stderr bytes
-	// included in a nonzero-exit error.
-	stderrTailLimit = stderrTailKiB * bytesPerKiB
-	// waitDelay is how long [exec.Cmd] waits for leaked child I/O after
-	// the process exits or the context is canceled.
-	//
-	// Stderr is a tail buffer, not an [*os.File], so [os/exec] copies
-	// through a pipe and [exec.Cmd.Wait] blocks until EOF.
-	// [exec.CommandContext] kills only the direct child; a grandchild
-	// holding the write end would hang [Composer.Build] forever without
-	// this bound.
-	waitDelay = 5 * time.Second
+
 	// flagsPerArch is the argv width of one `--arch` flag plus its value.
 	flagsPerArch = 2
 	// flagsPerAnnotation is the argv width of one `--annotations` flag
@@ -85,29 +69,25 @@ func New(options Options) *Composer {
 // Build implements [image.Composer].
 //
 // It runs `apko lock` and then `apko build` as explicit argument slices
-// through [exec.CommandContext], both with [exec.Cmd.Dir] set to
+// through [execx.Run], both with the child working directory set to
 // request.Dir. Architecture flags follow [image.ComposeRequest.Arches]
 // in order. Annotation flags follow [image.ComposeRequest.Annotations]
 // in order. A nil context, a nil receiver, an empty required request
 // field, an empty Arches slice, an empty architecture entry, or an
 // annotation with an empty key is rejected before any process starts.
 // A nonzero exit returns an error that names the apko subcommand, the
-// exit code, and a tail of stderr limited to [stderrTailLimit] bytes.
-// Both invocations discard stdout.
+// exit code, and a bounded tail of stderr. Both invocations discard
+// stdout.
 func (c *Composer) Build(ctx context.Context, request image.ComposeRequest) error {
 	if err := validateComposeRequest(ctx, c, request); err != nil {
 		return err
 	}
 
-	path, err := resolveBinary(c.path)
-	if err != nil {
-		return err
-	}
-	if err := c.run(ctx, path, request.Dir, lockArgs(request)...); err != nil {
+	if err := c.run(ctx, request.Dir, lockArgs(request)...); err != nil {
 		return err
 	}
 
-	return c.run(ctx, path, request.Dir, buildArgs(request)...)
+	return c.run(ctx, request.Dir, buildArgs(request)...)
 }
 
 // validateComposeRequest rejects a nil receiver, a nil context, or an
@@ -229,103 +209,43 @@ func annotationFlags(annotations []image.Annotation) []string {
 
 // run starts one apko invocation in dir and maps process failure to an error.
 //
-// Path is a resolved executable. The argument list is a fixed slice,
-// never a shell string. args[0] is the apko subcommand name used in
-// error text. dir is the child working directory.
-func (c *Composer) run(ctx context.Context, path, dir string, args ...string) error {
-	cmd := exec.CommandContext(ctx, path, args...)
-	if c.environ != nil {
-		cmd.Env = c.environ
-	}
-	cmd.Dir = dir
-	cmd.Stdout = io.Discard
-
-	tail := newTailBuffer(stderrTailLimit)
-	stderr := io.Writer(tail)
-	if c.stderr != nil {
-		stderr = io.MultiWriter(c.stderr, tail)
-	}
-	cmd.Stderr = stderr
-	// WaitDelay unblocks Wait if a grandchild still holds the stderr pipe
-	// after CommandContext kills only the direct child.
-	cmd.WaitDelay = waitDelay
-	if err := cmd.Run(); err != nil {
+// The argument list is a fixed slice, never a shell string. args[0] is
+// the apko subcommand name used in error text. dir is the child working
+// directory.
+func (c *Composer) run(ctx context.Context, dir string, args ...string) error {
+	err := execx.Run(ctx, execx.Command{
+		Program: defaultBinary,
+		Path:    c.path,
+		Args:    args,
+		Dir:     dir,
+		Env:     c.environ,
+		Stderr:  c.stderr,
+	})
+	if err != nil {
 		subcommand := args[0]
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("apko %s: %w", subcommand, ctxErr)
 		}
 
-		return commandError(subcommand, tail, err)
+		return commandError(subcommand, err)
 	}
 
 	return nil
 }
 
-// resolveBinary returns the apko executable path.
-//
-// An empty path looks up [defaultBinary] on PATH.
-func resolveBinary(path string) (string, error) {
-	name := path
-	if name == "" {
-		name = defaultBinary
-	}
-
-	resolved, err := exec.LookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s: %w", name, err)
-	}
-
-	return resolved, nil
-}
-
 // commandError formats an apko process failure for subcommand.
-func commandError(subcommand string, tail *tailBuffer, err error) error {
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
+func commandError(subcommand string, err error) error {
+	var runErr *execx.RunError
+	if !errors.As(err, &runErr) {
 		return fmt.Errorf("apko %s: %w", subcommand, err)
 	}
-	if tail.String() == "" {
-		return fmt.Errorf("apko %s: exit %d", subcommand, exitErr.ExitCode())
+	exitCode, exited := runErr.ExitCode()
+	if !exited {
+		return fmt.Errorf("apko %s: %w", subcommand, err)
+	}
+	if runErr.StderrTail() == "" {
+		return fmt.Errorf("apko %s: exit %d", subcommand, exitCode)
 	}
 
-	return fmt.Errorf("apko %s: exit %d: %s", subcommand, exitErr.ExitCode(), tail.String())
-}
-
-// tailBuffer keeps the last limit bytes written to it.
-type tailBuffer struct {
-	// limit is the maximum number of bytes retained.
-	limit int
-
-	// buf holds the retained tail.
-	buf []byte
-}
-
-// newTailBuffer returns a writer that retains the last limit bytes.
-func newTailBuffer(limit int) *tailBuffer {
-	return &tailBuffer{limit: limit}
-}
-
-// Write appends p, discarding older bytes when the tail exceeds the limit.
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	if len(p) >= b.limit {
-		b.buf = append(b.buf[:0], p[len(p)-b.limit:]...)
-
-		return len(p), nil
-	}
-
-	need := len(b.buf) + len(p) - b.limit
-	if need > 0 {
-		b.buf = b.buf[need:]
-	}
-	b.buf = append(b.buf, p...)
-
-	return len(p), nil
-}
-
-// String returns the retained tail as a string.
-func (b *tailBuffer) String() string {
-	return string(b.buf)
+	return fmt.Errorf("apko %s: exit %d: %s", subcommand, exitCode, runErr.StderrTail())
 }

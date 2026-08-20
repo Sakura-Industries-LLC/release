@@ -151,32 +151,6 @@ func TestRunGoReleaserNonzeroExitIncludesCodeAndStderr(t *testing.T) {
 	assert.Contains(t, err.Error(), "denied by signing")
 }
 
-func TestRunGoReleaserTruncatesLargeStderr(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, append(head, tail...), 0o600))
-
-	err := RunGoReleaser(context.Background(), GoReleaserOptions{
-		Path: path,
-		Dist: testDist,
-		Environ: fakeEnviron(t,
-			"GORELEASER_EXIT=1",
-			"GORELEASER_STDERR_FILE="+stderrFile,
-		),
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), string(head))
-	assert.Contains(t, err.Error(), string(tail))
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T"), stderrTailLimit)
-}
-
 func TestRunGoReleaserStripsANSIFromErrorTail(t *testing.T) {
 	skipWindows(t)
 	t.Parallel()
@@ -201,47 +175,6 @@ func TestRunGoReleaserStripsANSIFromErrorTail(t *testing.T) {
 	assert.Contains(t, err.Error(), "  • starting release")
 	assert.Contains(t, err.Error(), "partial")
 	assert.Equal(t, colored, sink.String())
-}
-
-func TestRunGoReleaserStripsANSIThenAppliesTailLimit(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := writeFake(t)
-	// Color around every visible byte so the raw stream is far larger
-	// than the bound. The retained tail is still capped after stripping.
-	var raw bytes.Buffer
-	head := bytes.Repeat([]byte("H"), stderrTailLimit)
-	tail := bytes.Repeat([]byte("T"), stderrTailLimit)
-	for _, c := range append(head, tail...) {
-		raw.WriteString("\x1b[1m")
-		raw.WriteByte(c)
-		raw.WriteString("\x1b[m")
-	}
-	stderrFile := filepath.Join(dir, "stderr.txt")
-	require.NoError(t, os.WriteFile(stderrFile, raw.Bytes(), 0o600))
-	var sink bytes.Buffer
-
-	err := RunGoReleaser(context.Background(), GoReleaserOptions{
-		Path: path,
-		Dist: testDist,
-		Environ: fakeEnviron(t,
-			"GORELEASER_EXIT=1",
-			"GORELEASER_STDERR_FILE="+stderrFile,
-		),
-		Stderr: &sink,
-	})
-	require.Error(t, err)
-	stripped := stripANSI(string(raw.Bytes()[len(raw.Bytes())-stderrTailLimit:]))
-	if len(stripped) > stderrTailLimit {
-		stripped = stripped[len(stripped)-stderrTailLimit:]
-	}
-	assert.Contains(t, err.Error(), "exit 1")
-	assert.NotContains(t, err.Error(), "\x1b")
-	assert.Contains(t, err.Error(), stripped)
-	assert.LessOrEqual(t, strings.Count(err.Error(), "T")+strings.Count(err.Error(), "H"), stderrTailLimit)
-	assert.Equal(t, raw.String(), sink.String())
 }
 
 func TestRunGoReleaserWritesStdoutAndStderrSinks(t *testing.T) {
@@ -293,23 +226,6 @@ func TestRunGoReleaserCanceledContextReturnsPromptly(t *testing.T) {
 		fakeEnviron(t, "GORELEASER_STARTED="+started, "GORELEASER_SLEEP=30"),
 		started,
 		cancelWait,
-	)
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestRunGoReleaserCanceledContextUnblocksOrphanGrandchild(t *testing.T) {
-	skipWindows(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	started := filepath.Join(dir, "started")
-	err := cancelAfterStart(
-		t,
-		writeFake(t),
-		fakeEnviron(t, "GORELEASER_STARTED="+started, "GORELEASER_ORPHAN=1", "GORELEASER_SLEEP=30"),
-		started,
-		waitDelay+cancelWait,
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)

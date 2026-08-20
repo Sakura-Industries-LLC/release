@@ -5,31 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
-	"time"
 
+	"github.com/meigma/release/internal/execx"
 	"github.com/meigma/release/internal/stage/image"
 )
 
 const (
 	// defaultBinary is the PATH name used when [Options.Path] is empty.
 	defaultBinary = "melange"
-	// bytesPerKiB is the number of bytes in a kibibyte.
-	bytesPerKiB = 1024
-	// stderrTailKiB is the stderr tail retained in a nonzero-exit error.
-	stderrTailKiB = 4
-	// stderrTailLimit is the maximum number of trailing stderr bytes
-	// included in a nonzero-exit error.
-	stderrTailLimit = stderrTailKiB * bytesPerKiB
-	// waitDelay is how long [exec.Cmd] waits for leaked child I/O after
-	// the process exits or the context is canceled.
-	//
-	// Stderr is a tail buffer, not an [*os.File], so [os/exec] copies
-	// through a pipe and [exec.Cmd.Wait] blocks until EOF.
-	// [exec.CommandContext] kills only the direct child; a grandchild
-	// holding the write end would hang [Builder.Build] forever without
-	// this bound.
-	waitDelay = 5 * time.Second
+
 	// publicKeySuffix is appended to the signing key path to form the
 	// generated public key path Melange writes.
 	publicKeySuffix = ".pub"
@@ -94,13 +78,13 @@ func New(options Options) *Builder {
 //
 // It runs `melange compile`, `melange keygen`, and one `melange build`
 // per source, in request order, as explicit argument slices through
-// [exec.CommandContext]. Compile uses [image.APKBuildRequest.Sources]
-// index 0 as the compile-check architecture. A nil context, a nil
-// receiver, an empty required request field, an empty Sources slice, or
-// a source with an empty architecture or directory is rejected before
-// any process starts. A nonzero exit returns an error that names the
-// Melange subcommand, the exit code, and a tail of stderr limited to
-// [stderrTailLimit] bytes. Compile stdout is discarded.
+// [execx.Run]. Compile uses [image.APKBuildRequest.Sources] index 0 as
+// the compile-check architecture. A nil context, a nil receiver, an
+// empty required request field, an empty Sources slice, or a source with
+// an empty architecture or directory is rejected before any process
+// starts. A nonzero exit returns an error that names the Melange
+// subcommand, the exit code, and a bounded tail of stderr. Compile stdout
+// is discarded.
 func (b *Builder) Build(
 	ctx context.Context,
 	request image.APKBuildRequest,
@@ -109,19 +93,14 @@ func (b *Builder) Build(
 		return image.APKRepositories{}, err
 	}
 
-	path, err := resolveBinary(b.path)
-	if err != nil {
+	if err := b.run(ctx, compileArgs(request)...); err != nil {
 		return image.APKRepositories{}, err
 	}
-
-	if err := b.run(ctx, path, compileArgs(request)...); err != nil {
-		return image.APKRepositories{}, err
-	}
-	if err := b.run(ctx, path, keygenCmd, request.KeyPath); err != nil {
+	if err := b.run(ctx, keygenCmd, request.KeyPath); err != nil {
 		return image.APKRepositories{}, err
 	}
 	for _, source := range request.Sources {
-		if err := b.run(ctx, path, buildArgs(request, source)...); err != nil {
+		if err := b.run(ctx, buildArgs(request, source)...); err != nil {
 			return image.APKRepositories{}, err
 		}
 	}
@@ -233,102 +212,41 @@ func buildArgs(request image.APKBuildRequest, source image.APKBuildSource) []str
 
 // run starts one Melange invocation and maps process failure to an error.
 //
-// Path is a resolved executable. The argument list is a fixed slice,
-// never a shell string. args[0] is the Melange subcommand name used in
-// error text.
-func (b *Builder) run(ctx context.Context, path string, args ...string) error {
-	cmd := exec.CommandContext(ctx, path, args...)
-	if b.environ != nil {
-		cmd.Env = b.environ
-	}
-	cmd.Stdout = io.Discard
-
-	tail := newTailBuffer(stderrTailLimit)
-	stderr := io.Writer(tail)
-	if b.stderr != nil {
-		stderr = io.MultiWriter(b.stderr, tail)
-	}
-	cmd.Stderr = stderr
-	// WaitDelay unblocks Wait if a grandchild still holds the stderr pipe
-	// after CommandContext kills only the direct child.
-	cmd.WaitDelay = waitDelay
-	if err := cmd.Run(); err != nil {
+// The argument list is a fixed slice, never a shell string. args[0] is
+// the Melange subcommand name used in error text.
+func (b *Builder) run(ctx context.Context, args ...string) error {
+	err := execx.Run(ctx, execx.Command{
+		Program: defaultBinary,
+		Path:    b.path,
+		Args:    args,
+		Env:     b.environ,
+		Stderr:  b.stderr,
+	})
+	if err != nil {
 		subcommand := args[0]
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("melange %s: %w", subcommand, ctxErr)
 		}
 
-		return commandError(subcommand, tail, err)
+		return commandError(subcommand, err)
 	}
 
 	return nil
 }
 
-// resolveBinary returns the Melange executable path.
-//
-// An empty path looks up [defaultBinary] on PATH.
-func resolveBinary(path string) (string, error) {
-	name := path
-	if name == "" {
-		name = defaultBinary
-	}
-
-	resolved, err := exec.LookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s: %w", name, err)
-	}
-
-	return resolved, nil
-}
-
 // commandError formats a Melange process failure for subcommand.
-func commandError(subcommand string, tail *tailBuffer, err error) error {
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
+func commandError(subcommand string, err error) error {
+	var runErr *execx.RunError
+	if !errors.As(err, &runErr) {
 		return fmt.Errorf("melange %s: %w", subcommand, err)
 	}
-	if tail.String() == "" {
-		return fmt.Errorf("melange %s: exit %d", subcommand, exitErr.ExitCode())
+	exitCode, exited := runErr.ExitCode()
+	if !exited {
+		return fmt.Errorf("melange %s: %w", subcommand, err)
+	}
+	if runErr.StderrTail() == "" {
+		return fmt.Errorf("melange %s: exit %d", subcommand, exitCode)
 	}
 
-	return fmt.Errorf("melange %s: exit %d: %s", subcommand, exitErr.ExitCode(), tail.String())
-}
-
-// tailBuffer keeps the last limit bytes written to it.
-type tailBuffer struct {
-	// limit is the maximum number of bytes retained.
-	limit int
-
-	// buf holds the retained tail.
-	buf []byte
-}
-
-// newTailBuffer returns a writer that retains the last limit bytes.
-func newTailBuffer(limit int) *tailBuffer {
-	return &tailBuffer{limit: limit}
-}
-
-// Write appends p, discarding older bytes when the tail exceeds the limit.
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	if len(p) >= b.limit {
-		b.buf = append(b.buf[:0], p[len(p)-b.limit:]...)
-
-		return len(p), nil
-	}
-
-	need := len(b.buf) + len(p) - b.limit
-	if need > 0 {
-		b.buf = b.buf[need:]
-	}
-	b.buf = append(b.buf, p...)
-
-	return len(p), nil
-}
-
-// String returns the retained tail as a string.
-func (b *tailBuffer) String() string {
-	return string(b.buf)
+	return fmt.Errorf("melange %s: exit %d: %s", subcommand, exitCode, runErr.StderrTail())
 }
