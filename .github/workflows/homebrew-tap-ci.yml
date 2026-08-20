@@ -1,0 +1,135 @@
+name: Reusable Homebrew Tap CI
+
+on:
+  workflow_call:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  casks:
+    name: Find changed casks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.changed.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+          persist-credentials: false
+
+      - name: Select changed casks
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          sha_pattern='^[0-9a-f]{40}$'
+          if [[ ! "${BASE_SHA}" =~ ${sha_pattern} || ! "${HEAD_SHA}" =~ ${sha_pattern} ]]; then
+            echo '::error::Homebrew tap CI must be called from a pull_request workflow.'
+            exit 1
+          fi
+
+          deleted="$(git diff --name-only --diff-filter=D "${BASE_SHA}" "${HEAD_SHA}" -- 'Casks/*.rb')"
+          if [[ -n "${deleted}" ]]; then
+            echo '::error::Homebrew tap CI does not publish cask deletions.'
+            printf '%s\n' "${deleted}"
+            exit 1
+          fi
+
+          mapfile -d '' -t paths < <(
+            git diff --name-only -z --diff-filter=AMR \
+              "${BASE_SHA}" "${HEAD_SHA}" -- 'Casks/*.rb'
+          )
+          if (( ${#paths[@]} == 0 )); then
+            echo '::error::The pull request does not add or modify a cask.'
+            exit 1
+          fi
+
+          casks=()
+          for path in "${paths[@]}"; do
+            if [[ ! "${path}" =~ ^Casks/([a-z0-9][a-z0-9+@._-]*)\.rb$ ]]; then
+              printf '::error::Unsupported cask path: %s\n' "${path}"
+              exit 1
+            fi
+            casks+=("${BASH_REMATCH[1]}")
+          done
+
+          matrix="$(jq -cn '$ARGS.positional' --args "${casks[@]}")"
+          printf 'matrix=%s\n' "${matrix}" >> "${GITHUB_OUTPUT}"
+
+  validate:
+    name: Validate ${{ matrix.cask }} on ${{ matrix.os }}
+    needs: casks
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-26
+          - ubuntu-24.04
+        cask: ${{ fromJSON(needs.casks.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Set up Homebrew
+        id: homebrew
+        uses: Homebrew/actions/setup-homebrew@8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4 # 2026.08.14.1
+        with:
+          brew-gh-api-token: ''
+
+      - name: Prepare Homebrew test environment
+        run: |
+          brew test-bot --only-cleanup-before
+          brew test-bot --only-setup
+          brew test-bot --only-tap-syntax
+
+      - name: Check cask style
+        env:
+          CASK: ${{ steps.homebrew.outputs.tap-name }}/${{ matrix.cask }}
+        run: brew style --cask "${CASK}"
+
+      - name: Audit cask
+        env:
+          CASK: ${{ steps.homebrew.outputs.tap-name }}/${{ matrix.cask }}
+        run: brew audit --cask "${CASK}"
+
+      - name: Install cask
+        env:
+          CASK: ${{ steps.homebrew.outputs.tap-name }}/${{ matrix.cask }}
+        run: brew install --cask "${CASK}"
+
+      - name: Uninstall cask
+        env:
+          CASK: ${{ steps.homebrew.outputs.tap-name }}/${{ matrix.cask }}
+        run: brew uninstall --cask "${CASK}"
+
+  result:
+    name: Homebrew cask validation
+    if: ${{ always() }}
+    needs:
+      - casks
+      - validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require successful validation
+        env:
+          CASKS_RESULT: ${{ needs.casks.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: |
+          if [[ "${CASKS_RESULT}" != 'success' || "${VALIDATE_RESULT}" != 'success' ]]; then
+            printf '::error::Cask discovery: %s; validation: %s\n' \
+              "${CASKS_RESULT}" "${VALIDATE_RESULT}"
+            exit 1
+          fi
