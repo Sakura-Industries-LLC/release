@@ -5,6 +5,7 @@ This repository defines the reusable workflows and repository contract that Meig
 ## Documentation
 
 - [Install `release-cli` with mise](docs/how-to/install-release-cli-with-mise.md)
+- [Install `release-cli` with Nix](docs/how-to/install-release-cli-with-nix.md)
 - [Configure GitHub releases](docs/how-to/configure-github-releases.md)
 - [Configure OCI image publication](docs/how-to/configure-oci-images.md)
 - [Rehearse and recover GitHub releases](docs/how-to/rehearse-and-recover-github-releases.md)
@@ -13,5 +14,6 @@ This repository defines the reusable workflows and repository contract that Meig
 - [GitHub release contract reference](docs/reference/github-release-contract.md)
 - [OCI image contract reference](docs/reference/oci-image-contract.md)
 - [Copyable Go release example](examples/go-release/)
+- [Copyable Nix consumer example](examples/nix-release-cli/)
 
-Consumer repositories call the reusable workflows at one full commit SHA. The current released pin is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
+Consumer repositories call the reusable workflows at one full commit SHA. The current released pin is `0fc99489d31d400bc3f69d6636d60e7d3f3d0251` (`v0.1.3`).

@@ -61,13 +61,13 @@ Replace these project-specific example values:
 
 The example uses one full commit SHA for every reusable workflow reference and
 the checksum signing identity. That SHA is the consumer pin for the complete
-release unit. The current pin is the `v0.1.2` release revision,
-`611195c21fdd44ff2cf95c6a8833f84d095270b0`.
+release unit. The current pin is the `v0.1.3` release revision,
+`0fc99489d31d400bc3f69d6636d60e7d3f3d0251`.
 
 Keep these contract values unchanged:
 
-- all four reusable workflow references at `611195c21fdd44ff2cf95c6a8833f84d095270b0`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0`;
+- all four reusable workflow references at `0fc99489d31d400bc3f69d6636d60e7d3f3d0251`;
+- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251`;
 - organization variable `MEIGMA_RELEASE_APP_CLIENT_ID`;
 - organization secret `MEIGMA_RELEASE_APP_PRIVATE_KEY`; and
 - the locked Go 1.26.6, GoReleaser 2.17.1, Syft 1.51.0, Cosign 3.1.3, GitHub CLI 2.97.0, Melange 0.59.1, and apko 1.2.37 versions unless the shared workflow contract is deliberately updated.

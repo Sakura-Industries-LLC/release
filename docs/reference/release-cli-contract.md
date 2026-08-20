@@ -793,14 +793,42 @@ The projection records staged facts only. The image builder recomputes each dige
 
 `--profile` selects ecosystem-specific staging rules while keeping `stage` as the command. The current implementation dispatches `go` directly and rejects every other value with exit code `2`. New ecosystems extend the accepted profile values rather than adding ecosystem-specific top-level verbs.
 
+## Nix flake
+
+The repository root is a Nix flake with these outputs for each supported
+system:
+
+| Output | Meaning |
+| --- | --- |
+| `packages.<system>.release-cli` | Source-built `release-cli` package. |
+| `packages.<system>.default` | Alias of the `release-cli` package. |
+| `apps.<system>.release-cli` | Runnable `release-cli` application. |
+| `apps.<system>.default` | Alias of the `release-cli` application. |
+| `checks.<system>.release-cli` | Package build used by `nix flake check`. |
+
+The supported systems are `aarch64-darwin`, `aarch64-linux`,
+`x86_64-darwin`, and `x86_64-linux`. Nixpkgs 26.05 is pinned because it is the
+last Nixpkgs release that supports `x86_64-darwin`.
+
+The package builds `cmd/release-cli` from the exact flake source with CGO
+disabled. It uses Go 1.26.6 from a fixed source hash and downloads Go modules
+through the fixed `vendorHash`. Linker flags embed the version from
+`.release-please-manifest.json` and the flake source revision.
+
+The flake does not expose an overlay or NixOS module. It does not install the
+prebuilt GitHub Release archive or verify its GitHub artifact attestation.
+Consumers pin the source, Nixpkgs, Go source, and Go module dependency content
+through `flake.lock` and the fixed-output hashes.
+
 ## Release unit and consumer pin
 
-The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: ./.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. The current released pin is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`). Consumers cannot select an independent CLI version.
+The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli` form one release unit and share one version. The producer loads the sibling action with `uses: ./.github/actions/setup-release-cli`. A consumer pins the workflow at one full commit SHA, and that self-reference selects the action from the same commit and its stamped default CLI version. The current released pin is `0fc99489d31d400bc3f69d6636d60e7d3f3d0251` (`v0.1.3`). Consumers cannot select an independent CLI version.
 
-Direct CLI users can install a tagged release through mise's built-in GitHub
-backend. See [Install `release-cli` with mise](../how-to/install-release-cli-with-mise.md).
-This installation path does not change the release-unit pin used by reusable
-workflow consumers.
+Direct CLI users can install a tagged release through
+[mise's built-in GitHub backend](../how-to/install-release-cli-with-mise.md) or
+[the repository's Nix flake](../how-to/install-release-cli-with-nix.md). These
+installation paths do not change the release-unit pin used by reusable workflow
+consumers.
 
 The setup action has two optional inputs:
 

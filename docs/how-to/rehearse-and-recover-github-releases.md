@@ -2,7 +2,7 @@
 
 Use this guide to populate a draft GitHub Release without publishing it, then resume publication through the same tag and draft. Complete [Configure GitHub Releases](configure-github-releases.md) first. The [GitHub Release contract](../reference/github-release-contract.md) defines the checks that each run enforces.
 
-The documented workflow revision is `611195c21fdd44ff2cf95c6a8833f84d095270b0` (`v0.1.2`).
+The documented workflow revision is `0fc99489d31d400bc3f69d6636d60e7d3f3d0251` (`v0.1.3`).
 
 `release-cli publish github` owns draft discovery, tag and commit binding, expected-asset upload, asset convergence, and the optional undraft operation. It never creates a release, re-drafts a public release, or deletes an asset.
 
@@ -320,7 +320,7 @@ If the repository does not need a correction, rerun the complete top-level workf
 For the documented current revision, the publisher requires a nonempty `checksums.txt`, the exact closed payload list, matching payload hashes, a regular Cosign bundle file, issuer `https://token.actions.githubusercontent.com`, and this certificate identity:
 
 ```text
-https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@611195c21fdd44ff2cf95c6a8833f84d095270b0
+https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
 ```
 
 For an upgrade rehearsal, replace the current-revision identity with the target value described in [Upgrade GitHub Release workflows](upgrade-github-release-workflows.md).

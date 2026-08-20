@@ -12,14 +12,14 @@ The pinned workflow revision selects and verifies the matching CLI release.
 From the project directory, install the current release:
 
 ```bash
-mise use github:meigma/release@0.1.2
+mise use github:meigma/release@0.1.3
 ```
 
 Mise writes this tool entry to the project's `mise.toml`:
 
 ```toml
 [tools]
-"github:meigma/release" = "0.1.2"
+"github:meigma/release" = "0.1.3"
 ```
 
 Verify the installed command:
@@ -36,15 +36,15 @@ The current release reports:
   "command": "version",
   "ok": true,
   "result": {
-    "version": "0.1.2",
-    "commit": "611195c21fdd44ff2cf95c6a8833f84d095270b0",
+    "version": "0.1.3",
+    "commit": "0fc99489d31d400bc3f69d6636d60e7d3f3d0251",
     "protocol": 1
   }
 }
 ```
 
 Mise selects the release archive for the host operating system and architecture.
-The `v0.1.2` release contains archives for Darwin, Linux, and Windows on `amd64`
+The `v0.1.3` release contains archives for Darwin, Linux, and Windows on `amd64`
 and `arm64`. During a verified installation, mise reports the selected archive,
 its checksum check, and GitHub artifact attestation verification.
 
@@ -53,7 +53,7 @@ its checksum check, and GitHub artifact attestation verification.
 Use `mise x` for a temporary invocation:
 
 ```bash
-mise x github:meigma/release@0.1.2 -- release-cli version --json
+mise x github:meigma/release@0.1.3 -- release-cli version --json
 ```
 
 ## Install for your user account
@@ -61,7 +61,7 @@ mise x github:meigma/release@0.1.2 -- release-cli version --json
 Add `-g` to write the tool entry to the global mise configuration:
 
 ```bash
-mise use -g github:meigma/release@0.1.2
+mise use -g github:meigma/release@0.1.3
 mise exec -- release-cli version --json
 ```
 
@@ -71,7 +71,7 @@ version deliberately after verifying the target GitHub Release.
 ## Use a local shorthand
 
 `release-cli` is not registered in the mise registry. The full backend name is
-therefore required by default; `mise use release-cli@0.1.2` does not resolve.
+therefore required by default; `mise use release-cli@0.1.3` does not resolve.
 
 To define a local shorthand, add an alias and tool entry:
 
@@ -80,7 +80,7 @@ To define a local shorthand, add an alias and tool entry:
 release-cli = "github:meigma/release"
 
 [tools]
-release-cli = "0.1.2"
+release-cli = "0.1.3"
 ```
 
 The alias affects only the mise configuration that defines it. It does not
