@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/meigma/release/compare/v0.1.2...v0.1.3) (2026-08-20)
+
+
+### Features
+
+* **nix:** add release-cli flake ([#25](https://github.com/meigma/release/issues/25)) ([df48f02](https://github.com/meigma/release/commit/df48f02f00c38886ca6cde307e18fa301db7052b))
+
 ## [0.1.2](https://github.com/meigma/release/compare/v0.1.1...v0.1.2) (2026-08-20)
 
 
