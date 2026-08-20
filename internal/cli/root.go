@@ -49,6 +49,8 @@ const (
 	envApkoConfig = "RELEASE_APKO_CONFIG"
 	// envBuildDate is the environment variable for --build-date.
 	envBuildDate = "RELEASE_BUILD_DATE"
+	// envBinary is the environment variable for --binary.
+	envBinary = "RELEASE_BINARY"
 	// envRepositoryOwner is the Actions repository owner used as the APK namespace.
 	envRepositoryOwner = "GITHUB_REPOSITORY_OWNER"
 )
@@ -94,12 +96,15 @@ type Settings struct {
 	ApkoConfig string
 	// BuildDate is the selected --build-date / RELEASE_BUILD_DATE value.
 	BuildDate string
+	// Binary is the selected --binary / RELEASE_BINARY value.
+	Binary string
 	// DryRun reports whether --dry-run / RELEASE_DRY_RUN requested a dry run.
 	DryRun bool
 	// PlainHTTP reports whether --plain-http requested HTTP.
 	PlainHTTP bool
 	// NoUndraft reports whether --no-undraft requested a draft-only publish.
 	NoUndraft bool
+
 	// JSON reports whether --json / RELEASE_JSON requested structured output.
 	JSON bool
 	// err is a flag or environment parse failure discovered while resolving settings.
@@ -303,9 +308,11 @@ func resolveSettings(cmd *cobra.Command, lookup LookupEnv) Settings {
 		MelangeConfig: resolveString(cmd, flagMelangeConfig, envMelangeConfig, lookup),
 		ApkoConfig:    resolveString(cmd, flagApkoConfig, envApkoConfig, lookup),
 		BuildDate:     resolveString(cmd, flagBuildDate, envBuildDate, lookup),
+		Binary:        resolveString(cmd, flagBinary, envBinary, lookup),
 		PlainHTTP:     resolveFlagBool(cmd, flagPlainHTTP),
 		NoUndraft:     resolveFlagBool(cmd, flagNoUndraft),
 	}
+
 	dryRun, err := resolveBool(cmd, flagDryRun, envDryRun, lookup)
 	if err != nil {
 		settings.err = fmt.Errorf("%s: %w", envDryRun, err)

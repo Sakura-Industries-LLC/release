@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` validates release data, reports machine-readable results, builds OCI layouts from staged binaries, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` validates release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
@@ -8,6 +8,7 @@
 | --- | --- |
 | `release-cli stage --profile go --dist PATH [--json]` | Validate the staged Go release files under `PATH`. |
 | `release-cli image build [--input DIR] [--work DIR] [--output DIR] [--melange-config PATH] [--apko-config PATH] [--build-date RFC3339] [--version VERSION] [--json]` | Build a locked multi-architecture OCI layout from staged Linux binaries. |
+| `release-cli image verify [--output DIR] [--work DIR] [--binary NAME] [--version VERSION] [--json]` | Verify the built OCI layout, runtime contract, and architecture SBOMs. |
 | `release-cli plan tags [--image IMAGE] [--version VERSION] --digest DIGEST [--plain-http] [--json]` | Inspect the immutable exact tag and moving channel tags for an OCI release. |
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
@@ -33,7 +34,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `image build`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `image build`, `image verify`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -88,6 +89,56 @@ For example, a successful build writes this envelope:
         "arch": "aarch64",
         "package": "packages/aarch64/release-cli-1.2.3-r0.apk",
         "binary_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]
+  }
+}
+```
+
+For `image verify --json`, `command` is exactly `image verify`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `schema` | string | Always `release.dev/image-verify/v1`. |
+| `version` | string | Stable release version expected in the image and architecture SBOMs. |
+| `binary` | string | Name of the canonical binary installed in the image. |
+| `index_digest` | string | SHA-256 digest of the exact `index.json` bytes, with the `sha256:` prefix. |
+| `platforms` | array of objects | Verified platforms in canonical order: `linux/amd64`, then `linux/arm64`. |
+| `platforms[].platform` | string | Canonical Linux platform: `linux/amd64` or `linux/arm64`. |
+| `platforms[].arch` | string | Corresponding APK architecture: `x86_64` or `aarch64`. |
+| `platforms[].manifest` | string | Platform manifest digest with the `sha256:` prefix. |
+| `platforms[].config` | string | Platform config digest with the `sha256:` prefix. |
+| `platforms[].layer` | string | Platform layer digest with the `sha256:` prefix. |
+| `platforms[].binary_digest` | string | SHA-256 digest of the installed binary, with the `sha256:` prefix. |
+
+For example, successful verification writes this envelope:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "image verify",
+  "ok": true,
+  "result": {
+    "schema": "release.dev/image-verify/v1",
+    "version": "1.2.3",
+    "binary": "release-cli",
+    "index_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "platforms": [
+      {
+        "platform": "linux/amd64",
+        "arch": "x86_64",
+        "manifest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "config": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "layer": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "binary_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      {
+        "platform": "linux/arm64",
+        "arch": "aarch64",
+        "manifest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "config": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "layer": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "binary_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
       }
     ]
   }
@@ -329,7 +380,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `image build`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `image build`, `image verify`, `plan tags`, `publish github`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -400,12 +451,52 @@ The build checks these boundaries:
 | APK repository | Each architecture directory must contain a nonempty `APKINDEX.tar.gz` and exactly one nonempty `.apk` file. |
 | Composer outputs | `apko.lock.json`, `layout/index.json`, `layout/oci-layout`, `sboms/sbom-x86_64.spdx.json`, and `sboms/sbom-aarch64.spdx.json` must be nonempty regular files. |
 
-In this release, `image build` checks that the layout files and SBOMs exist but does not deeply verify their contents. The workflow's independent verifier checks layout structure, runtime invariants, and the digest of the exact `layout/index.json` bytes. That verifier also writes `image-digest.txt`; `image build` does not.
+`image build` checks that the layout files and SBOMs exist but does not deeply verify their contents. `image verify` independently checks the layout structure, runtime invariants, architecture SBOMs, and digest of the exact `layout/index.json` bytes.
 
 | Exit code | Meaning |
 | ---: | --- |
 | `0` | The image build completed successfully. |
 | `1` | The input projection is missing or malformed; a Melange or apko configuration file cannot be opened; or a staged-content contract, executable, tool invocation, APK repository, or composer-output check failed. |
+| `2` | Command usage or configuration is invalid. |
+
+## OCI image verification
+
+`release-cli image verify` verifies the layout and SBOMs produced by `image build` against the canonical binaries in the scratch workspace.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Authoritative output root | `--output` | `RELEASE_OUTPUT` | None. A path is required. |
+| Scratch workspace | `--work` | `RELEASE_WORK` | None. A path is required. |
+| Binary name | `--binary` | `RELEASE_BINARY` | None. A name is required. |
+| Version | `--version` | `RELEASE_VERSION` | `GITHUB_REF_NAME` with one optional leading `v` stripped. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+An explicitly set flag takes precedence over its environment variable. The version default applies only when `--version` and `RELEASE_VERSION` are absent. The command validates all configuration before opening either root. Unlike `image build`, `image verify` does not require the work and output roots to be disjoint because it does not write into the work root.
+
+The command reads this GitHub Actions context:
+
+| Variable | Value |
+| --- | --- |
+| `GITHUB_SHA` | Expected OCI revision annotation. |
+| `GITHUB_SERVER_URL` | Absolute GitHub server URL. |
+| `GITHUB_REPOSITORY` | Repository in `owner/name` form. The expected source annotation is `<GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>`. |
+| `GITHUB_REF_NAME` | Version source when neither the flag nor `RELEASE_VERSION` is set. |
+
+The command enforces these checks:
+
+- `oci-layout` is a regular file. The OCI index is valid JSON, has schema version `2`, uses media type `application/vnd.oci.image.index.v1+json`, and contains exactly two manifests. Both manifests are for Linux, and their architecture set is exactly `amd64` and `arm64`.
+- The index has `org.opencontainers.image.description`, `org.opencontainers.image.licenses`, `org.opencontainers.image.revision`, `org.opencontainers.image.source`, `org.opencontainers.image.title`, and `org.opencontainers.image.version` annotations. Description, licenses, and title are nonempty. Revision, source, and version equal the expected values.
+- Each referenced platform manifest is a regular file of its declared size. It is valid JSON, has schema version `2`, uses media type `application/vnd.oci.image.manifest.v1+json`, contains exactly one layer, and repeats the six index annotation values.
+- Each platform config has the descriptor's architecture and Linux as its operating system. Its labels repeat the six index annotation values. Its entrypoint is exactly `["/usr/bin/<binary>"]`, and its user is exactly `65532`.
+- The layer media type is `application/vnd.oci.image.layer.v1.tar+gzip` or `application/vnd.oci.image.layer.v1.tar`. In its tar stream, `usr/bin/<binary>` appears exactly once as a regular file with mode exactly `0755`, with no setuid, setgid, or sticky bit set, and ownership exactly `0:0`. Its content is byte-identical to the corresponding `sources/x86_64/application` or `sources/aarch64/application` file in the scratch workspace.
+- Each architecture SBOM contains an SPDX package whose `primaryPackagePurpose` is `APPLICATION` and whose `versionInfo` is `<version>-r0`.
+
+The index digest is SHA-256 over the exact `layout/index.json` bytes. The command never computes this digest from re-marshaled JSON. After every check succeeds, it writes the digest followed by a newline to `image-digest.txt` in the output directory.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | The layout, runtime contract, and architecture SBOMs passed verification. |
+| `1` | A layout, blob, runtime, canonical-binary, or SBOM verification check failed. |
 | `2` | Command usage or configuration is invalid. |
 
 ## OCI tag planning

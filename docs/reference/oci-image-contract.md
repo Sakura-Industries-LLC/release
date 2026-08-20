@@ -12,6 +12,7 @@ GoReleaser producer
   -> verified oci-build-inputs artifact
   -> release-cli signed APK repositories
   -> release-cli locked apko multi-architecture OCI layout
+  -> release-cli verified layout, runtime contract, and architecture SBOMs
   -> verified oci-image artifact
   -> release-cli digest-addressed GHCR preparation and recursive Cosign signatures
   -> GitHub and registry provenance/SBOM attestations
@@ -19,7 +20,7 @@ GoReleaser producer
   -> public GitHub Release
 ```
 
-The image builder consumes prebuilt GoReleaser binaries. `release-cli image build` uses Melange to package them without compiling, stripping, or otherwise replacing them, then uses apko to compose the OCI layout. The publisher consumes that layout and does not check out or execute consumer repository code.
+The image builder consumes prebuilt GoReleaser binaries. `release-cli image build` uses Melange to package them without compiling, stripping, or otherwise replacing them, then uses apko to compose the OCI layout. `release-cli image verify` checks the completed layout, runtime contract, and architecture SBOMs before upload. The publisher consumes that layout and does not check out or execute consumer repository code.
 
 ## Reusable workflows
 
@@ -65,8 +66,10 @@ After the tag gate, checkout, mise, QEMU, and tool proof, the builder's relevant
 3. Run `release-cli verify handoff --artifact-id <n> --digest <sha256:...>`.
 4. Download the `oci-build-inputs` artifact with the SHA-pinned `actions/download-artifact` step and `digest-mismatch: error`.
 5. Run `release-cli image build` to verify the projected canonical binary digests, build the signed APK repositories, and compose the locked OCI layout.
-6. Run the workflow's independent verifier to check the layout, runtime invariants, and OCI index digest.
+6. Run `release-cli image verify` to check the layout, runtime invariants, architecture SBOMs, and digest of the exact OCI index bytes.
 7. Upload the verified `oci-image` artifact.
+
+`release-cli image verify` writes `image-digest.txt` in the authoritative output root. The builder workflow delegates all image-contract checks to this command and contains no shell verification logic. The upload step remains unchanged and includes `image-digest.txt` in the `oci-image` artifact.
 
 The producer artifact is named `oci-build-inputs`. It contains `oci-build-inputs.json` beside `artifacts.json` and the canonical `linux/amd64` and `linux/arm64` binary trees. The projection records the shared binary name, confined path, and SHA-256 digest for each platform. Before packaging, `release-cli image build` recomputes both digests from the downloaded bytes and requires them to match the projection.
 
@@ -162,7 +165,7 @@ The current example includes Alpine's CA certificate bundle. A command that does
 
 ## Authoritative artifact
 
-The builder uploads `oci-image` with seven-day retention and no additional ZIP compression. Its contract includes:
+The builder uploads `oci-image` with seven-day retention and no additional ZIP compression. `release-cli image verify` writes `image-digest.txt` before the upload. The artifact contract includes:
 
 ```text
 apko.lock.json
@@ -232,17 +235,16 @@ ghcr.io/owner/repository@sha256:<index-digest>
 
 ### Runtime invariants
 
-For both platforms, the workflow's independent verifier checks:
+For both platforms, `release-cli image verify` checks:
 
-- Linux operating system and expected architecture;
-- one apko index containing exactly two platform manifests;
-- package and image executable bytes equal the canonical GoReleaser binary;
-- executable ownership `0:0` inside the image layer;
-- executable mode `0755` inside the image layer;
-- configured entrypoint;
-- runtime user `65532`;
-- source, version, revision, title, description, and license annotations; and
-- SPDX SBOM inclusion of the application package version.
+- one OCI image index with exactly two Linux platform manifests, one for `amd64` and one for `arm64`;
+- `org.opencontainers.image.source`, `org.opencontainers.image.version`, `org.opencontainers.image.revision`, `org.opencontainers.image.title`, `org.opencontainers.image.description`, and `org.opencontainers.image.licenses` annotations, including the expected source, version, and revision and nonempty values for title, description, and licenses;
+- platform manifest annotations and config labels equal to the index annotations;
+- one layer per platform manifest and a config whose operating system and architecture match the platform;
+- entrypoint `/usr/bin/<binary>` and runtime user `65532`;
+- a regular `usr/bin/<binary>` layer entry with ownership exactly `0:0` and mode exactly `0755`, with no setuid, setgid, or sticky bit set;
+- executable bytes equal to the corresponding canonical staged binary; and
+- an SPDX `APPLICATION` package at `<version>-r0` in each architecture SBOM.
 
 ## Signatures and attestations
 
@@ -293,7 +295,7 @@ The current boundary is deliberately split:
 - `publish-oci-image.yml` does not check out consumer source and writes only to the caller's GHCR package and attestation store; and
 - `publish-github-release.yml` waits for image publication but uses a separate short-lived Release App token for release mutation.
 
-The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The builder uses `release-cli image build` to verify the projected canonical binary digests and compose the OCI layout. The builder workflow's independent verifier checks the layout, runtime invariants, and index digest, and the three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
+The privileged publisher uses `release-cli` for pre-download artifact metadata verification, digest-addressed publication, signing, fresh-state tag planning, serial tag application, and postcondition verification. The builder uses `release-cli image build` to verify the projected canonical binary digests and compose the OCI layout, then uses `release-cli image verify` to check the layout, runtime invariants, architecture SBOMs, and index digest. The three SHA-pinned `actions/attest` steps create trust metadata between prepare and finalize.
 
 The workflow artifact is temporary transport, not a public distribution channel. The OCI digest, registry content, Cosign identity, and attestation identities form the public verification boundary.
 

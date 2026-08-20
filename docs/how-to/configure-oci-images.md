@@ -38,7 +38,7 @@ cp examples/go-release/melange.yaml "$CONSUMER/"
 cp examples/go-release/apko.yaml "$CONSUMER/"
 ```
 
-The shared builder runs `release-cli image build`. The workflow passes its `melange-config` and `apko-config` inputs to the command; their defaults remain `melange.yaml` and `apko.yaml`. The command uses Melange to package the canonical GoReleaser Linux binaries as signed APKs and apko to compose one OCI index for `linux/amd64` and `linux/arm64`. It does not compile the command again.
+The shared builder runs `release-cli image build` and then `release-cli image verify`. The workflow passes its `melange-config` and `apko-config` inputs to `image build`; their defaults remain `melange.yaml` and `apko.yaml`. `image build` uses Melange to package the canonical GoReleaser Linux binaries as signed APKs and apko to compose one OCI index for `linux/amd64` and `linux/arm64`. It does not compile the command again. `image verify` checks the layout, runtime contract, architecture SBOMs, and exact OCI index bytes before the workflow uploads the authoritative artifact. The workflow delegates these checks to the CLI instead of implementing them in shell.
 
 Ensure the consumer's `mise.toml` and `mise.lock` contain the tool versions required by the target workflow revision. The current workflow pins Melange `0.59.1` and apko `1.2.37`, resolves both executable paths with `mise which`, and supplies them to `release-cli image build` through `RELEASE_MELANGE_PATH` and `RELEASE_APKO_PATH`.
 
@@ -126,7 +126,7 @@ publish-image: false
 publish-release: false
 ```
 
-The run still executes `release-cli image build` to build the APK repository and OCI index and to verify the projected canonical binary digests. The workflow then verifies the image metadata and index digest, validates the publisher's artifact handoff, and runs `release-cli publish oci prepare --dry-run`. The dry run validates the layout, digest, registry state, and tag plan without a registry write. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release. The publisher's `image-reference` output remains empty.
+The run still executes `release-cli image build` to build the APK repository and OCI index and to verify the projected canonical binary digests. It then runs `release-cli image verify` to check the layout, runtime contract, architecture SBOMs, and exact index digest before upload. The publisher validates the artifact handoff and runs `release-cli publish oci prepare --dry-run`. The dry run validates the layout, digest, registry state, and tag plan without a registry write. It does not log in to GHCR, create tags, sign an image, create OCI attestations, or publish the GitHub Release. The publisher's `image-reference` output remains empty.
 
 Inspect the `oci-image` workflow artifact. It must contain:
 

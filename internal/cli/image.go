@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 const (
 	// commandImageBuild is the envelope command path for image build.
 	commandImageBuild = "image build"
+	// commandImageVerify is the envelope command path for image verify.
+	commandImageVerify = "image verify"
+
 	// flagInput is the image-build input-directory flag name.
 	flagInput = "input"
 	// flagWork is the image-build scratch-workspace flag name.
@@ -30,6 +34,9 @@ const (
 	flagApkoConfig = "apko-config"
 	// flagBuildDate is the reproducible build-date flag name.
 	flagBuildDate = "build-date"
+	// flagBinary is the staged-binary-name flag name.
+	flagBinary = "binary"
+
 	// defaultMelangeConfig is the default Melange configuration path.
 	defaultMelangeConfig = "melange.yaml"
 	// defaultApkoConfig is the default apko configuration path.
@@ -42,6 +49,14 @@ const (
 	localImagePrefix = "local/"
 	// dirMode is the permission used when creating work and output roots.
 	dirMode = 0o755
+	// imageLayoutDir is the output-relative OCI layout directory.
+	imageLayoutDir = "layout"
+	// imageSbomsDir is the output-relative SBOM directory.
+	imageSbomsDir = "sboms"
+	// imageDigestFile is the output-relative index digest artifact.
+	imageDigestFile = "image-digest.txt"
+	// fileMode is the permission used when writing image-digest.txt.
+	fileMode = 0o644
 )
 
 // newImageCommand constructs the image parent verb.
@@ -55,6 +70,7 @@ func newImageCommand(options Options) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newImageBuildCommand(options))
+	cmd.AddCommand(newImageVerifyCommand(options))
 
 	return cmd
 }
@@ -78,6 +94,213 @@ func newImageBuildCommand(options Options) *cobra.Command {
 	cmd.Flags().String(flagVersion, "", "stable MAJOR.MINOR.PATCH version")
 
 	return cmd
+}
+
+// newImageVerifyCommand constructs the image verify verb.
+func newImageVerifyCommand(options Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Verify an authoritative OCI layout against staged binaries",
+		Args:  usageNoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runImageVerify(options)
+		},
+	}
+	cmd.Flags().String(flagOutput, "", "path to the authoritative artifact output root")
+	cmd.Flags().String(flagWork, "", "path to the scratch workspace")
+	cmd.Flags().String(flagBinary, "", "staged binary filename")
+	cmd.Flags().String(flagVersion, "", "stable MAJOR.MINOR.PATCH version")
+
+	return cmd
+}
+
+// runImageVerify validates configuration and verifies an OCI layout.
+//
+// Missing or malformed configuration is [ErrUsage] and is raised before any
+// file is opened. Opening the output and work roots is confined to those
+// trees. Layout, SBOM, and digest mismatches are command failures. Success
+// writes <output>/image-digest.txt and, without --json, writes nothing to
+// stdout. The --json envelope result is the [image.VerifyResult] itself.
+func runImageVerify(options Options) error {
+	expected, err := resolveImageVerify(options)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, UsageError(err))
+	}
+
+	output, err := os.OpenRoot(expected.Output)
+	if err != nil {
+		return writeCommandResult(
+			options,
+			commandImageVerify,
+			nil,
+			fmt.Errorf("open output %s: %w", expected.Output, err),
+		)
+	}
+	defer output.Close()
+	work, err := os.OpenRoot(expected.Work)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, fmt.Errorf("open work %s: %w", expected.Work, err))
+	}
+	defer work.Close()
+
+	err = requireImageVerifyDir(output, imageLayoutDir)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+	err = requireImageVerifyDir(output, imageSbomsDir)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+
+	layoutFS, err := fs.Sub(output.FS(), imageLayoutDir)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, fmt.Errorf("open %s: %w", imageLayoutDir, err))
+	}
+	sbomsFS, err := fs.Sub(output.FS(), imageSbomsDir)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, fmt.Errorf("open %s: %w", imageSbomsDir, err))
+	}
+
+	arches := imageVerifyArches()
+	canonical, err := image.CanonicalDigests(work.FS(), arches)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+	want := image.ExpectedImage{
+		Version:   expected.Version,
+		Binary:    expected.Binary,
+		Revision:  expected.Revision,
+		Source:    expected.Source,
+		Canonical: canonical,
+	}
+	verified, err := image.VerifyLayout(layoutFS, want)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+	err = image.VerifySBOMs(sbomsFS, expected.Version, arches)
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+	err = writeImageDigest(output, verified.IndexDigest())
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+
+	if options.settings == nil || !options.settings.JSON {
+		return nil
+	}
+
+	return writeCommandResult(options, commandImageVerify, verified.Result(want), nil)
+}
+
+// writeImageDigest writes <output>/image-digest.txt as digest plus a newline.
+func writeImageDigest(output *os.Root, digest rel.Digest) error {
+	if err := output.WriteFile(imageDigestFile, []byte(digest.String()+"\n"), fileMode); err != nil {
+		return fmt.Errorf("write %s: %w", imageDigestFile, err)
+	}
+
+	return nil
+}
+
+// imageVerifyConfig is the resolved image-verify configuration.
+type imageVerifyConfig struct {
+	// Output is the authoritative artifact output root.
+	Output string
+	// Work is the scratch workspace.
+	Work string
+	// Binary is the staged binary filename.
+	Binary string
+	// Version is the candidate stable release version.
+	Version rel.Version
+	// Revision is the expected org.opencontainers.image.revision value.
+	Revision string
+	// Source is the expected org.opencontainers.image.source URL.
+	Source string
+}
+
+// resolveImageVerify parses flags and Actions environment into an image-verify config.
+//
+// It performs no I/O.
+func resolveImageVerify(options Options) (imageVerifyConfig, error) {
+	settings := Settings{}
+	if options.settings != nil {
+		settings = *options.settings
+	}
+	if err := settings.err; err != nil {
+		return imageVerifyConfig{}, err
+	}
+	if settings.Output == "" {
+		return imageVerifyConfig{}, fmt.Errorf("--%s is required", flagOutput)
+	}
+	if settings.Work == "" {
+		return imageVerifyConfig{}, fmt.Errorf("--%s is required", flagWork)
+	}
+	if err := validateImageVerifyBinary(settings.Binary); err != nil {
+		return imageVerifyConfig{}, err
+	}
+
+	version, err := resolvePlanVersion(settings, options.LookupEnv)
+	if err != nil {
+		return imageVerifyConfig{}, err
+	}
+	revision, err := requiredEnv(options.LookupEnv, envCommitSHA)
+	if err != nil {
+		return imageVerifyConfig{}, err
+	}
+	serverURL, err := requiredEnv(options.LookupEnv, envServerURL)
+	if err != nil {
+		return imageVerifyConfig{}, err
+	}
+	repository, err := requiredEnv(options.LookupEnv, envRepository)
+	if err != nil {
+		return imageVerifyConfig{}, err
+	}
+
+	return imageVerifyConfig{
+		Output:   settings.Output,
+		Work:     settings.Work,
+		Binary:   settings.Binary,
+		Version:  version,
+		Revision: revision,
+		Source:   strings.TrimRight(serverURL, "/") + "/" + repository,
+	}, nil
+}
+
+// validateImageVerifyBinary rejects an empty or path-like binary filename.
+//
+// Names must be nonempty, must not contain a path separator, and must not
+// be "." or "..".
+func validateImageVerifyBinary(name string) error {
+	if name == "" {
+		return errors.New("binary name is empty")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("binary name %q is not a filename", name)
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("binary name %q contains a path separator", name)
+	}
+
+	return nil
+}
+
+// imageVerifyArches returns the closed APK architecture set in canonical order.
+func imageVerifyArches() []image.APKArch {
+	return []image.APKArch{image.ArchX8664, image.ArchAArch64}
+}
+
+// requireImageVerifyDir requires name to exist as a directory on root.
+func requireImageVerifyDir(root *os.Root, name string) error {
+	info, err := root.Stat(name)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", name)
+	}
+
+	return nil
 }
 
 // runImageBuild validates configuration and builds an OCI layout.
