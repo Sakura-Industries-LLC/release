@@ -99,6 +99,13 @@ func TestSelectBinaries(t *testing.T) {
 				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
 				{Type: "Archive", GOOS: "linux", GOARCH: "amd64", Path: "dist/archive.tar.gz", Name: "archive.tar.gz"},
 				{
+					Type:   "Linux Package",
+					GOOS:   "linux",
+					GOARCH: "amd64",
+					Path:   "dist/release-cli_0.1.2_linux_amd64.deb",
+					Name:   "release-cli",
+				},
+				{
 					Type:   "Binary",
 					GOOS:   "darwin",
 					GOARCH: "amd64",

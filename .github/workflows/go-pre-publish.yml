@@ -131,6 +131,9 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
             dist/*.sbom.json
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
