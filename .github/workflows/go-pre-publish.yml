@@ -190,6 +190,7 @@ jobs:
 
           brew tap-new --no-git "${tap}"
           tap_root="$(brew --repository "${tap}")"
+          mkdir -p "${tap_root}/Casks"
           cp dist/homebrew/Casks/*.rb "${tap_root}/Casks/"
           brew style --fix --cask "${tap}"
           brew style --cask "${tap}"
