@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/meigma/release/compare/v0.1.5...v0.1.6) (2026-08-21)
+
+
+### Features
+
+* **ci:** publish Scoop manifests after releases ([#39](https://github.com/meigma/release/issues/39)) ([38fde4f](https://github.com/meigma/release/commit/38fde4f8e33c9270a80a88fd0dc015821c50ccd9))
+* **cli:** publish Scoop manifests through pull requests ([#37](https://github.com/meigma/release/issues/37)) ([66f43c7](https://github.com/meigma/release/commit/66f43c7906b12a201b7530fad043ac9a77974076))
+
 ## [0.1.5](https://github.com/meigma/release/compare/v0.1.4...v0.1.5) (2026-08-21)
 
 
