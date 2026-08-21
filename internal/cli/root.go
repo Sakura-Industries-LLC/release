@@ -259,6 +259,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.AddCommand(newStageCommand(options))
 	root.AddCommand(newPlanCommand(options))
 	root.AddCommand(newVerifyCommand(options))
+	root.AddCommand(newInitCommand(options))
 	publish := newPublishCommand(options)
 	publish.AddCommand(newGitHubCommand(options))
 	root.AddCommand(publish)

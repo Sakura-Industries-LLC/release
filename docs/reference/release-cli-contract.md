@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, opens protected Homebrew tap pull requests, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, initializes cask-only Homebrew taps, opens protected tap pull requests, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
@@ -13,12 +13,13 @@
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
 | `release-cli publish github --dist PATH [--no-undraft] [--json]` | Reconcile a verified bundle with its matching GitHub Release and optionally publish the draft. |
+| `release-cli init homebrew-tap --tap OWNER/HOMEBREW-NAME --output DIR [--json]` | Write a cask-only tap scaffold into a new or empty local directory. |
 | `release-cli publish homebrew --dist PATH --tap OWNER/REPOSITORY --cask TOKEN [--json]` | Reconcile a generated cask through a protected Homebrew tap pull request. |
 | `release-cli verify bundle --dist PATH --identity URL [--issuer URL] [--json]` | Verify a closed release bundle and its detached Sigstore signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
-`stage`, `verify bundle`, `publish github`, and `publish homebrew` require a distribution path. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+`stage`, `verify bundle`, `publish github`, and `publish homebrew` require a distribution path. `init homebrew-tap` requires `--tap` and `--output`; the repository name must use `homebrew-<name>`. The initializer also requires a released CLI whose build metadata contains a full source commit. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
 
 Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
@@ -35,7 +36,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `image build`, `image verify`, `plan tags`, `publish github`, `publish homebrew`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `image build`, `image verify`, `init homebrew-tap`, `plan tags`, `publish github`, `publish homebrew`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -47,6 +48,14 @@ The `stage --json` result contains these fields:
 | `binaries` | object | Entries named `amd64` and `arm64` for the verified Linux binaries. |
 | `binaries.<arch>.path` | string | Original `<dist-basename>/`-prefixed path from `artifacts.json`. |
 | `binaries.<arch>.mode` | string | Observed permission bits in octal notation. |
+
+For `init homebrew-tap --json`, `command` is exactly `init homebrew-tap`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `tap` | string | Validated target repository in `owner/homebrew-name` form. |
+| `output` | string | Clean local output path. |
+| `files` | array of strings | Generated slash-separated paths in lexical order. |
 
 For `image build --json`, `command` is exactly `image build`. The `result` object contains these fields:
 
@@ -713,6 +722,23 @@ Publication enforces these guarantees in order:
 A retryable operation uses at most four attempts, waiting 1 second, 2 seconds, and 4 seconds between attempts. Tag and commit mismatches, unexpected assets, and digest mismatches are not retryable.
 
 A missing distribution path (`--dist` or `RELEASE_DIST`), a missing `RELEASE_APP_TOKEN`, missing or malformed `GITHUB_REPOSITORY`, `GITHUB_REF_NAME`, or `GITHUB_SHA`, and malformed GitHub endpoint configuration are configuration errors. They exit with code `2` before any publication request. An unresolvable `RELEASE_GIT_PATH` or `RELEASE_GH_PATH` is reported when the selected binary is first invoked and exits with code `1`. The Git path is first used for tag resolution; the GitHub CLI path is first used for upload, after tag resolution, draft discovery, and the pre-upload asset read. Every other post-configuration tag-resolution, GitHub API, upload, convergence, or release-contract failure also exits with code `1`. Success exits with code `0`. No other exit code is defined.
+
+## Homebrew tap initialization
+
+`release-cli init homebrew-tap` writes a minimal cask-only tap into a local output directory. It performs no Git or GitHub operation. The output path must not exist or must be an empty directory. A file, symlink, or nonempty directory is rejected without changing its contents.
+
+The command writes exactly these files:
+
+| Path | Purpose |
+| --- | --- |
+| `.github/workflows/casks.yml` | Calls the reusable `homebrew-tap-ci.yml` workflow for pull requests that change `Casks/**`. |
+| `.github/dependabot.yml` | Checks weekly for GitHub Actions updates. |
+| `Casks/.gitkeep` | Keeps the empty cask directory in Git. |
+| `README.md` | Records the tap and install syntax. |
+
+The reusable workflow reference is pinned to the full source commit stamped into the running `release-cli` binary. Development builds stamped with `none`, malformed commits, and abbreviated commits exit with code `2` before creating the output directory. The generated workflow grants `contents: read` to its only caller job and sets top-level permissions to an empty map.
+
+The command does not generate `Formula/`, a publisher workflow, repository settings, branch protection, secrets, or a GitHub App. Follow [Set up a Homebrew tap](../how-to/set-up-homebrew-tap.md) to create the repository and connect a producer.
 
 ## Homebrew cask publication
 

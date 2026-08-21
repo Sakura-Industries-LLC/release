@@ -56,6 +56,16 @@ type VersionResult struct {
 	Protocol int `json:"protocol"`
 }
 
+// HomebrewTapInitResult is the --json payload for init homebrew-tap.
+type HomebrewTapInitResult struct {
+	// Tap is the initialized owner/homebrew-name repository.
+	Tap string `json:"tap"`
+	// Output is the local scaffold directory.
+	Output string `json:"output"`
+	// Files lists every generated slash-separated path in lexical order.
+	Files []string `json:"files"`
+}
+
 // BinaryResult describes one verified canonical binary.
 type BinaryResult struct {
 	// Path is the original GoReleaser path, including the --dist basename prefix.
