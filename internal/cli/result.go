@@ -66,6 +66,16 @@ type HomebrewTapInitResult struct {
 	Files []string `json:"files"`
 }
 
+// ScoopBucketInitResult is the --json payload for init scoop-bucket.
+type ScoopBucketInitResult struct {
+	// Bucket is the initialized owner/repository bucket.
+	Bucket string `json:"bucket"`
+	// Output is the local scaffold directory.
+	Output string `json:"output"`
+	// Files lists every generated slash-separated path in lexical order.
+	Files []string `json:"files"`
+}
+
 // BinaryResult describes one verified canonical binary.
 type BinaryResult struct {
 	// Path is the original GoReleaser path, including the --dist basename prefix.

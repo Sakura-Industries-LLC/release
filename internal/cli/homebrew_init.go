@@ -56,6 +56,7 @@ func newInitCommand(options Options) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newHomebrewTapInitCommand(options))
+	cmd.AddCommand(newScoopBucketInitCommand(options))
 
 	return cmd
 }
@@ -83,7 +84,7 @@ func runHomebrewTapInit(cmd *cobra.Command, options Options) error {
 		return writeCommandResult(options, commandInitHomebrewTap, nil, UsageError(err))
 	}
 	files := renderHomebrewTapScaffold(config)
-	if err := writeHomebrewTapScaffold(config.Output, files); err != nil {
+	if err := writeScaffold(config.Output, files); err != nil {
 		return writeCommandResult(options, commandInitHomebrewTap, nil, err)
 	}
 	if options.settings == nil || !options.settings.JSON {
@@ -193,8 +194,8 @@ updates:
 	}
 }
 
-// writeHomebrewTapScaffold atomically publishes files into a new or empty output directory.
-func writeHomebrewTapScaffold(output string, files []scaffoldFile) error {
+// writeScaffold atomically publishes files into a new or empty output directory.
+func writeScaffold(output string, files []scaffoldFile) error {
 	absoluteOutput, err := filepath.Abs(output)
 	if err != nil {
 		return fmt.Errorf("resolve output %s: %w", output, err)
@@ -212,7 +213,7 @@ func writeHomebrewTapScaffold(output string, files []scaffoldFile) error {
 		return fmt.Errorf("output parent %s is not a directory", parent)
 	}
 
-	temporary, err := os.MkdirTemp(parent, ".release-cli-homebrew-tap-*")
+	temporary, err := os.MkdirTemp(parent, ".release-cli-scaffold-*")
 	if err != nil {
 		return fmt.Errorf("create temporary scaffold in %s: %w", parent, err)
 	}

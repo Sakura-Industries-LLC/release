@@ -14,13 +14,14 @@
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
 | `release-cli publish github --dist PATH [--no-undraft] [--json]` | Reconcile a verified bundle with its matching GitHub Release and optionally publish the draft. |
 | `release-cli init homebrew-tap --tap OWNER/HOMEBREW-NAME --output DIR [--json]` | Write a cask-only tap scaffold into a new or empty local directory. |
+| `release-cli init scoop-bucket --bucket OWNER/REPOSITORY --output DIR [--json]` | Write a root-layout Scoop bucket scaffold into a new or empty local directory. |
 | `release-cli publish homebrew --dist PATH --tap OWNER/REPOSITORY --cask TOKEN [--json]` | Reconcile a generated cask through a protected Homebrew tap pull request. |
 | `release-cli publish scoop --dist PATH --bucket OWNER/REPOSITORY --manifest NAME [--json]` | Reconcile a generated Scoop manifest through a protected bucket pull request. |
 | `release-cli verify bundle --dist PATH --identity URL [--issuer URL] [--json]` | Verify a closed release bundle and its detached Sigstore signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
-`stage`, `verify bundle`, `publish github`, `publish homebrew`, and `publish scoop` require a distribution path. `init homebrew-tap` requires `--tap` and `--output`; the repository name must use `homebrew-<name>`. The initializer also requires a released CLI whose build metadata contains a full source commit. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+`stage`, `verify bundle`, `publish github`, `publish homebrew`, and `publish scoop` require a distribution path. `init homebrew-tap` requires `--tap` and `--output`; the repository name must use `homebrew-<name>`. `init scoop-bucket` requires `--bucket` in `owner/repository` form and `--output`. Both initializers require a released CLI whose build metadata contains a full source commit. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
 
 Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
@@ -37,7 +38,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `image build`, `image verify`, `init homebrew-tap`, `plan tags`, `publish github`, `publish homebrew`, `publish scoop`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `image build`, `image verify`, `init homebrew-tap`, `init scoop-bucket`, `plan tags`, `publish github`, `publish homebrew`, `publish scoop`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -55,6 +56,14 @@ For `init homebrew-tap --json`, `command` is exactly `init homebrew-tap`. The `r
 | Field | JSON type | Value |
 | --- | --- | --- |
 | `tap` | string | Validated target repository in `owner/homebrew-name` form. |
+| `output` | string | Clean local output path. |
+| `files` | array of strings | Generated slash-separated paths in lexical order. |
+
+For `init scoop-bucket --json`, `command` is exactly `init scoop-bucket`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `bucket` | string | Validated target repository in `owner/repository` form. |
 | `output` | string | Clean local output path. |
 | `files` | array of strings | Generated slash-separated paths in lexical order. |
 
@@ -767,6 +776,23 @@ The command writes exactly these files:
 The reusable workflow reference is pinned to the full source commit stamped into the running `release-cli` binary. Development builds stamped with `none`, malformed commits, and abbreviated commits exit with code `2` before creating the output directory. The generated workflow grants `contents: read` to its only caller job and sets top-level permissions to an empty map.
 
 The command does not generate `Formula/`, a publisher workflow, repository settings, branch protection, secrets, or a GitHub App. Follow [Set up a Homebrew tap](../how-to/set-up-homebrew-tap.md) to create the repository and connect a producer.
+
+## Scoop bucket initialization
+
+`release-cli init scoop-bucket` writes a root-layout Scoop bucket into a local output directory. It performs no Git or GitHub operation. The output path must not exist or must be an empty directory. A file, symlink, or nonempty directory is rejected without changing its contents.
+
+The command writes exactly these files:
+
+| Path | Purpose |
+| --- | --- |
+| `.gitattributes` | Makes text files use CRLF in Windows checkouts for the pinned Scoop tests. |
+| `.github/workflows/manifests.yml` | Calls the reusable `scoop-bucket-ci.yml` workflow for pull requests that change root `*.json` manifests. |
+| `.github/dependabot.yml` | Checks weekly for GitHub Actions updates. |
+| `README.md` | Records the bucket and install syntax. |
+
+The reusable workflow reference is pinned to the full source commit stamped into the running `release-cli` binary. Development builds stamped with `none`, malformed commits, and abbreviated commits exit with code `2` before creating the output directory. The generated workflow grants `contents: read` to its only caller job and sets top-level permissions to an empty map.
+
+The command does not generate a sample manifest, a publisher workflow, repository settings, branch protection, secrets, or a GitHub App. Follow [Set up a Scoop bucket](../how-to/set-up-scoop-bucket.md) to create the repository and connect a producer.
 
 ## Homebrew cask publication
 
