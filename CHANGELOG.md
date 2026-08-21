@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/meigma/release/compare/v0.1.4...v0.1.5) (2026-08-21)
+
+
+### Bug Fixes
+
+* **release:** create Homebrew cask directory ([#34](https://github.com/meigma/release/issues/34)) ([153110d](https://github.com/meigma/release/commit/153110d085202ff43b505e5f56d5a00c2a51b6ab))
+
 ## [0.1.4](https://github.com/meigma/release/compare/v0.1.3...v0.1.4) (2026-08-21)
 
 
