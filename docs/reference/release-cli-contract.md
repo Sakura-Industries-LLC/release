@@ -876,6 +876,41 @@ Repository reads and retryable writes use at most four attempts, waiting 1 secon
 
 A missing or malformed flag, Actions variable, token, endpoint, or source commit is a configuration error and exits with code `2` before a bucket request. A missing, malformed, empty, non-regular, or oversized generated manifest exits with code `1` before a bucket request. Repository failures, conflicts, and failed postconditions also exit with code `1`. Success exits with code `0`.
 
+### Reusable Scoop publisher
+
+`.github/workflows/publish-scoop.yml` publishes one generated manifest only
+after the public GitHub Release succeeds. The caller passes the authoritative
+`release-assets` artifact ID and digest, the exact checksum-signing workflow
+ref, the bucket and manifest names, and the Release App client ID. Set
+`publish-scoop` to `true` to enable publication. The default is `false`.
+
+The reusable workflow declares `release-app-private-key` as optional because a
+disabled call must not require credentials, mint a token, or contact a bucket.
+An enabled call requires the App client ID and private key before any bucket
+request. It verifies the artifact handoff and signed release bundle before
+minting a token scoped to only the selected bucket with `contents: write` and
+`pull-requests: write`.
+
+The generated `scoop/<manifest>.json` control is protected by the Actions
+artifact digest but is deliberately excluded from `checksums.txt`, GitHub
+attestations, and public release assets. The Scoop publisher requires exactly
+one expected manifest beneath `dist/scoop`, isolates it, removes the unrelated
+`dist/homebrew` control, verifies the remaining signed bundle, then restores the
+manifest for `release-cli publish scoop`. The GitHub Release publisher removes
+both package-manager controls before verification and upload. The Homebrew
+publisher removes the Scoop control while preserving its existing cask
+isolation, verification, restoration, and publication sequence.
+
+The reusable workflow exposes `branch`, `pull-request-url`, and `state`. It
+accepts only `created`, `open`, and `published`. `created` and `open` require a
+pull request URL; every state requires the deterministic branch. The workflow
+never merges or enables auto-merge.
+
+The production release caller runs Scoop and Homebrew publication independently
+after `github-release`. Both jobs require the successful `release-assets` and
+`github-release` jobs, so neither package-manager repository can receive a pull
+request for an unpublished or invalid release.
+
 ## Signed release bundle verification
 
 `release-cli verify bundle` verifies the local release bundle before the GitHub Release workflow attests or uploads it.

@@ -6,7 +6,9 @@ For configuration steps, see [Configure GitHub releases](../how-to/configure-git
 
 ## Canonical workflow references
 
-The complete caller pins all four reusable workflows to one full revision. The GitHub Release path directly calls the producer and GitHub publisher:
+The released cross-repository GitHub Release path pins its four reusable
+workflows to one full revision. Its producer and GitHub publisher references
+are:
 
 ```yaml
 uses: meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
@@ -104,6 +106,36 @@ jobs:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
 ```
 
+The repository's production caller adds the Scoop publisher after the public
+GitHub Release:
+
+```yaml
+  scoop-publish:
+    name: Open Scoop bucket pull request
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    uses: ./.github/workflows/publish-scoop.yml
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: ${{ github.repository }}/.github/workflows/go-pre-publish.yml@${{ github.ref }}
+      bucket: meigma/scoop-bucket
+      manifest: meigma-release-cli
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-scoop: true
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+```
+
+`scoop-publish` and `homebrew-publish` both require `release-assets` and
+`github-release`. They can run independently after the public release succeeds.
+Neither package publisher can run when the GitHub Release job fails.
+
 The top-level `permissions: {}` prevents permissions from being granted implicitly. Each called job grants its reusable workflow only the permissions listed above. A called workflow cannot elevate permissions beyond those granted by its caller.
 
 The caller concurrency key serializes runs for the same workflow and tag. `cancel-in-progress: false` prevents a later run for that tag from canceling an earlier run. The OCI publisher adds repository-wide serialization across different release tags so shared channel tags cannot race.
@@ -112,7 +144,9 @@ The caller concurrency key serializes runs for the same workflow and tag. `cance
 
 ### `go-pre-publish.yml`
 
-The Go producer accepts no inputs and no secrets.
+The Go producer accepts the default-off `sign-and-notarize-macos` boolean and
+five optional macOS signing secrets. Disabled signing requires none of those
+secrets.
 
 The producer loads `setup-release-cli` from the same pinned release revision
 with `uses: $/.github/actions/setup-release-cli`. The caller does not pin the
@@ -191,6 +225,42 @@ The final CLI command rebuilds the expected closed asset set from `dist`, binds 
 `release-cli verify bundle` must succeed before the attestation step runs, and the attestation must succeed before `publish github` can upload an asset. This preserves the verify, attest, then upload ordering.
 
 The workflow mints the short-lived Release App installation token with `actions/create-github-app-token` and passes it to the CLI as `RELEASE_APP_TOKEN`. The CLI holds the value as a redacted secret. It does not receive the App private key or client ID and does not mint a token.
+
+### `publish-scoop.yml`
+
+| Input | Type | Required | Default | Value |
+| --- | --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None | Positive integer ID from `go-pre-publish.yml`. |
+| `artifact-digest` | string | Yes | None | Expected SHA-256 digest from `go-pre-publish.yml`. |
+| `checksum-signing-workflow-ref` | string | Yes | None | Exact owner, repository, workflow path, and revision used as the checksum certificate identity. |
+| `bucket` | string | No | Empty | Target Scoop bucket in `owner/repository` form. Required when publication is enabled. |
+| `manifest` | string | No | Empty | GoReleaser manifest name without `.json`. Required when publication is enabled. |
+| `release-app-client-id` | string | No | Empty | Release App client ID. Required when publication is enabled. |
+| `publish-scoop` | boolean | No | `false` | Whether to reconcile the generated manifest through a bucket pull request. |
+
+| Secret | Required | Value |
+| --- | --- | --- |
+| `release-app-private-key` | No | Release App private key. Required only when `publish-scoop` is `true`. |
+
+| Output | Value |
+| --- | --- |
+| `branch` | Deterministic `release/<manifest>/v<version>` branch. |
+| `pull-request-url` | Open bucket pull request URL for `created` and `open`; empty for `published`. |
+| `state` | One of `created`, `open`, or `published`. |
+
+The job requires `actions: read`, `attestations: read`, and `contents: read`
+from its caller. The default-off job is skipped before configuration
+validation, token creation, or a bucket request. When enabled, it verifies the
+artifact metadata and transport digest, requires exactly
+`scoop/<manifest>.json`, removes both package-manager controls from the bundle
+verification view, and verifies the signed bundle. It restores only the Scoop
+control before minting a short-lived App token scoped to the selected bucket
+repository with `contents: write` and `pull-requests: write`.
+
+The workflow then runs `release-cli publish scoop`. It accepts only the three
+documented states and requires a branch for every state and a pull request URL
+for `created` or `open`. It never writes the bucket's default branch, merges a
+pull request, enables auto-merge, deletes a ref, or changes repository policy.
 
 ## Versioning and credentials
 
@@ -294,7 +364,8 @@ use their own project and binary names.
 
 ## Authoritative artifact and asset contract
 
-The producer uploads one Actions artifact named `release-assets`. Its upload set is limited to:
+The producer uploads one Actions artifact named `release-assets`. Its upload set
+contains the signed release payload and two package-manager controls:
 
 ```text
 dist/*.tar.gz
@@ -305,9 +376,15 @@ dist/*.apk
 dist/*.sbom.json
 dist/checksums.txt
 dist/checksums.txt.sigstore.json
+dist/homebrew/Casks/*.rb
+dist/scoop/*.json
 ```
 
-For the supported three-operating-system, two-architecture Go profile, this is six archives, six native Linux packages, twelve SBOMs, `checksums.txt`, and `checksums.txt.sigstore.json`: 26 files in total.
+The supported three-operating-system, two-architecture Go payload contains six
+archives, six native Linux packages, twelve SBOMs, `checksums.txt`, and
+`checksums.txt.sigstore.json`: 26 signed/public files. This repository's
+Homebrew cask and Scoop manifest increase the digest-protected Actions artifact
+to 28 files without changing the signed or public payload count.
 
 Before upload, the producer obtains `release-cli` through the shared setup action and runs `release-cli stage --profile go --dist dist`. The command first builds the release bundle through GoReleaser. It then verifies every payload listed in `checksums.txt`, requires a nonempty regular `checksums.txt.sigstore.json`, verifies the two canonical Linux binaries described in the [`release-cli` contract](release-cli-contract.md), and writes the OCI input projection.
 
@@ -316,6 +393,16 @@ The publisher's artifact handoff has three independent owners:
 1. `release-cli verify handoff` verifies the GitHub API metadata tuple before download: the artifact exists, belongs to the current workflow run, has not expired, and has a GitHub-reported digest that matches the caller-supplied digest after normalization.
 2. The SHA-pinned `actions/download-artifact` step, configured with `digest-mismatch: error`, verifies the transport digest of the artifact ZIP.
 3. `release-cli verify bundle` verifies the extracted content and the detached Sigstore bundle.
+
+The cask and Scoop manifest are Actions control files, not signed release
+payloads. They are integrity-bound by the Actions artifact digest and must not
+appear in `checksums.txt`, the build-provenance subjects, or the GitHub Release.
+After handoff verification, the GitHub Release publisher removes both controls
+before bundle verification, attestation, and upload. The Homebrew publisher
+removes the Scoop control and temporarily isolates its cask; the Scoop publisher
+removes the Homebrew control and temporarily isolates its manifest. Each
+package publisher restores only its own control after the same signed bundle
+passes verification.
 
 `release-cli verify handoff` does not download the artifact and never reproduces the Actions ZIP digest.
 
@@ -389,7 +476,7 @@ An undraft request has no rollback. A failure from the undraft call is indetermi
 This contract does not provide or imply:
 
 - OCI construction or publication behavior beyond the dependency ordering defined here; see the separate [OCI image contract](oci-image-contract.md).
-- Homebrew, MacPorts, Nix, Scoop, mise registry, or other package-manager publication. Tagged `release-cli` archives remain installable through mise's built-in GitHub backend; see [Install `release-cli` with mise](../how-to/install-release-cli-with-mise.md).
+- Package-manager repository validation and reconciliation beyond the dependency and control-file boundaries defined here. See the [`release-cli` contract](release-cli-contract.md) for Homebrew and Scoop behavior.
 - Native package repository publication or native package-manager signing. DEB, RPM, and APK files are standalone GitHub Release assets protected by the release checksum, Cosign, and attestation contract.
 - Release support for languages other than the documented Go producer profile.
 - Consumer CI policy or tests in the OIDC-enabled release job.

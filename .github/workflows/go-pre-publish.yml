@@ -224,6 +224,7 @@ jobs:
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
             dist/homebrew/Casks/*.rb
+            dist/scoop/*.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

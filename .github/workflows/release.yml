@@ -101,3 +101,23 @@ jobs:
       publish-homebrew: true
     secrets:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+  scoop-publish:
+    name: Open Scoop bucket pull request
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    uses: ./.github/workflows/publish-scoop.yml
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: ${{ github.repository }}/.github/workflows/go-pre-publish.yml@${{ github.ref }}
+      bucket: meigma/scoop-bucket
+      manifest: meigma-release-cli
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-scoop: true
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
