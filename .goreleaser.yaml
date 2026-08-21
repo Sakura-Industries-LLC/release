@@ -31,6 +31,21 @@ builds:
       - -X main.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+notarize:
+  macos:
+    - enabled: '{{ eq .Env.MACOS_NOTARIZE_ENABLED "true" }}'
+      ids:
+        - release-cli
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: release-cli
     ids:
@@ -58,6 +73,22 @@ nfpms:
       - rpm
       - apk
     bindir: /usr/bin
+
+homebrew_casks:
+  - name: meigma-release-cli
+    ids:
+      - release-cli
+    binaries:
+      - release-cli
+    repository:
+      owner: meigma
+      name: homebrew-tap
+    homepage: https://github.com/meigma/release
+    description: Release automation for Meigma projects
+    license: LicenseRef-Proprietary
+    url:
+      template: "https://github.com/meigma/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    skip_upload: true
 
 checksum:
   name_template: checksums.txt

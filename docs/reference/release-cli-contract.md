@@ -755,6 +755,30 @@ Repository reads and retryable writes use at most four attempts, waiting 1 secon
 
 A missing or malformed flag, Actions variable, token, endpoint, or source commit is a configuration error and exits with code `2` before a tap request. A missing, malformed, empty, non-regular, or oversized generated cask exits with code `1` before a tap request. Repository failures, conflicts, and failed postconditions also exit with code `1`. Success exits with code `0`.
 
+### Reusable Homebrew publisher
+
+`.github/workflows/publish-homebrew.yml` publishes one generated cask only after the public GitHub Release job succeeds. The caller passes the authoritative `release-assets` artifact ID and digest, the exact checksum-signing workflow ref, the tap and cask names, and the Release App client ID. Set `publish-homebrew` to `true` to enable publication. The default is `false`.
+
+The reusable workflow declares `release-app-private-key` as an optional secret because a disabled call must not require or mint a tap credential. An enabled call requires the client ID and private key before any tap request. It verifies the artifact handoff and signed release bundle before minting a repository-scoped App token with only `contents: write` and `pull-requests: write` for the selected tap. The generated `homebrew/Casks/<cask>.rb` control file is protected by the Actions artifact digest but is deliberately excluded from `checksums.txt` and the GitHub Release assets. The GitHub Release publisher removes the Homebrew control after artifact-digest verification; the Homebrew publisher isolates it while verifying the signed bundle, then restores it for tap publication.
+
+The publisher returns the deterministic branch, pull request URL, and reconciled state. A successful first run returns `created`; a rerun while the same pull request remains open returns `open`; and a rerun after the exact cask reaches the tap's default branch returns `published`. The workflow never enables auto-merge or merges the pull request.
+
+The producer's `.goreleaser.yaml` must declare a `homebrew_casks` entry with `skip_upload: true`. The Go pre-publish workflow carries `dist/homebrew/Casks/*.rb` in the authoritative Actions artifact and formats generated casks with Homebrew before upload. It does not add the control file to the signed release payload set.
+
+### Optional macOS signing and notarization
+
+`.github/workflows/go-pre-publish.yml` accepts `sign-and-notarize-macos`, which defaults to `false`. Enabling it requires all five optional workflow secrets:
+
+- `macos-sign-p12`;
+- `macos-sign-password`;
+- `macos-notary-key`;
+- `macos-notary-key-id`;
+- `macos-notary-issuer-id`.
+
+The workflow fails before staging when any enabled credential is absent. GoReleaser uses Quill to sign and notarize every Darwin build, waits up to 20 minutes for Apple to accept each submission, and archives only accepted binaries. Apple rejection or timeout fails pre-publish, so neither the GitHub Release nor Homebrew publisher runs.
+
+When signing is disabled, the workflow does not require Apple credentials. Existing external callers therefore preserve their credential-free release path. Producers that enable signing must add a guarded `notarize.macos` block to `.goreleaser.yaml`; a workflow input alone cannot add signing policy to a producer's GoReleaser configuration.
+
 ## Signed release bundle verification
 
 `release-cli verify bundle` verifies the local release bundle before the GitHub Release workflow attests or uploads it.

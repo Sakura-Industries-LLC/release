@@ -20,6 +20,14 @@ jobs:
       contents: read
       id-token: write
     uses: ./.github/workflows/go-pre-publish.yml
+    with:
+      sign-and-notarize-macos: true
+    secrets:
+      macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
+      macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
+      macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      macos-notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
   oci-image:
     name: Build OCI image
     needs: release-assets
@@ -71,5 +79,25 @@ jobs:
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
       publish-release: true
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+  homebrew-publish:
+    name: Open Homebrew tap pull request
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    uses: ./.github/workflows/publish-homebrew.yml
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: ${{ github.repository }}/.github/workflows/go-pre-publish.yml@${{ github.ref }}
+      tap: meigma/homebrew-tap
+      cask: meigma-release-cli
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-homebrew: true
     secrets:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
