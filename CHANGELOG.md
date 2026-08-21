@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.4](https://github.com/meigma/release/compare/v0.1.3...v0.1.4) (2026-08-21)
+
+
+### Features
+
+* **ci:** add managed Homebrew tap validation ([#28](https://github.com/meigma/release/issues/28)) ([abd25d2](https://github.com/meigma/release/commit/abd25d2f066e544551a502d1f260934955019aeb))
+* **cli:** initialize Homebrew taps ([#33](https://github.com/meigma/release/issues/33)) ([cde9a81](https://github.com/meigma/release/commit/cde9a81a3d41486361b1dd2b76f388f7b3d81e71))
+* **cli:** publish Homebrew casks through tap PRs ([#31](https://github.com/meigma/release/issues/31)) ([4ae2da5](https://github.com/meigma/release/commit/4ae2da5399b8506f351a2884c44cd82b0e1e3614))
+* **release:** publish signed Homebrew casks ([#32](https://github.com/meigma/release/issues/32)) ([49bb930](https://github.com/meigma/release/commit/49bb930f171b488a497cca838ca30b5b4ba9ff96))
+
+
+### Bug Fixes
+
+* **ci:** scope tap validation to changed casks ([#30](https://github.com/meigma/release/issues/30)) ([c933580](https://github.com/meigma/release/commit/c9335805068db1bc64c33d9af66cbb8d58657864))
+
 ## [0.1.3](https://github.com/meigma/release/compare/v0.1.2...v0.1.3) (2026-08-20)
 
 
