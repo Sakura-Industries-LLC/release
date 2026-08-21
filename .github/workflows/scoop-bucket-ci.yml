@@ -1,0 +1,212 @@
+name: Reusable Scoop Bucket CI
+
+on:
+  workflow_call:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  discovery:
+    name: Find changed manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.changed.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+          persist-credentials: false
+
+      - name: Select changed manifests
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          sha_pattern='^[0-9a-f]{40}$'
+          if [[ ! "${BASE_SHA}" =~ ${sha_pattern} || ! "${HEAD_SHA}" =~ ${sha_pattern} ]]; then
+            echo '::error::Scoop bucket CI must be called from a pull_request workflow.'
+            exit 1
+          fi
+
+          rejected="$(git diff --name-only --diff-filter=DR "${BASE_SHA}" "${HEAD_SHA}" -- ':(top,glob)*.json')"
+          if [[ -n "${rejected}" ]]; then
+            echo '::error::Scoop bucket CI does not publish manifest deletions or renames.'
+            printf '%s\n' "${rejected}"
+            exit 1
+          fi
+
+          mapfile -d '' -t paths < <(
+            git diff --name-only -z --diff-filter=AM \
+              "${BASE_SHA}" "${HEAD_SHA}" -- ':(top,glob)*.json'
+          )
+          if (( ${#paths[@]} == 0 )); then
+            echo '::error::The pull request does not add or modify a manifest.'
+            exit 1
+          fi
+
+          names=()
+          for path in "${paths[@]}"; do
+            if [[ ! "${path}" =~ ^([a-z0-9][a-z0-9+@._-]*)\.json$ ]]; then
+              printf '::error::Unsupported manifest path: %s\n' "${path}"
+              exit 1
+            fi
+            names+=("${BASH_REMATCH[1]}")
+          done
+
+          matrix="$(jq -cn '$ARGS.positional' --args "${names[@]}")"
+          printf 'matrix=%s\n' "${matrix}" >> "${GITHUB_OUTPUT}"
+
+  validate:
+    name: Validate ${{ matrix.manifest }} on ${{ matrix.config.os }}
+    needs: discovery
+    strategy:
+      fail-fast: false
+      matrix:
+        manifest: ${{ fromJSON(needs.discovery.outputs.matrix) }}
+        config:
+          - os: windows-2025
+            arch: AMD64
+          - os: windows-11-arm
+            arch: ARM64
+    runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout bucket
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: bucket-under-test
+          persist-credentials: false
+
+      - name: Checkout pinned Scoop
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ScoopInstaller/Scoop
+          ref: b588a06e41d920d2123ec70aee682bae14935939
+          path: scoop-core
+          persist-credentials: false
+
+      - name: Assert host architecture
+        shell: pwsh
+        env:
+          EXPECTED_ARCH: ${{ matrix.config.arch }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PROCESSOR_ARCHITECTURE -ne $env:EXPECTED_ARCH) {
+              throw "Expected an $($env:EXPECTED_ARCH) host, got $($env:PROCESSOR_ARCHITECTURE)."
+          }
+
+      - name: Install and cache test dependencies
+        if: ${{ matrix.config.arch == 'AMD64' }}
+        uses: potatoqualitee/psmodulecache@ee5e9494714abf56f6efbfa51527b2aec5c761b8 # v6.2.1
+        with:
+          modules-to-cache: BuildHelpers, Pester
+          shell: pwsh
+
+      - name: Run pinned Scoop bucket tests
+        if: ${{ matrix.config.arch == 'AMD64' }}
+        shell: pwsh
+        env:
+          MANIFEST_NAME: ${{ matrix.manifest }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestName = $env:MANIFEST_NAME
+          $candidate = Join-Path (Resolve-Path '.\bucket-under-test') "$manifestName.json"
+          $testBucket = Join-Path $env:RUNNER_TEMP ('scoop-manifest-' + [guid]::NewGuid().ToString('n'))
+          New-Item $testBucket -ItemType Directory | Out-Null
+          Copy-Item $candidate (Join-Path $testBucket "$manifestName.json")
+
+          $env:SCOOP_HOME = (Resolve-Path '.\scoop-core').Path
+          $env:CI = ''
+          $container = New-PesterContainer `
+              -Path (Join-Path $env:SCOOP_HOME 'test\Import-Bucket-Tests.ps1') `
+              -Data @{ BucketPath = $testBucket }
+          $result = Invoke-Pester -Container $container -PassThru -Output Detailed
+          if ($result.FailedCount -ne 0) {
+              throw "Pinned Scoop bucket tests reported $($result.FailedCount) failure(s)."
+          }
+
+      - name: Exercise bucket lifecycle
+        shell: pwsh
+        env:
+          BUCKET_REPOSITORY: ${{ github.event.pull_request.base.repo.clone_url }}
+          MANIFEST_NAME: ${{ matrix.manifest }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestName = $env:MANIFEST_NAME
+          $bucketName = 'under-test'
+
+          $env:SCOOP = Join-Path $env:RUNNER_TEMP 'scoop-data'
+          'apps', 'buckets', 'cache', 'persist', 'shims' | ForEach-Object {
+              New-Item (Join-Path $env:SCOOP $_) -ItemType Directory -Force | Out-Null
+          }
+          $scoopRoot = Resolve-Path '.\scoop-core'
+          $scoopApp = New-Item (Join-Path $env:SCOOP 'apps\scoop') -ItemType Directory -Force
+          New-Item (Join-Path $scoopApp 'current') -ItemType Junction -Target $scoopRoot | Out-Null
+          $scoop = Join-Path $scoopRoot 'bin\scoop.ps1'
+          $checkout = Resolve-Path '.\bucket-under-test'
+
+          function Invoke-Scoop {
+              param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+              & $scoop @Arguments
+              if ($LASTEXITCODE -ne 0) {
+                  throw "scoop $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+              }
+          }
+
+          Invoke-Scoop config LAST_UPDATE ([DateTime]::Now.ToString('o'))
+          Invoke-Scoop bucket add $bucketName $env:BUCKET_REPOSITORY
+
+          $installedBucket = Join-Path $env:SCOOP "buckets\$bucketName"
+          $baseManifestPath = Join-Path $installedBucket "$manifestName.json"
+          $candidatePath = Join-Path $checkout "$manifestName.json"
+          $hadBaseline = Test-Path $baseManifestPath
+
+          if ($hadBaseline) {
+              Invoke-Scoop install "$bucketName/$manifestName"
+          }
+
+          Copy-Item $candidatePath $baseManifestPath -Force
+
+          if ($hadBaseline) {
+              Invoke-Scoop update $manifestName --force
+          } else {
+              Invoke-Scoop install "$bucketName/$manifestName"
+          }
+
+          Invoke-Scoop uninstall $manifestName
+          if (Test-Path (Join-Path $env:SCOOP "apps\$manifestName")) {
+              throw 'Scoop left the application installed after uninstall.'
+          }
+
+  result:
+    name: Scoop manifest validation
+    if: ${{ always() }}
+    needs:
+      - discovery
+      - validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require successful validation
+        env:
+          DISCOVERY_RESULT: ${{ needs.discovery.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: |
+          if [[ "${DISCOVERY_RESULT}" != 'success' || "${VALIDATE_RESULT}" != 'success' ]]; then
+            printf '::error::Manifest discovery: %s; validation: %s\n' \
+              "${DISCOVERY_RESULT}" "${VALIDATE_RESULT}"
+            exit 1
+          fi
