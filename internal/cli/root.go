@@ -14,6 +14,7 @@ import (
 	"github.com/meigma/release/internal/profile/goprof"
 	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage/image"
+	"github.com/meigma/release/internal/stage/pubbrew"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -199,6 +200,14 @@ type Options struct {
 	// An empty path resolves git from PATH. An empty directory inherits
 	// the process working directory.
 	NewRefResolver func(path, dir string) (pubgh.RefResolver, error)
+	// TapReader, when set, is the Homebrew tap read port. Tests inject it.
+	TapReader pubbrew.RepositoryReader
+	// NewTapReader constructs the tap read port from a token and API endpoint.
+	NewTapReader func(token rel.Secret, endpoint GitHubEndpoint) (pubbrew.RepositoryReader, error)
+	// TapWriter, when set, is the Homebrew tap mutation port. Tests inject it.
+	TapWriter pubbrew.RepositoryWriter
+	// NewTapWriter constructs the tap mutation port from a token and API endpoint.
+	NewTapWriter func(token rel.Secret, endpoint GitHubEndpoint) (pubbrew.RepositoryWriter, error)
 	// APKBuilder, when set, is the Melange APK-build port. Tests inject it.
 	APKBuilder image.APKBuilder
 	// NewAPKBuilder constructs the Melange APK-build port from a binary path.

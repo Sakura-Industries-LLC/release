@@ -1,7 +1,6 @@
 # Interfaces live in the consumer package (I2). Generated mocks live under
 # the implementing adapter's mocks/ package (T3), not next to the interface.
-# Add an interface here only when its slice lands. The port budget is closed
-# at 13; do not invent a fourteenth.
+# Add an interface here only when its implementation slice lands.
 all: false
 dir: '{{.InterfaceDir}}'
 filename: '{{ .InterfaceName | snakecase }}.go'
@@ -16,6 +15,16 @@ pkgname: mocks
 recursive: false
 template: testify
 packages:
+  github.com/meigma/release/internal/stage/pubbrew:
+    config:
+      dir: internal/adapter/ghtap/mocks
+    interfaces:
+      RepositoryReader:
+        config:
+          filename: repository_reader.go
+      RepositoryWriter:
+        config:
+          filename: repository_writer.go
   github.com/meigma/release/internal/stage/pubgh:
     config:
       dir: internal/adapter/ghact/mocks

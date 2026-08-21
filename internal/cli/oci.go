@@ -58,6 +58,7 @@ func newPublishCommand(options Options) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newOCICommand(options))
+	cmd.AddCommand(newHomebrewCommand(options))
 
 	return cmd
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/meigma/release/internal/adapter/cosign"
 	"github.com/meigma/release/internal/adapter/ghact"
 	"github.com/meigma/release/internal/adapter/ghrel"
+	"github.com/meigma/release/internal/adapter/ghtap"
 	"github.com/meigma/release/internal/adapter/ghup"
 	"github.com/meigma/release/internal/adapter/gitx"
 	"github.com/meigma/release/internal/adapter/melange"
@@ -18,6 +19,7 @@ import (
 	"github.com/meigma/release/internal/cli"
 	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage/image"
+	"github.com/meigma/release/internal/stage/pubbrew"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
 )
@@ -87,6 +89,12 @@ func run() int {
 				Dir:    dir,
 				Stderr: os.Stderr,
 			}), nil
+		},
+		NewTapReader: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubbrew.RepositoryReader, error) {
+			return ghtap.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
+		NewTapWriter: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubbrew.RepositoryWriter, error) {
+			return ghtap.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
 		},
 		NewAPKBuilder: func(path string) (image.APKBuilder, error) {
 			return melange.New(melange.Options{
