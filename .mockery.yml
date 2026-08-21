@@ -25,6 +25,16 @@ packages:
       RepositoryWriter:
         config:
           filename: repository_writer.go
+  github.com/meigma/release/internal/stage/pubscoop:
+    config:
+      dir: internal/adapter/ghbucket/mocks
+    interfaces:
+      RepositoryReader:
+        config:
+          filename: repository_reader.go
+      RepositoryWriter:
+        config:
+          filename: repository_writer.go
   github.com/meigma/release/internal/stage/pubgh:
     config:
       dir: internal/adapter/ghact/mocks

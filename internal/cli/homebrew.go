@@ -68,6 +68,8 @@ type homebrewConfig struct {
 
 // runHomebrew validates configuration, opens the generated cask through a
 // confined distribution root, and reconciles the tap pull request.
+//
+//nolint:dupl // Homebrew policy intentionally remains isolated from Scoop policy.
 func runHomebrew(cmd *cobra.Command, options Options) error {
 	expected, err := resolveHomebrew(cmd, options)
 	if err != nil {
@@ -193,6 +195,8 @@ func requiredCommandFlag(cmd *cobra.Command, name string) (string, error) {
 }
 
 // readGeneratedCask reads exactly homebrew/Casks/<token>.rb through an [os.Root].
+//
+//nolint:dupl // Channel-specific paths and diagnostics stay explicit.
 func readGeneratedCask(dist string, token pubbrew.CaskToken) ([]byte, error) {
 	root, err := os.OpenRoot(dist)
 	if err != nil {

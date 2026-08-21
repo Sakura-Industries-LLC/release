@@ -90,6 +90,19 @@ homebrew_casks:
       template: "https://github.com/meigma/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 
+scoops:
+  - name: meigma-release-cli
+    ids:
+      - release-cli
+    repository:
+      owner: meigma
+      name: scoop-bucket
+    homepage: https://github.com/meigma/release
+    description: Release automation for Meigma projects
+    license: Proprietary
+    url_template: "https://github.com/meigma/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    skip_upload: true
+
 checksum:
   name_template: checksums.txt
 

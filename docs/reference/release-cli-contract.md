@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, initializes cask-only Homebrew taps, opens protected tap pull requests, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, initializes cask-only Homebrew taps, opens protected tap and Scoop bucket pull requests, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
 
 ## Commands
 
@@ -15,11 +15,12 @@
 | `release-cli publish github --dist PATH [--no-undraft] [--json]` | Reconcile a verified bundle with its matching GitHub Release and optionally publish the draft. |
 | `release-cli init homebrew-tap --tap OWNER/HOMEBREW-NAME --output DIR [--json]` | Write a cask-only tap scaffold into a new or empty local directory. |
 | `release-cli publish homebrew --dist PATH --tap OWNER/REPOSITORY --cask TOKEN [--json]` | Reconcile a generated cask through a protected Homebrew tap pull request. |
+| `release-cli publish scoop --dist PATH --bucket OWNER/REPOSITORY --manifest NAME [--json]` | Reconcile a generated Scoop manifest through a protected bucket pull request. |
 | `release-cli verify bundle --dist PATH --identity URL [--issuer URL] [--json]` | Verify a closed release bundle and its detached Sigstore signature. |
 | `release-cli verify handoff --artifact-id <n> --digest <sha256:...> [--json]` | Verify an Actions artifact's GitHub API metadata before download. |
 | `release-cli version [--json]` | Report the CLI version, source commit, and protocol integer. |
 
-`stage`, `verify bundle`, `publish github`, and `publish homebrew` require a distribution path. `init homebrew-tap` requires `--tap` and `--output`; the repository name must use `homebrew-<name>`. The initializer also requires a released CLI whose build metadata contains a full source commit. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
+`stage`, `verify bundle`, `publish github`, `publish homebrew`, and `publish scoop` require a distribution path. `init homebrew-tap` requires `--tap` and `--output`; the repository name must use `homebrew-<name>`. The initializer also requires a released CLI whose build metadata contains a full source commit. The only accepted profile is `go`. `verify bundle` also requires an exact certificate identity. `verify handoff` requires artifact ID and digest values. Supply handoff values with `--artifact-id` and `--digest`, or with `RELEASE_ARTIFACT_ID` and `RELEASE_DIGEST`. An explicitly set flag takes precedence over its environment variable.
 
 Boolean `RELEASE_*` environment variables must contain a value accepted by Go's `strconv.ParseBool`: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false`, or `False`. Any other value is invalid configuration and exits with code `2`.
 
@@ -36,7 +37,7 @@ When option and argument parsing succeeds and `--json` is requested, stdout cont
 | Field | Value |
 | --- | --- |
 | `schema` | Always `release.dev/result/v1`. |
-| `command` | The command path, such as `image build`, `image verify`, `init homebrew-tap`, `plan tags`, `publish github`, `publish homebrew`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
+| `command` | The command path, such as `image build`, `image verify`, `init homebrew-tap`, `plan tags`, `publish github`, `publish homebrew`, `publish scoop`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, `verify handoff`, or `version`. |
 | `ok` | `true` when the command succeeds; otherwise `false`. |
 | `result` | The command-specific result object. |
 
@@ -253,6 +254,33 @@ For example, a new tap publication writes this envelope:
 }
 ```
 
+For `publish scoop --json`, `command` is exactly `publish scoop`. The `result` object contains these fields:
+
+| Field | JSON type | Value |
+| --- | --- | --- |
+| `bucket` | string | Target bucket in `owner/repository` form. |
+| `manifest` | string | Published manifest name. |
+| `branch` | string | Deterministic publication branch in `release/<manifest>/v<version>` form. |
+| `pull_request_url` | string | Matching pull request URL. This can be empty when matching manifest content reached the default branch without a discoverable pull request. |
+| `state` | string | `created` when the command opened the pull request, `open` when it accepted an existing pull request, or `published` when matching content is on the default branch. |
+
+For example, a new bucket publication writes this envelope:
+
+```json
+{
+  "schema": "release.dev/result/v1",
+  "command": "publish scoop",
+  "ok": true,
+  "result": {
+    "bucket": "owner/scoop-bucket",
+    "manifest": "example",
+    "branch": "release/example/v1.2.3",
+    "pull_request_url": "https://github.com/owner/scoop-bucket/pull/42",
+    "state": "created"
+  }
+}
+```
+
 For `plan tags --json`, `command` is exactly `plan tags`. The `result` object contains these fields:
 
 | Field | JSON type | Value |
@@ -417,7 +445,7 @@ parse or dispatch failures skip the envelope. These include an unknown command
 or flag, an invalid flag value, or the wrong number of arguments. The usage
 error goes to stderr and the process exits with code `2`.
 
-Without `--json`, a successful `image build`, `image verify`, `plan tags`, `publish github`, `publish homebrew`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
+Without `--json`, a successful `image build`, `image verify`, `plan tags`, `publish github`, `publish homebrew`, `publish scoop`, `publish oci prepare`, `publish oci finalize`, `stage`, `verify bundle`, or `verify handoff` command writes nothing to stdout. A successful `version` command writes `release-cli <version> (<commit>, protocol <n>)` to stdout because the version data is the requested output and can be piped. This human format is a convenience, not a stable interface. Human diagnostics and warnings go to stderr. With `--json`, the envelope is the stable machine-readable stdout contract for all commands.
 
 ## Exit codes
 
@@ -804,6 +832,49 @@ The producer's `.goreleaser.yaml` must declare a `homebrew_casks` entry with `sk
 The workflow fails before staging when any enabled credential is absent. GoReleaser uses Quill to sign and notarize every Darwin build, waits up to 20 minutes for Apple to accept each submission, and archives only accepted binaries. Apple rejection or timeout fails pre-publish, so neither the GitHub Release nor Homebrew publisher runs.
 
 When signing is disabled, the workflow does not require Apple credentials. Existing external callers therefore preserve their credential-free release path. Producers that enable signing must add a guarded `notarize.macos` block to `.goreleaser.yaml`; a workflow input alone cannot add signing policy to a producer's GoReleaser configuration.
+
+## Scoop manifest publication
+
+`release-cli publish scoop` reads the manifest generated by GoReleaser and reconciles it through a bucket pull request. The command never writes the bucket's default branch, force-updates a branch, deletes a path, enables auto-merge, or merges the pull request.
+
+| Value | Flag | Environment variable | Default |
+| --- | --- | --- | --- |
+| Distribution directory | `--dist` | `RELEASE_DIST` | None. A path is required. |
+| Target bucket | `--bucket` | None. | None. Use `owner/repository` form. |
+| Manifest name | `--manifest` | None. | None. Use lowercase letters, digits, and interior hyphens. |
+| Release App installation token | None. | `RELEASE_APP_TOKEN` | None. A token is required. |
+| JSON output | `--json` | `RELEASE_JSON` | Disabled. |
+
+The command requires this GitHub Actions context:
+
+| Variable | Value |
+| --- | --- |
+| `GITHUB_REPOSITORY` | Source repository in `owner/name` form. |
+| `GITHUB_REF_NAME` | Stable release tag. |
+| `GITHUB_SHA` | Expected 40-character lowercase commit SHA for the workflow run. |
+| `GITHUB_API_URL` | Optional absolute GitHub API base URL. The public GitHub API is the default. |
+| `GITHUB_SERVER_URL` | Optional absolute GitHub server and upload base URL used with a custom API URL. |
+
+The command opens `scoop/<manifest>.json` beneath the distribution root. The path must resolve to a nonempty regular file no larger than 1 MiB. Root-confined file access rejects a symbolic link that escapes the distribution directory. The generated JSON must parse and contain exactly a string `version` value equal to `GITHUB_REF_NAME` after removal of its leading `v`. Other JSON fields remain allowed; the publisher does not rewrite content. The repository write path remains `<manifest>.json` at the bucket root.
+
+The producer's `.goreleaser.yaml` declares the `meigma-release-cli` Scoop manifest for `meigma/scoop-bucket`, selects the `release-cli` archive ID, uses the GitHub release asset URL template, and sets `skip_upload: true`. GoReleaser therefore writes `dist/scoop/meigma-release-cli.json` for the reviewed publisher without pushing directly to the bucket.
+
+Publication enforces these guarantees in order:
+
+1. Read the bucket's default branch, head commit, and current manifest.
+2. Find the unique pull request whose base is the default branch and whose head is `release/<manifest>/v<version>`. Multiple matching pull requests are a conflict.
+3. Return `published` without mutation when the default branch already contains the exact generated bytes.
+4. Refuse a different manifest at the same or a newer version. A malformed current version also fails before mutation.
+5. Create the deterministic publication branch from the observed default-branch commit when the branch is absent.
+6. Accept an existing publication commit only when it has the observed default-branch commit as its sole parent, changes only `<manifest>.json`, classifies that path as added or modified, and contains the exact generated bytes. The command refuses every other branch state.
+7. Commit the generated manifest to an unchanged new branch. The update uses the observed blob SHA when the manifest already exists.
+8. Return `open` when a matching pull request already exists. Otherwise, open a non-draft pull request with maintainer edits and auto-merge disabled, then return `created`.
+
+After a pull request is merged, a later invocation returns `published` only when the default branch contains the exact generated manifest. A merged pull request without those bytes, or a closed unmerged pull request, is a conflict.
+
+Repository reads and retryable writes use at most four attempts, waiting 1 second, 2 seconds, and 4 seconds between attempts. After a failed branch, file, or pull-request write, the command reads fresh state before retrying. This accepts a write that GitHub applied before losing the response without creating a duplicate commit or pull request.
+
+A missing or malformed flag, Actions variable, token, endpoint, or source commit is a configuration error and exits with code `2` before a bucket request. A missing, malformed, empty, non-regular, or oversized generated manifest exits with code `1` before a bucket request. Repository failures, conflicts, and failed postconditions also exit with code `1`. Success exits with code `0`.
 
 ## Signed release bundle verification
 

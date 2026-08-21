@@ -10,6 +10,7 @@ import (
 	"github.com/meigma/release/internal/adapter/apko"
 	"github.com/meigma/release/internal/adapter/cosign"
 	"github.com/meigma/release/internal/adapter/ghact"
+	"github.com/meigma/release/internal/adapter/ghbucket"
 	"github.com/meigma/release/internal/adapter/ghrel"
 	"github.com/meigma/release/internal/adapter/ghtap"
 	"github.com/meigma/release/internal/adapter/ghup"
@@ -22,6 +23,7 @@ import (
 	"github.com/meigma/release/internal/stage/pubbrew"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
+	"github.com/meigma/release/internal/stage/pubscoop"
 )
 
 //nolint:gochecknoglobals // Linker-injected build metadata.
@@ -95,6 +97,12 @@ func run() int {
 		},
 		NewTapWriter: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubbrew.RepositoryWriter, error) {
 			return ghtap.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
+		NewBucketReader: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubscoop.RepositoryReader, error) {
+			return ghbucket.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
+		},
+		NewBucketWriter: func(token rel.Secret, endpoint cli.GitHubEndpoint) (pubscoop.RepositoryWriter, error) {
+			return ghbucket.NewAuthenticated(token, endpoint.APIURL, endpoint.ServerURL)
 		},
 		NewAPKBuilder: func(path string) (image.APKBuilder, error) {
 			return melange.New(melange.Options{

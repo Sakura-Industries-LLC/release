@@ -17,6 +17,7 @@ import (
 	"github.com/meigma/release/internal/stage/pubbrew"
 	"github.com/meigma/release/internal/stage/pubgh"
 	"github.com/meigma/release/internal/stage/puboci"
+	"github.com/meigma/release/internal/stage/pubscoop"
 )
 
 const (
@@ -208,6 +209,14 @@ type Options struct {
 	TapWriter pubbrew.RepositoryWriter
 	// NewTapWriter constructs the tap mutation port from a token and API endpoint.
 	NewTapWriter func(token rel.Secret, endpoint GitHubEndpoint) (pubbrew.RepositoryWriter, error)
+	// BucketReader, when set, is the Scoop bucket read port. Tests inject it.
+	BucketReader pubscoop.RepositoryReader
+	// NewBucketReader constructs the bucket read port from a token and API endpoint.
+	NewBucketReader func(token rel.Secret, endpoint GitHubEndpoint) (pubscoop.RepositoryReader, error)
+	// BucketWriter, when set, is the Scoop bucket mutation port. Tests inject it.
+	BucketWriter pubscoop.RepositoryWriter
+	// NewBucketWriter constructs the bucket mutation port from a token and API endpoint.
+	NewBucketWriter func(token rel.Secret, endpoint GitHubEndpoint) (pubscoop.RepositoryWriter, error)
 	// APKBuilder, when set, is the Melange APK-build port. Tests inject it.
 	APKBuilder image.APKBuilder
 	// NewAPKBuilder constructs the Melange APK-build port from a binary path.
