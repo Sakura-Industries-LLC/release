@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/meigma/release/compare/v0.1.14...v0.1.15) (2026-08-22)
+
+
+### Features
+
+* **packages:** dispatch published releases ([#58](https://github.com/meigma/release/issues/58)) ([2f2482d](https://github.com/meigma/release/commit/2f2482da251bfc2e3bc722baf102f1c529be8e54))
+
 ## [0.1.14](https://github.com/meigma/release/compare/v0.1.13...v0.1.14) (2026-08-22)
 
 
