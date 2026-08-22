@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/meigma/release/compare/v0.1.13...v0.1.14) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** trust public APT TLS ([#56](https://github.com/meigma/release/issues/56)) ([dea9929](https://github.com/meigma/release/commit/dea992948c68107e2e27d445fb627a62cd99485c))
+
 ## [0.1.13](https://github.com/meigma/release/compare/v0.1.12...v0.1.13) (2026-08-22)
 
 
