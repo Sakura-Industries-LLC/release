@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/meigma/release/compare/v0.1.11...v0.1.12) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** match APK index key name ([#52](https://github.com/meigma/release/issues/52)) ([bc7531d](https://github.com/meigma/release/commit/bc7531d14dac8acf06e1e1a71b9a12e795be1313))
+
 ## [0.1.11](https://github.com/meigma/release/compare/v0.1.10...v0.1.11) (2026-08-22)
 
 
