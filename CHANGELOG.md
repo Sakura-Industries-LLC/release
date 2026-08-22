@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/meigma/release/compare/v0.1.6...v0.1.7) (2026-08-22)
+
+
+### Features
+
+* **cli:** initialize Scoop buckets ([#41](https://github.com/meigma/release/issues/41)) ([e657e15](https://github.com/meigma/release/commit/e657e1523cc5dd5551ad3b2cbc6b9fb1d4e64cfc))
+* **release:** publish native package repositories ([#43](https://github.com/meigma/release/issues/43)) ([8c30447](https://github.com/meigma/release/commit/8c304474a3992d75cd461cbebc5142986b736746))
+
 ## [0.1.6](https://github.com/meigma/release/compare/v0.1.5...v0.1.6) (2026-08-21)
 
 
