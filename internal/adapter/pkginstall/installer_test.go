@@ -41,6 +41,7 @@ func TestVerifyRunsThreeSignedLocalClientsWithoutNetworking(t *testing.T) {
 	assert.Equal(t, 3, countArgument(arguments, "release-cli"))
 	joined := strings.Join(arguments, "\n")
 	assert.Contains(t, joined, "signed-by=%s")
+	assert.Contains(t, joined, "apt-get install -y -qq ca-certificates")
 	assert.Contains(t, joined, "gpgcheck=1")
 	assert.Contains(t, joined, "repo_gpgcheck=1")
 	assert.Contains(t, joined, "apk update")

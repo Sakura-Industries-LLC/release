@@ -43,6 +43,12 @@ const (
 const (
 	// aptInstallScript configures one signed source and verifies exact installed versions.
 	aptInstallScript = `set -eu
+case "$REPOSITORY_ROOT" in
+https://*)
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates >/dev/null
+  ;;
+esac
 rm -f /etc/apt/sources.list.d/*
 printf 'deb [signed-by=%s] %s/apt stable main\n' "$APT_KEY" "$REPOSITORY_ROOT" >/etc/apt/sources.list
 apt-get update -qq
