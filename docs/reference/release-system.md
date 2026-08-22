@@ -295,6 +295,14 @@ It has no outputs and receives no R2 or aggregate signing credential.
 The central receiver runs on `ubuntu-24.04` with a 45-minute timeout, selects
 environment `packages-production`, and serializes every production write.
 
+This reusable workflow is valid only when the central repository belongs to
+the same organization as this repository. GitHub does not deliver a caller's
+environment secrets to a reusable workflow owned by another organization, so a
+cross-organization call sees every environment secret below as empty.
+Cross-organization central repositories run the equivalent local receiver
+documented in
+[Operate a native package repository](../how-to/operate-a-native-package-repository.md).
+
 | Input | Type | Required | Default |
 | --- | --- | --- | --- |
 | `repository` | string | Yes | None |

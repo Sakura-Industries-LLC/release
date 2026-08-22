@@ -178,8 +178,19 @@ OpenPGP import file before publication.
 ## Add the receiver workflow
 
 Create `.github/workflows/publish-package-release.yml` in the central
-repository. Replace the revision placeholder with the reviewed full SHA used by
-its producer policies:
+repository. Its shape depends on where the central repository lives, because
+GitHub delivers a caller's **environment** secrets to a reusable workflow only
+when the called workflow is owned by the same organization. Pick the matching
+variant; both keep R2 and aggregate signing authority in the protected
+environment, and both request only `contents: read` and `attestations: read`.
+
+Keep the file on the central repository's default branch. GitHub processes a
+`repository_dispatch` only when a matching workflow exists there.
+
+### Central repository in this repository's organization
+
+Call the reusable receiver. Replace the revision placeholder with the reviewed
+full SHA used by its producer policies:
 
 ```yaml
 name: Publish package release
@@ -203,14 +214,119 @@ jobs:
       r2-bucket: ${{ vars.PACKAGE_REPOSITORY_R2_BUCKET }}
 ```
 
-Keep this file on the central repository's default branch. GitHub processes a
-`repository_dispatch` only when a matching workflow exists there.
-
 The called workflow selects `packages-production`, checks out the caller's
 reviewed policy and public keys, builds `release-cli` from the exact reusable
-workflow source, and invokes one publication command. It requests only
-`contents: read` and `attestations: read`; R2 and aggregate signing authority
-come from the protected environment.
+workflow source, and invokes one publication command.
+
+### Central repository in another organization
+
+Do **not** call the reusable receiver from another organization. Its job reads
+the aggregate signing and R2 credentials from the `packages-production`
+environment, and GitHub resolves those secrets as empty across an organization
+boundary — even with `secrets: inherit`, which reaches only repository and
+organization scopes. The publication then fails with `GPG_PASSPHRASE is empty`
+after the producer release is already public.
+
+Run the same steps as a local workflow instead. A local job selects
+`packages-production` in its own repository, so the environment secrets resolve
+natively and the aggregate keys stay environment-only. Pin the two setup
+actions to the same reviewed revision as the producer policies;
+`setup-release-cli` then downloads the release-cli binary stamped at that
+revision from this repository's release and verifies its checksum and GitHub
+attestation before use.
+
+```yaml
+name: Publish package release
+
+on:
+  repository_dispatch:
+    types:
+      - package-release
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish package repository
+    runs-on: ubuntu-24.04
+    environment: packages-production
+    timeout-minutes: 45
+    concurrency:
+      group: package-repository-production
+      cancel-in-progress: false
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Check out repository policy and public keys
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up verification tools
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          mise_toml: |
+            [tools]
+            "aqua:cli/cli" = "2.97.0"
+            "aqua:sigstore/cosign" = "3.1.3"
+          install_args: 'aqua:cli/cli aqua:sigstore/cosign'
+          cache: true
+
+      - name: Set up release-cli from the pinned release unit
+        id: setup-cli
+        uses: meigma/release/.github/actions/setup-release-cli@REPLACE_WITH_RELEASE_COMMIT_SHA
+
+      - name: Set up aggregate repository signing
+        id: signing
+        uses: meigma/release/.github/actions/setup-package-repository@REPLACE_WITH_RELEASE_COMMIT_SHA
+        with:
+          gpg-private-key: ${{ secrets.PACKAGE_REPOSITORY_GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.PACKAGE_REPOSITORY_GPG_PASSPHRASE }}
+          apk-private-key: ${{ secrets.PACKAGE_REPOSITORY_APK_PRIVATE_KEY }}
+
+      - name: Publish verified native packages
+        shell: bash
+        env:
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+          PRODUCER_REPOSITORY: ${{ github.event.client_payload.repository }}
+          PRODUCER_TAG: ${{ github.event.client_payload.tag }}
+          PACKAGE_CONFIG: .config/package-repository.yaml
+          PACKAGE_KEYS: .config
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_R2_BUCKET: ${{ vars.PACKAGE_REPOSITORY_R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_GPG_HOME: ${{ steps.signing.outputs.gpg-home }}
+          RELEASE_GPG_KEY_ID: ${{ steps.signing.outputs.gpg-key-id }}
+          RELEASE_GPG_PASSPHRASE_FILE: ${{ steps.signing.outputs.gpg-passphrase-file }}
+          RELEASE_APK_SIGNING_KEY: ${{ steps.signing.outputs.apk-private-key-file }}
+        run: |
+          set -euo pipefail
+          "${RELEASE_CLI}" publish package-repository \
+            --repository "${PRODUCER_REPOSITORY}" \
+            --tag "${PRODUCER_TAG}" \
+            --config "${PACKAGE_CONFIG}" \
+            --keys "${PACKAGE_KEYS}" \
+            --cloudflare-account-id "${CLOUDFLARE_ACCOUNT_ID}" \
+            --r2-bucket "${RELEASE_R2_BUCKET}" \
+            --gpg-home "${RELEASE_GPG_HOME}" \
+            --gpg-key-id "${RELEASE_GPG_KEY_ID}" \
+            --gpg-passphrase-file "${RELEASE_GPG_PASSPHRASE_FILE}" \
+            --apk-signing-key "${RELEASE_APK_SIGNING_KEY}" \
+            --json
+```
+
+This mirrors the reusable receiver step for step. When the organization moves
+its producers to a new release unit, update every `uses:` pin here in the same
+reviewed change and re-diff this file against
+`.github/workflows/publish-package-repository.yml` at the new revision.
+`local-build: always` is not available in this shape: setup-release-cli builds
+from source only when the action and the calling reusable workflow come from
+the same repository, so the local receiver uses the verified stamped release
+instead.
 
 ## Enable native signing in each producer
 
