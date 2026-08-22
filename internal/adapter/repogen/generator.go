@@ -194,6 +194,7 @@ func validateGenerateRequest(ctx context.Context, generator *Generator, request 
 // generateAPT runs apt-ftparchive and gzip with reproducible release metadata.
 func (g *Generator) generateAPT(ctx context.Context, request pkgrepo.GenerateRequest) error {
 	script := `set -eu
+owner="$(stat -c '%u:%g' /repo)"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apt-utils gzip >/dev/null
 cd /repo/apt
@@ -214,6 +215,7 @@ apt-ftparchive \
   -o APT::FTPArchive::Release::Date="` + request.ReleaseTime.UTC().Format(http.TimeFormat) + `" \
   -o APT::FTPArchive::Release::Valid-Until="` + request.ValidUntil.UTC().Format(http.TimeFormat) + `" \
   release dists/stable >dists/stable/Release
+chown -R "$owner" /repo/apt
 `
 	if err := g.runDocker(ctx, request.Root, nil, g.debianImage, "sh", "-ceu", script); err != nil {
 		return fmt.Errorf("generate APT metadata: %w", err)
@@ -226,11 +228,13 @@ apt-ftparchive \
 func (g *Generator) generateRPM(ctx context.Context, request pkgrepo.GenerateRequest) error {
 	epoch := strconv.FormatInt(request.ReleaseTime.Unix(), 10)
 	script := `set -eu
+owner="$(stat -c '%u:%g' /repo)"
 dnf install -y -q createrepo_c >/dev/null
 for arch in x86_64 aarch64; do
   touch -d "@` + epoch + `" "/repo/rpm/stable/${arch}/packages/"*.rpm
   createrepo_c --quiet --unique-md-filenames --revision ` + epoch + ` --set-timestamp-to-revision "/repo/rpm/stable/${arch}"
 done
+chown -R "$owner" /repo/rpm
 `
 	if err := g.runDocker(ctx, request.Root, nil, g.fedoraImage, "sh", "-ceu", script); err != nil {
 		return fmt.Errorf("generate RPM metadata: %w", err)
@@ -245,6 +249,7 @@ func (g *Generator) generateAPK(ctx context.Context, request pkgrepo.GenerateReq
 	keyName := filepath.Base(g.apkSigningKey)
 	containerKey := path.Join(containerKeys, keyName)
 	script := `set -eu
+owner="$(stat -c '%u:%g' /repo)"
 export SOURCE_DATE_EPOCH=` + epoch + `
 apk add --no-cache abuild >/dev/null
 cp /repo/keys/*.rsa.pub /etc/apk/keys/
@@ -253,6 +258,7 @@ for arch in x86_64 aarch64; do
   apk index -o APKINDEX.tar.gz ./*.apk
   abuild-sign -k "` + containerKey + `" APKINDEX.tar.gz
 done
+chown -R "$owner" /repo/apk
 `
 	keyMount := g.apkSigningKey + ":" + containerKey + ":ro"
 	if err := g.runDocker(

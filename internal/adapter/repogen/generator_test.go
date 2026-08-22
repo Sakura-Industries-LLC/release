@@ -45,15 +45,21 @@ func TestGenerateInvokesAcceptedToolsAndPublishesStrongByHash(t *testing.T) {
 	assert.Contains(t, invocations[0][7], "apt-ftparchive")
 	assert.Contains(t, invocations[0][7], "Acquire-By-Hash=yes")
 	assert.Contains(t, invocations[0][7], "Fri, 21 Aug 2026 12:00:00 GMT")
+	assert.Contains(t, invocations[0][7], `owner="$(stat -c '%u:%g' /repo)"`)
+	assert.Contains(t, invocations[0][7], `chown -R "$owner" /repo/apt`)
 	assert.Equal(t, "fedora@sha256:99e203b80b1c3d8f7e161ec10a68fd02b081ef83a3963553e513c82846b97814", invocations[1][4])
 	assert.Contains(t, invocations[1][7], `touch -d "@1787313600"`)
 	assert.Contains(t, invocations[1][7], "--unique-md-filenames --revision 1787313600")
+	assert.Contains(t, invocations[1][7], `owner="$(stat -c '%u:%g' /repo)"`)
+	assert.Contains(t, invocations[1][7], `chown -R "$owner" /repo/rpm`)
 	assert.Equal(t, "-v", invocations[2][4])
 	assert.Equal(t, fixture.key+":/keys/apk-index-001.rsa:ro", invocations[2][5])
 	assert.Equal(t, "alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce", invocations[2][6])
 	assert.Contains(t, invocations[2][9], "SOURCE_DATE_EPOCH=1787313600")
 	assert.Contains(t, invocations[2][9], "cp /repo/keys/*.rsa.pub /etc/apk/keys/")
 	assert.Contains(t, invocations[2][9], `abuild-sign -k "/keys/apk-index-001.rsa"`)
+	assert.Contains(t, invocations[2][9], `owner="$(stat -c '%u:%g' /repo)"`)
+	assert.Contains(t, invocations[2][9], `chown -R "$owner" /repo/apk`)
 
 	for _, architecture := range []string{"amd64", "arm64"} {
 		for _, name := range []string{"Packages", "Packages.gz"} {
