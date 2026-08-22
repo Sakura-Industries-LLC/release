@@ -81,8 +81,7 @@ printf '%s/apk/stable/main\n' "$REPOSITORY_ROOT" >/etc/apk/repositories
 apk update --no-progress >/dev/null
 apk add --no-progress "$@" >/dev/null
 for package do
-  actual=$(apk info -v "$package")
-  test "$actual" = "$package-$EXPECTED_VERSION-r0"
+  apk info --installed "$package=$EXPECTED_VERSION" >/dev/null
 done
 `
 )

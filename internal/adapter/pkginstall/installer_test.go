@@ -44,6 +44,7 @@ func TestVerifyRunsThreeSignedLocalClientsWithoutNetworking(t *testing.T) {
 	assert.Contains(t, joined, "gpgcheck=1")
 	assert.Contains(t, joined, "repo_gpgcheck=1")
 	assert.Contains(t, joined, "apk update")
+	assert.Contains(t, joined, `apk info --installed "$package=$EXPECTED_VERSION"`)
 	assert.Contains(
 		t,
 		arguments,
