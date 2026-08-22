@@ -1,0 +1,67 @@
+name: Request package repository publication
+
+on:
+  workflow_call:
+    inputs:
+      package-repository-owner:
+        description: GitHub owner of the central package repository.
+        required: true
+        type: string
+      package-repository-name:
+        description: GitHub repository that receives the package-release dispatch.
+        required: true
+        type: string
+      release-app-client-id:
+        description: Client ID of the GitHub App installed on the central repository.
+        required: false
+        default: ''
+        type: string
+      publish-package-repository:
+        description: Send the package-release dispatch after the caller publishes its release.
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      release-app-private-key:
+        description: Private key of the GitHub App installed on the central repository.
+        required: false
+
+permissions: {}
+
+jobs:
+  request:
+    name: Request package repository publication
+    if: inputs.publish-package-repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Create package repository token
+        id: package-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.release-app-client-id }}
+          private-key: ${{ secrets.release-app-private-key }}
+          owner: ${{ inputs.package-repository-owner }}
+          repositories: ${{ inputs.package-repository-name }}
+          permission-contents: write
+
+      - name: Request package repository publication
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PACKAGE_REPOSITORY_NAME: ${{ inputs.package-repository-name }}
+          PACKAGE_REPOSITORY_OWNER: ${{ inputs.package-repository-owner }}
+          PRODUCER_REPOSITORY: ${{ github.repository }}
+          PRODUCER_TAG: ${{ github.ref_name }}
+        with:
+          github-token: ${{ steps.package-app.outputs.token }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: process.env.PACKAGE_REPOSITORY_OWNER,
+              repo: process.env.PACKAGE_REPOSITORY_NAME,
+              event_type: 'package-release',
+              client_payload: {
+                repository: process.env.PRODUCER_REPOSITORY,
+                tag: process.env.PRODUCER_TAG,
+              },
+            })
