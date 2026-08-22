@@ -22,12 +22,17 @@ jobs:
     uses: ./.github/workflows/go-pre-publish.yml
     with:
       sign-and-notarize-macos: true
+      sign-native-packages: true
     secrets:
       macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
       macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
       macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
       macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
       macos-notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      rpm-signing-key: ${{ secrets.RPM_SIGNING_KEY }}
+      rpm-signing-passphrase: ${{ secrets.RPM_SIGNING_PASSPHRASE }}
+      apk-signing-key: ${{ secrets.APK_SIGNING_KEY }}
+      apk-signing-passphrase: ${{ secrets.APK_SIGNING_PASSPHRASE }}
   oci-image:
     name: Build OCI image
     needs: release-assets
