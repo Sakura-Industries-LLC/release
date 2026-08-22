@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/meigma/release/compare/v0.1.7...v0.1.8) (2026-08-22)
+
+
+### Features
+
+* **release:** sign native packages ([#44](https://github.com/meigma/release/issues/44)) ([55732d5](https://github.com/meigma/release/commit/55732d553dac5223c5eaa24c1fcda366b7976689))
+
 ## [0.1.7](https://github.com/meigma/release/compare/v0.1.6...v0.1.7) (2026-08-22)
 
 
