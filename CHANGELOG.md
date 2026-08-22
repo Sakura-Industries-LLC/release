@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/meigma/release/compare/v0.1.15...v0.1.16) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** mirror canonical RPM paths ([#60](https://github.com/meigma/release/issues/60)) ([a0faed3](https://github.com/meigma/release/commit/a0faed36f1ec36684cc75e727eef9aeaabc5cc22))
+
 ## [0.1.15](https://github.com/meigma/release/compare/v0.1.14...v0.1.15) (2026-08-22)
 
 
