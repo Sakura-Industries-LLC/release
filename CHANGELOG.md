@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/meigma/release/compare/v0.1.12...v0.1.13) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** verify exact APK version ([#54](https://github.com/meigma/release/issues/54)) ([66ce9a5](https://github.com/meigma/release/commit/66ce9a5ee8b6a7a2131dbb04162f45fa7c6a18fe))
+
 ## [0.1.12](https://github.com/meigma/release/compare/v0.1.11...v0.1.12) (2026-08-22)
 
 
