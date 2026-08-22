@@ -63,6 +63,15 @@ func TestPackageRepositoryCommandPublishesResolvedRequest(t *testing.T) {
 			require.NotNil(t, input.Source)
 			require.NotNil(t, input.Work)
 			require.NotNil(t, input.Output)
+			sourceInfo, sourceStatErr := os.Stat(input.Source.Name())
+			require.NoError(t, sourceStatErr)
+			assert.Equal(t, os.FileMode(0o750), sourceInfo.Mode().Perm())
+			workInfo, workStatErr := os.Stat(input.Work.Name())
+			require.NoError(t, workStatErr)
+			assert.Equal(t, os.FileMode(0o750), workInfo.Mode().Perm())
+			outputInfo, outputStatErr := os.Stat(input.Output.Name())
+			require.NoError(t, outputStatErr)
+			assert.Equal(t, os.FileMode(0o755), outputInfo.Mode().Perm())
 			scratchPaths = []string{input.Source.Name(), input.Work.Name(), input.Output.Name()}
 
 			return pkgrepo.PublishResult{

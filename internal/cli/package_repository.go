@@ -363,11 +363,16 @@ func newScratchRoots() (scratchRoots, error) {
 		return scratchRoots{}, fmt.Errorf("create package repository scratch: %w", err)
 	}
 	roots := scratchRoots{parent: parent}
-	for _, name := range []string{"source", "work", "output"} {
+	for _, name := range []string{"source", "work"} {
 		if mkdirErr := os.Mkdir(filepath.Join(parent, name), 0o750); mkdirErr != nil {
 			_ = roots.Close()
 			return scratchRoots{}, fmt.Errorf("create package repository %s root: %w", name, mkdirErr)
 		}
+	}
+	// #nosec G301 -- package-manager helpers must traverse the read-only bind mount.
+	if mkdirErr := os.Mkdir(filepath.Join(parent, "output"), 0o755); mkdirErr != nil {
+		_ = roots.Close()
+		return scratchRoots{}, fmt.Errorf("create package repository output root: %w", mkdirErr)
 	}
 	roots.source, err = os.OpenRoot(filepath.Join(parent, "source"))
 	if err != nil {
