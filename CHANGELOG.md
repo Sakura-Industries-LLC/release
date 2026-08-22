@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/meigma/release/compare/v0.1.8...v0.1.9) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** honor APK signature key name ([#46](https://github.com/meigma/release/issues/46)) ([9870697](https://github.com/meigma/release/commit/987069787e983f1627146fa23b7bd96306ce8ed8))
+
 ## [0.1.8](https://github.com/meigma/release/compare/v0.1.7...v0.1.8) (2026-08-22)
 
 
