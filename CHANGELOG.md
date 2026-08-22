@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/meigma/release/compare/v0.1.10...v0.1.11) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** expose public output to clients ([#50](https://github.com/meigma/release/issues/50)) ([abd33a0](https://github.com/meigma/release/commit/abd33a0c75a51882a24f9a4b1a6ce1a24f8265a9))
+
 ## [0.1.10](https://github.com/meigma/release/compare/v0.1.9...v0.1.10) (2026-08-22)
 
 
