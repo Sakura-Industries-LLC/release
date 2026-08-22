@@ -48,7 +48,7 @@ runs:
         WORKFLOW_SHA: ${{ job.workflow_sha }}
         # Release Please keeps this value in step with the released binary.
         # x-release-please-start-version
-        DEFAULT_VERSION: 0.1.16
+        DEFAULT_VERSION: 0.1.17
         # x-release-please-end
       run: |
         set -euo pipefail

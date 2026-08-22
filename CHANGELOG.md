@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/meigma/release/compare/v0.1.16...v0.1.17) (2026-08-22)
+
+
+### Bug Fixes
+
+* **pkgrepo:** support cross-organization release workflows ([#63](https://github.com/meigma/release/issues/63)) ([2d524ae](https://github.com/meigma/release/commit/2d524ae89785f3de26c240d32dda2b45b45be85b))
+
 ## [0.1.16](https://github.com/meigma/release/compare/v0.1.15...v0.1.16) (2026-08-22)
 
 
