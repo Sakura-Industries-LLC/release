@@ -78,3 +78,16 @@ jobs:
       publish-release: false
     secrets:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+
+  package-repository:
+    name: Request package repository publication
+    needs: github-release
+    permissions: {}
+    uses: meigma/release/.github/workflows/request-package-repository.yml@583937edadfbae183e49f16df46b98e0b36807ba # v0.1.16
+    with:
+      package-repository-owner: OWNER
+      package-repository-name: packages
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-package-repository: false
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}

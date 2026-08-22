@@ -1,6 +1,6 @@
 # Set up the shared package repository
 
-Use this guide to publish verified DEB, RPM, and APK packages from producer GitHub Releases to a static Cloudflare R2 repository. The [package repository contract](../reference/package-repository-contract.md) defines the accepted release, configuration, object layout, trust checks, and recovery behavior.
+Use this guide to publish verified DEB, RPM, and APK packages from producer GitHub Releases to a static Cloudflare R2 repository. The [package repository contract](../reference/package-repository-contract.md) defines the accepted release, configuration, object layout, trust checks, and recovery behavior. After publication, give consumers the [native package installation guide](install-release-cli-from-package-repositories.md).
 
 ## Prerequisites
 
@@ -129,31 +129,34 @@ Keep this workflow on the central repository's default branch. GitHub runs `repo
 
 ## Dispatch from a producer
 
-After the producer publishes its GitHub Release, mint a short-lived GitHub App token whose installation includes the central repository. Send only the producer repository and exact stable tag:
+Add the reusable dispatch job after the producer's public GitHub Release job.
+Keep it disabled during setup:
 
 ```yaml
-- name: Create package repository token
-  id: package-app
-  uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+package-repository:
+  name: Request package repository publication
+  needs: github-release
+  permissions: {}
+  uses: meigma/release/.github/workflows/request-package-repository.yml@583937edadfbae183e49f16df46b98e0b36807ba # v0.1.16
   with:
-    client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
-    private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
-    owner: meigma
-    repositories: pkgs
-
-- name: Request package repository publication
-  env:
-    GH_TOKEN: ${{ steps.package-app.outputs.token }}
-    PRODUCER_REPOSITORY: ${{ github.repository }}
-    PRODUCER_TAG: ${{ github.ref_name }}
-  run: |
-    gh api --method POST repos/meigma/pkgs/dispatches \
-      -f event_type=package-release \
-      -f "client_payload[repository]=${PRODUCER_REPOSITORY}" \
-      -f "client_payload[tag]=${PRODUCER_TAG}"
+    package-repository-owner: meigma
+    package-repository-name: pkgs
+    release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+    publish-package-repository: false
+  secrets:
+    release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
 ```
 
-The GitHub App needs permission to send the dispatch to `meigma/pkgs`. It does not need R2 or aggregate signing credentials.
+The reusable workflow mints a short-lived token scoped to the central
+repository and sends only the producer repository and exact tag. The GitHub App
+installation needs repository Contents write permission on `meigma/pkgs` so it
+can create `repository_dispatch` events. It does not receive R2 credentials or
+aggregate signing keys.
+
+After the central policy, keys, environment, and receiver workflow are ready,
+change `publish-package-repository` to `true`. Keep the job ordered after the
+public GitHub Release; the receiver rejects a missing, draft, or mismatched
+release.
 
 ## Verify the first publication
 
