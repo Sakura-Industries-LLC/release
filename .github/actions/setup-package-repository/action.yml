@@ -1,0 +1,101 @@
+name: Set up package repository signing
+description: Materialize ephemeral aggregate repository signing keys.
+
+inputs:
+  gpg-private-key:
+    description: Base64-encoded OpenPGP private key for APT and RPM metadata.
+    required: true
+  gpg-passphrase:
+    description: Passphrase for the aggregate OpenPGP private key.
+    required: true
+  apk-private-key:
+    description: Base64-encoded RSA private key for APK indexes.
+    required: true
+
+outputs:
+  gpg-home:
+    description: Ephemeral GnuPG home containing the imported aggregate key.
+    value: ${{ steps.materialize.outputs.gpg-home }}
+  gpg-key-id:
+    description: Full fingerprint of the imported aggregate OpenPGP key.
+    value: ${{ steps.import.outputs.gpg-key-id }}
+  gpg-passphrase-file:
+    description: Owner-only file containing the aggregate key passphrase.
+    value: ${{ steps.materialize.outputs.gpg-passphrase-file }}
+  apk-private-key-file:
+    description: Owner-only aggregate APK index private key.
+    value: ${{ steps.materialize.outputs.apk-private-key-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Materialize signing inputs
+      id: materialize
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        GPG_PRIVATE_KEY: ${{ inputs.gpg-private-key }}
+        GPG_PASSPHRASE: ${{ inputs.gpg-passphrase }}
+        APK_PRIVATE_KEY: ${{ inputs.apk-private-key }}
+      with:
+        script: |
+          const fs = require('fs')
+          const path = require('path')
+
+          const decode = (name) => {
+            const encoded = process.env[name].replace(/\s+/g, '')
+            const valid = encoded.length !== 0 &&
+              encoded.length % 4 === 0 &&
+              /^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+            if (!valid) {
+              throw new Error(`${name} is not valid base64`)
+            }
+
+            const decoded = Buffer.from(encoded, 'base64')
+            if (
+              decoded.length === 0 ||
+              decoded.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')
+            ) {
+              throw new Error(`${name} is not valid base64`)
+            }
+            return decoded
+          }
+
+          if (process.env.GPG_PASSPHRASE.length === 0) {
+            throw new Error('GPG_PASSPHRASE is empty')
+          }
+
+          const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'package-repository-signing-'))
+          fs.chmodSync(directory, 0o700)
+          const gpgHome = path.join(directory, 'gnupg')
+          fs.mkdirSync(gpgHome, { mode: 0o700 })
+          const gpgKey = path.join(directory, 'gpg-private-key.asc')
+          const passphrase = path.join(directory, 'gpg-passphrase')
+          const apkKey = path.join(directory, 'apk-index-private-key.pem')
+          fs.writeFileSync(gpgKey, decode('GPG_PRIVATE_KEY'), { mode: 0o600, flag: 'wx' })
+          fs.writeFileSync(passphrase, process.env.GPG_PASSPHRASE, { mode: 0o600, flag: 'wx' })
+          fs.writeFileSync(apkKey, decode('APK_PRIVATE_KEY'), { mode: 0o600, flag: 'wx' })
+          core.setOutput('gpg-home', gpgHome)
+          core.setOutput('gpg-private-key-file', gpgKey)
+          core.setOutput('gpg-passphrase-file', passphrase)
+          core.setOutput('apk-private-key-file', apkKey)
+
+    - name: Import aggregate OpenPGP key
+      id: import
+      shell: bash
+      env:
+        GPG_HOME: ${{ steps.materialize.outputs.gpg-home }}
+        GPG_PRIVATE_KEY_FILE: ${{ steps.materialize.outputs.gpg-private-key-file }}
+      run: |
+        set -euo pipefail
+        gpg --batch --homedir "${GPG_HOME}" --import "${GPG_PRIVATE_KEY_FILE}"
+        rm -f "${GPG_PRIVATE_KEY_FILE}"
+        mapfile -t fingerprints < <(
+          gpg --batch --homedir "${GPG_HOME}" --with-colons --list-secret-keys |
+            awk -F: '$1 == "sec" { secret = 1; next } secret && $1 == "fpr" { print $10; secret = 0 }'
+        )
+        if [[ ${#fingerprints[@]} -ne 1 || ! "${fingerprints[0]}" =~ ^[0-9A-F]{40}$ ]]; then
+          echo '::error::Expected exactly one full aggregate OpenPGP key fingerprint.'
+          exit 1
+        fi
+        fingerprint="${fingerprints[0]}"
+        printf 'gpg-key-id=%s\n' "${fingerprint}" >>"${GITHUB_OUTPUT}"

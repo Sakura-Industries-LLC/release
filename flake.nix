@@ -38,7 +38,7 @@
           pname = "release-cli";
           inherit version;
           src = self;
-          vendorHash = "sha256-88+kLHZjuqsejfXj9RHTIbpCoBIa7i+6GhyMeWbVc2M=";
+          vendorHash = "sha256-6qxVn5Tl6J5NMIGuEN4c51J/r7f9td/eTEh2qbW6qa8=";
           subPackages = [ "cmd/release-cli" ];
           env.CGO_ENABLED = "0";
           ldflags = [

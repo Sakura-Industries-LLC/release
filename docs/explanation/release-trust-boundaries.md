@@ -143,10 +143,35 @@ prepare, attestation, and finalize transaction, including why tags are last and
 why finalization reads fresh registry state. That transaction is one concrete
 result of the broader trust split described here.
 
+## Package producers do not own repository credentials
+
+A native package producer stops after publishing signed and attested GitHub
+Release assets. It sends the central package repository only its repository name
+and exact release tag. The producer never receives the aggregate APT, RPM, or
+APK signing keys and cannot write R2 objects.
+
+The central package repository holds reviewed producer ownership, workflow
+identities, and public keys in Git. Its `packages-production` environment holds
+the aggregate private keys and least-privilege R2 credentials. The reusable
+workflow selects that environment, then the CLI independently verifies the
+release checksums, Sigstore identity, GitHub attestations, package identity, and
+native signatures before it uses the write credentials.
+
+The CLI regenerates metadata from all existing immutable package objects plus
+the incoming release. It uploads non-root objects before APT `InRelease`, RPM
+`repomd.xml`, and APK `APKINDEX.tar.gz` roots. This ordering keeps an incomplete
+generation unreachable after a crash. One non-cancelling workflow concurrency
+group serializes writers because R2 does not provide the repository transaction.
+
+This boundary makes producer onboarding a policy change rather than a credential
+grant. The cost is one central bottleneck and one shared signing domain. The
+reviewed allowlist, replayable request, and fail-closed immutable paths keep that
+tradeoff explicit.
+
 ## One release unit has one consumer pin
 
-The four reusable workflows, their sibling `setup-release-cli` action, and the
-CLI ship as one release unit. A consumer pins each reusable workflow and the
+The reusable workflows, their sibling setup actions, and the CLI ship as one
+release unit. A consumer pins each reusable workflow and the
 checksum signer identity to one full commit SHA. Inside the pinned workflow,
 `uses: $/.github/actions/setup-release-cli` selects the action from that same
 commit. The action's stamped version then selects the CLI release archive.

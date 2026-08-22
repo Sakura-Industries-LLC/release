@@ -144,9 +144,12 @@ The caller concurrency key serializes runs for the same workflow and tag. `cance
 
 ### `go-pre-publish.yml`
 
-The Go producer accepts the default-off `sign-and-notarize-macos` boolean and
-five optional macOS signing secrets. Disabled signing requires none of those
-secrets.
+The Go producer accepts two default-off booleans:
+
+- `sign-and-notarize-macos` controls Darwin signing and notarization. Enabling it requires the five optional `macos-*` secrets.
+- `sign-native-packages` controls RPM and APK signing. Enabling it requires `rpm-signing-key`, `rpm-signing-passphrase`, `apk-signing-key`, and `apk-signing-passphrase`. The key secrets contain base64-encoded private keys.
+
+Disabled signing requires none of the corresponding secrets. When native signing is enabled, the workflow validates all four secrets before setup, writes the decoded keys to owner-only files under `RUNNER_TEMP` immediately before staging, and removes the key directory after the stage step even when staging fails.
 
 The producer loads `setup-release-cli` from the same pinned release revision
 with `uses: $/.github/actions/setup-release-cli`. The caller does not pin the
@@ -168,15 +171,17 @@ The job requires these caller permissions:
 
 The workflow runs on `ubuntu-24.04` with a 20-minute timeout. It declares `permissions: {}` at workflow scope, so the caller must grant the job permissions explicitly. Its `release-assets` artifact is retained for seven days and is uploaded with compression disabled.
 
-After the tag gate and checkout, the producer's relevant sequence is:
+Before the tag gate, the producer validates each enabled signing configuration. Its remaining sequence is:
 
 1. Install Go, GoReleaser, Syft, and Cosign with mise.
 2. Verify that `go`, `goreleaser`, `syft`, and `cosign` resolve to mise-managed executables, then report the Go version. This workflow-owned proof does not build the release bundle.
 3. Run `setup-release-cli` from the same pinned release revision.
-4. Resolve the pinned GoReleaser executable with `mise which goreleaser`, require it to be executable, and pass it through `RELEASE_GORELEASER_PATH`. Run `release-cli stage --profile go --dist dist` under `mise exec`.
-5. Upload the canonical Linux binary artifact and the authoritative release asset artifact.
+4. When native signing is enabled, decode the RPM and APK private keys into owner-only temporary files.
+5. Resolve the pinned GoReleaser executable with `mise which goreleaser`, require it to be executable, and pass it through `RELEASE_GORELEASER_PATH`. Run `release-cli stage --profile go --dist dist` under `mise exec`. The stage command validates the native key paths and passphrases before GoReleaser starts.
+6. Remove the temporary native private keys.
+7. Upload the canonical Linux binary artifact and the authoritative release asset artifact.
 
-The producer contains no direct GoReleaser command. `release-cli stage --profile go` owns the build, validation, and OCI input projection.
+The producer contains no direct GoReleaser command. `release-cli stage --profile go` owns the build, native package signing, checksum generation, validation, and OCI input projection. GoReleaser signs RPM and APK packages before it generates `checksums.txt`, so the checksum manifest identifies the signed package bytes.
 
 ### `publish-github-release.yml`
 

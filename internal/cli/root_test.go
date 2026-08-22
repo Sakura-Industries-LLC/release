@@ -320,19 +320,17 @@ func executeStage(
 ) (string, string, error) {
 	t.Helper()
 
-	stdout, stderr, _, err := executeStageSeam(t, env, args, nil)
+	stdout, stderr, _, err := executeStageSeam(t, env, args)
 	return stdout, stderr, err
 }
 
-// executeStageSeam runs stage with an injected GoReleaser seam.
+// executeStageSeam runs stage with a successful injected GoReleaser seam.
 //
-// A nil run is a successful no-op. The returned options are the last
-// value the seam received. The seam must be invoked.
+// The returned options are the last value the seam received. The seam must be invoked.
 func executeStageSeam(
 	t *testing.T,
 	env map[string]string,
 	args []string,
-	run func(context.Context, goprof.GoReleaserOptions) error,
 ) (string, string, goprof.GoReleaserOptions, error) {
 	t.Helper()
 
@@ -343,13 +341,10 @@ func executeStageSeam(
 		env,
 		args,
 		cli.BuildInfo{},
-		func(ctx context.Context, options goprof.GoReleaserOptions) error {
+		func(_ context.Context, options goprof.GoReleaserOptions) error {
 			called = true
 			got = options
-			if run == nil {
-				return nil
-			}
-			return run(ctx, options)
+			return nil
 		},
 	)
 	require.True(t, called, "expected stage to invoke GoReleaser")

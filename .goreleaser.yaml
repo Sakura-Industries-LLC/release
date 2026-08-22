@@ -60,7 +60,7 @@ archives:
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
 
 nfpms:
-  - id: release-cli
+  - id: release
     ids:
       - release-cli
     vendor: Meigma
@@ -73,6 +73,13 @@ nfpms:
       - rpm
       - apk
     bindir: /usr/bin
+    rpm:
+      signature:
+        key_file: "{{ .Env.RELEASE_RPM_SIGNING_KEY_FILE }}"
+    apk:
+      signature:
+        key_file: "{{ .Env.RELEASE_APK_SIGNING_KEY_FILE }}"
+        key_name: meigma-release-001
 
 homebrew_casks:
   - name: meigma-release-cli

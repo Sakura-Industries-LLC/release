@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      sign-native-packages:
+        description: Sign RPM and APK packages before checksums are generated.
+        required: false
+        default: false
+        type: boolean
     secrets:
       macos-sign-p12:
         description: Base64-encoded Developer ID Application certificate.
@@ -23,6 +28,18 @@ on:
         required: false
       macos-notary-issuer-id:
         description: App Store Connect API issuer ID.
+        required: false
+      rpm-signing-key:
+        description: Base64-encoded OpenPGP private key for RPM packages.
+        required: false
+      rpm-signing-passphrase:
+        description: Passphrase for the RPM package-signing key.
+        required: false
+      apk-signing-key:
+        description: Base64-encoded RSA private key for APK packages.
+        required: false
+      apk-signing-passphrase:
+        description: Passphrase for the APK package-signing key.
         required: false
     outputs:
       artifact-id:
@@ -93,6 +110,31 @@ jobs:
               core.setFailed(`macOS signing is enabled but these credentials are missing: ${missing.join(', ')}`)
             }
 
+      - name: Validate native package signing configuration
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ENABLED: ${{ inputs.sign-native-packages }}
+          RPM_SIGNING_KEY: ${{ secrets.rpm-signing-key }}
+          RPM_SIGNING_PASSPHRASE: ${{ secrets.rpm-signing-passphrase }}
+          APK_SIGNING_KEY: ${{ secrets.apk-signing-key }}
+          APK_SIGNING_PASSPHRASE: ${{ secrets.apk-signing-passphrase }}
+        with:
+          script: |
+            if (process.env.ENABLED !== 'true') {
+              return
+            }
+
+            const required = [
+              'RPM_SIGNING_KEY',
+              'RPM_SIGNING_PASSPHRASE',
+              'APK_SIGNING_KEY',
+              'APK_SIGNING_PASSPHRASE',
+            ]
+            const missing = required.filter((name) => !process.env[name])
+            if (missing.length !== 0) {
+              core.setFailed(`native package signing is enabled but these credentials are missing: ${missing.join(', ')}`)
+            }
+
       - name: Require a tag ref
         shell: bash
         run: |
@@ -138,6 +180,48 @@ jobs:
         id: setup-cli
         uses: $/.github/actions/setup-release-cli
 
+      - name: Materialize native package signing keys
+        id: native-signing
+        if: inputs.sign-native-packages
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RPM_SIGNING_KEY: ${{ secrets.rpm-signing-key }}
+          APK_SIGNING_KEY: ${{ secrets.apk-signing-key }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const decode = (name) => {
+              const encoded = process.env[name].replace(/\s+/g, '')
+              const valid = encoded.length !== 0 &&
+                encoded.length % 4 === 0 &&
+                /^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+              if (!valid) {
+                throw new Error(`${name} is not valid base64`)
+              }
+
+              const decoded = Buffer.from(encoded, 'base64')
+              if (
+                decoded.length === 0 ||
+                decoded.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')
+              ) {
+                throw new Error(`${name} is not valid base64`)
+              }
+              return decoded
+            }
+
+            const rpmKey = decode('RPM_SIGNING_KEY')
+            const apkKey = decode('APK_SIGNING_KEY')
+            const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'release-native-signing-'))
+            core.setOutput('directory', directory)
+            const rpmKeyFile = path.join(directory, 'rpm-signing-key.asc')
+            const apkKeyFile = path.join(directory, 'apk-signing-key.pem')
+            fs.writeFileSync(rpmKeyFile, rpmKey, { mode: 0o600, flag: 'wx' })
+            fs.writeFileSync(apkKeyFile, apkKey, { mode: 0o600, flag: 'wx' })
+            core.setOutput('rpm-key-file', rpmKeyFile)
+            core.setOutput('apk-key-file', apkKeyFile)
+
       - name: Stage Go release artifacts
         env:
           RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
@@ -147,6 +231,11 @@ jobs:
           MACOS_NOTARY_KEY: ${{ secrets.macos-notary-key }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.macos-notary-key-id }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.macos-notary-issuer-id }}
+          RELEASE_NATIVE_PACKAGE_SIGNING: ${{ inputs.sign-native-packages }}
+          RELEASE_RPM_SIGNING_KEY_FILE: ${{ steps.native-signing.outputs.rpm-key-file }}
+          RELEASE_APK_SIGNING_KEY_FILE: ${{ steps.native-signing.outputs.apk-key-file }}
+          NFPM_RELEASE_RPM_PASSPHRASE: ${{ secrets.rpm-signing-passphrase }}
+          NFPM_RELEASE_APK_PASSPHRASE: ${{ secrets.apk-signing-passphrase }}
         shell: bash
         run: |
           set -euo pipefail
@@ -164,6 +253,25 @@ jobs:
           # to give those grandchild processes the managed toolchain.
           RELEASE_GORELEASER_PATH="${goreleaser_path}" \
             mise exec -- "${RELEASE_CLI}" stage --profile go --dist dist
+
+      - name: Remove native package signing keys
+        if: ${{ always() && steps.native-signing.outputs.directory != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          KEY_DIRECTORY: ${{ steps.native-signing.outputs.directory }}
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+            const directory = process.env.KEY_DIRECTORY
+            const expectedParent = path.resolve(process.env.RUNNER_TEMP)
+            if (
+              path.dirname(path.resolve(directory)) !== expectedParent ||
+              !path.basename(directory).startsWith('release-native-signing-')
+            ) {
+              throw new Error('refusing to remove an unexpected signing-key directory')
+            }
+            fs.rmSync(directory, { recursive: true, force: true })
 
       - name: Set up Homebrew
         id: homebrew

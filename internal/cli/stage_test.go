@@ -26,18 +26,14 @@ const (
 
 func TestStageWritesImageInputs(t *testing.T) {
 	dist := chdirDist(t)
-	stdout, stderr, got, err := executeStageSeam(
-		t,
-		nil,
-		[]string{"stage", "--profile", "go", "--dist", dist},
-		nil,
-	)
+	stdout, stderr, got, err := executeStageSeam(t, nil, []string{"stage", "--profile", "go", "--dist", dist})
 	require.NoError(t, err)
 	assert.Empty(t, stdout)
 	assert.Empty(t, stderr)
 	assert.Empty(t, got.Path)
 	assert.Equal(t, goprof.RootName(stageDist), got.Dist)
-	assert.Nil(t, got.Environ)
+	assert.Contains(t, got.Environ, "RELEASE_RPM_SIGNING_KEY_FILE=")
+	assert.Contains(t, got.Environ, "RELEASE_APK_SIGNING_KEY_FILE=")
 	assert.NotNil(t, got.Stdout)
 	assert.NotNil(t, got.Stderr)
 
@@ -72,11 +68,145 @@ func TestStagePassesGoreleaserPathAndDist(t *testing.T) {
 	dist := chdirDist(t)
 	_, _, got, err := executeStageSeam(t, map[string]string{
 		"RELEASE_GORELEASER_PATH": stageGoreleaserPath,
-	}, []string{"stage", "--profile", "go", "--dist", dist}, nil)
+	}, []string{"stage", "--profile", "go", "--dist", dist})
 	require.NoError(t, err)
 	assert.Equal(t, stageGoreleaserPath, got.Path)
 	assert.Equal(t, goprof.RootName(stageDist), got.Dist)
-	assert.Nil(t, got.Environ)
+	assert.Contains(t, got.Environ, "RELEASE_RPM_SIGNING_KEY_FILE=")
+	assert.Contains(t, got.Environ, "RELEASE_APK_SIGNING_KEY_FILE=")
+}
+
+func TestStagePassesNativeSigningEnvironment(t *testing.T) {
+	dist := chdirDist(t)
+	env := validNativeSigningEnv(t)
+	stdout, stderr, got, err := executeStageSeam(t, env, []string{"stage", "--profile", "go", "--dist", dist})
+	require.NoError(t, err)
+	assert.Empty(t, stdout)
+	assert.Empty(t, stderr)
+	assert.Contains(t, got.Environ, "RELEASE_RPM_SIGNING_KEY_FILE="+env["RELEASE_RPM_SIGNING_KEY_FILE"])
+	assert.Contains(t, got.Environ, "RELEASE_APK_SIGNING_KEY_FILE="+env["RELEASE_APK_SIGNING_KEY_FILE"])
+	assert.Contains(t, got.Environ, "NFPM_RELEASE_RPM_PASSPHRASE="+env["NFPM_RELEASE_RPM_PASSPHRASE"])
+	assert.Contains(t, got.Environ, "NFPM_RELEASE_APK_PASSPHRASE="+env["NFPM_RELEASE_APK_PASSPHRASE"])
+	assert.NotContains(t, stdout, env["NFPM_RELEASE_RPM_PASSPHRASE"])
+	assert.NotContains(t, stdout, env["NFPM_RELEASE_APK_PASSPHRASE"])
+	assert.NotContains(t, stderr, env["NFPM_RELEASE_RPM_PASSPHRASE"])
+	assert.NotContains(t, stderr, env["NFPM_RELEASE_APK_PASSPHRASE"])
+}
+
+func TestStageDisabledNativeSigningRemovesSecrets(t *testing.T) {
+	dist := chdirDist(t)
+	_, _, got, err := executeStageSeam(t, map[string]string{
+		"RELEASE_NATIVE_PACKAGE_SIGNING": "false",
+		"NFPM_RELEASE_RPM_PASSPHRASE":    "unused-rpm-secret",
+		"NFPM_RELEASE_APK_PASSPHRASE":    "unused-apk-secret",
+		"NATIVE_SIGNING_TEST_MARKER":     "preserved",
+	}, []string{"stage", "--profile", "go", "--dist", dist})
+	require.NoError(t, err)
+	assert.Contains(t, got.Environ, "RELEASE_RPM_SIGNING_KEY_FILE=")
+	assert.Contains(t, got.Environ, "RELEASE_APK_SIGNING_KEY_FILE=")
+	assert.Contains(t, got.Environ, "NATIVE_SIGNING_TEST_MARKER=preserved")
+	assert.NotContains(t, got.Environ, "NFPM_RELEASE_RPM_PASSPHRASE=unused-rpm-secret")
+	assert.NotContains(t, got.Environ, "NFPM_RELEASE_APK_PASSPHRASE=unused-apk-secret")
+}
+
+func TestStageRejectsInvalidNativeSigningBeforeGoReleaser(t *testing.T) {
+	tests := []struct {
+		// name identifies the rejected configuration.
+		name string
+		// mutate makes one valid configuration invalid.
+		mutate func(t *testing.T, env map[string]string)
+		// want is the public error fragment.
+		want string
+	}{
+		{
+			name: "malformed enable",
+			mutate: func(_ *testing.T, env map[string]string) {
+				env["RELEASE_NATIVE_PACKAGE_SIGNING"] = "yes"
+			},
+			want: "RELEASE_NATIVE_PACKAGE_SIGNING",
+		},
+		{
+			name: "missing RPM key",
+			mutate: func(_ *testing.T, env map[string]string) {
+				delete(env, "RELEASE_RPM_SIGNING_KEY_FILE")
+			},
+			want: "RELEASE_RPM_SIGNING_KEY_FILE",
+		},
+		{
+			name: "missing APK key",
+			mutate: func(_ *testing.T, env map[string]string) {
+				delete(env, "RELEASE_APK_SIGNING_KEY_FILE")
+			},
+			want: "RELEASE_APK_SIGNING_KEY_FILE",
+		},
+		{
+			name: "missing RPM passphrase",
+			mutate: func(_ *testing.T, env map[string]string) {
+				delete(env, "NFPM_RELEASE_RPM_PASSPHRASE")
+			},
+			want: "NFPM_RELEASE_RPM_PASSPHRASE",
+		},
+		{
+			name: "missing APK passphrase",
+			mutate: func(_ *testing.T, env map[string]string) {
+				delete(env, "NFPM_RELEASE_APK_PASSPHRASE")
+			},
+			want: "NFPM_RELEASE_APK_PASSPHRASE",
+		},
+		{
+			name: "missing key file",
+			mutate: func(t *testing.T, env map[string]string) {
+				env["RELEASE_RPM_SIGNING_KEY_FILE"] = filepath.Join(t.TempDir(), "missing.asc")
+			},
+			want: "RELEASE_RPM_SIGNING_KEY_FILE",
+		},
+		{
+			name: "key permissions expose secret",
+			mutate: func(t *testing.T, env map[string]string) {
+				require.NoError(t, os.Chmod(env["RELEASE_APK_SIGNING_KEY_FILE"], 0o644))
+			},
+			want: "allow group or other access",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dist := chdirDist(t)
+			env := validNativeSigningEnv(t)
+			test.mutate(t, env)
+			stdout, stderr, err := execute(
+				t,
+				env,
+				[]string{"stage", "--profile", "go", "--dist", dist, "--json"},
+				cli.BuildInfo{},
+			)
+			require.Error(t, err)
+			assert.Equal(t, 2, cli.ExitCode(err))
+			assert.Empty(t, stderr)
+			assertFailureEnvelope(t, stdout, test.want)
+			assert.NotContains(t, err.Error(), "rpm-passphrase-do-not-print")
+			assert.NotContains(t, err.Error(), "apk-passphrase-do-not-print")
+		})
+	}
+}
+
+// validNativeSigningEnv creates one complete owner-only signing configuration.
+func validNativeSigningEnv(t *testing.T) map[string]string {
+	t.Helper()
+
+	directory := t.TempDir()
+	rpmKey := filepath.Join(directory, "rpm.asc")
+	apkKey := filepath.Join(directory, "apk.pem")
+	require.NoError(t, os.WriteFile(rpmKey, []byte("rpm-private-key"), 0o600))
+	require.NoError(t, os.WriteFile(apkKey, []byte("apk-private-key"), 0o600))
+
+	return map[string]string{
+		"RELEASE_NATIVE_PACKAGE_SIGNING": "true",
+		"RELEASE_RPM_SIGNING_KEY_FILE":   rpmKey,
+		"RELEASE_APK_SIGNING_KEY_FILE":   apkKey,
+		"NFPM_RELEASE_RPM_PASSPHRASE":    "rpm-passphrase-do-not-print",
+		"NFPM_RELEASE_APK_PASSPHRASE":    "apk-passphrase-do-not-print",
+	}
 }
 
 func TestStageGoreleaserErrorIsCommandFailure(t *testing.T) {

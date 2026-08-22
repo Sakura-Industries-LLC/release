@@ -1,6 +1,6 @@
 # `release-cli` contract reference
 
-`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, initializes cask-only Homebrew taps, opens protected tap and Scoop bucket pull requests, publishes verified GitHub Releases, and performs two-phase digest-addressed OCI publication. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI.
+`release-cli` builds and validates Go release data, reports machine-readable results, builds and verifies OCI layouts from staged binaries, initializes cask-only Homebrew taps, opens protected tap and Scoop bucket pull requests, publishes verified GitHub Releases, performs two-phase digest-addressed OCI publication, and converges verified DEB, RPM, and APK repository trees in Cloudflare R2. The [GitHub Release contract](github-release-contract.md) defines the workflow inputs, artifacts, and publication behavior that surround the CLI. The [package repository contract](package-repository-contract.md) defines native package ingestion and repository publication.
 
 ## Commands
 
@@ -13,6 +13,7 @@
 | `release-cli publish oci prepare --layout PATH [--image IMAGE] [--version VERSION] --digest DIGEST [--dry-run] [--plain-http] [--json]` | Validate and prepare a digest-addressed OCI image publication and recursive signature. |
 | `release-cli publish oci finalize --result - [--plain-http] [--json]` | Re-read registry state and apply verified OCI image tags after attestation. |
 | `release-cli publish github --dist PATH [--no-undraft] [--json]` | Reconcile a verified bundle with its matching GitHub Release and optionally publish the draft. |
+| `release-cli publish package-repository --repository OWNER/NAME --tag TAG --config PATH --keys DIR --cloudflare-account-id ID --r2-bucket BUCKET --gpg-home DIR --gpg-key-id FINGERPRINT --gpg-passphrase-file PATH --apk-signing-key PATH [--json]` | Verify one producer release, regenerate the complete static package repository, install locally, reconcile R2, and install from the public origin. |
 | `release-cli init homebrew-tap --tap OWNER/HOMEBREW-NAME --output DIR [--json]` | Write a cask-only tap scaffold into a new or empty local directory. |
 | `release-cli init scoop-bucket --bucket OWNER/REPOSITORY --output DIR [--json]` | Write a root-layout Scoop bucket scaffold into a new or empty local directory. |
 | `release-cli publish homebrew --dist PATH --tap OWNER/REPOSITORY --cask TOKEN [--json]` | Reconcile a generated cask through a protected Homebrew tap pull request. |
@@ -844,6 +845,31 @@ The reusable workflow declares `release-app-private-key` as an optional secret b
 The publisher returns the deterministic branch, pull request URL, and reconciled state. A successful first run returns `created`; a rerun while the same pull request remains open returns `open`; and a rerun after the exact cask reaches the tap's default branch returns `published`. The workflow never enables auto-merge or merges the pull request.
 
 The producer's `.goreleaser.yaml` must declare a `homebrew_casks` entry with `skip_upload: true`. The Go pre-publish workflow carries `dist/homebrew/Casks/*.rb` in the authoritative Actions artifact and formats generated casks with Homebrew before upload. It does not add the control file to the signed release payload set.
+
+### Optional native package signing
+
+`.github/workflows/go-pre-publish.yml` accepts `sign-native-packages`, which defaults to `false`. Enabling it requires four optional workflow secrets:
+
+- `rpm-signing-key`, containing a base64-encoded OpenPGP private key;
+- `rpm-signing-passphrase`;
+- `apk-signing-key`, containing a base64-encoded RSA private key; and
+- `apk-signing-passphrase`.
+
+The workflow validates the four secrets before setup. Immediately before staging, it decodes the private keys into owner-only files under `RUNNER_TEMP`. It passes these values to `release-cli stage`:
+
+| Value | Environment variable |
+| --- | --- |
+| Enable native package signing | `RELEASE_NATIVE_PACKAGE_SIGNING` |
+| RPM private-key file | `RELEASE_RPM_SIGNING_KEY_FILE` |
+| APK private-key file | `RELEASE_APK_SIGNING_KEY_FILE` |
+| RPM private-key passphrase | `NFPM_RELEASE_RPM_PASSPHRASE` |
+| APK private-key passphrase | `NFPM_RELEASE_APK_PASSPHRASE` |
+
+When `RELEASE_NATIVE_PACKAGE_SIGNING` parses as `true`, the stage command requires every other value before it starts GoReleaser. Each key path must identify a regular file whose group and other permission bits are clear. Missing values, malformed booleans, inaccessible files, and exposed file permissions are usage errors with exit code `2`. Error output names the invalid variable but does not include a passphrase.
+
+The producer's `.goreleaser.yaml` must use `release` as the `nfpms` ID and map the RPM and APK signature key files to `RELEASE_RPM_SIGNING_KEY_FILE` and `RELEASE_APK_SIGNING_KEY_FILE`. The fixed ID makes GoReleaser read the format-specific passphrases from `NFPM_RELEASE_RPM_PASSPHRASE` and `NFPM_RELEASE_APK_PASSPHRASE`. GoReleaser signs the native packages before it generates `checksums.txt`, so the signed package bytes are the bytes authenticated by the checksum manifest and its Cosign signature.
+
+After the stage step, the workflow removes the temporary key directory even when staging fails. When signing is disabled, the stage command removes ambient native-signing secrets from the GoReleaser environment and supplies empty key paths. Native package bytes remain unsigned and otherwise unchanged.
 
 ### Optional macOS signing and notarization
 

@@ -89,3 +89,43 @@ packages:
         config:
           dir: internal/adapter/apko/mocks
           filename: composer.go
+  github.com/meigma/release/internal/stage/pkgrepo:
+    interfaces:
+      ReleaseSource:
+        config:
+          dir: internal/adapter/ghrel/mocks
+          filename: release_source.go
+      Attestor:
+        config:
+          dir: internal/adapter/ghattest/mocks
+          filename: attestor.go
+      Store:
+        config:
+          dir: internal/adapter/r2/mocks
+          filename: store.go
+      Installer:
+        config:
+          dir: internal/adapter/pkginstall/mocks
+          filename: installer.go
+      Inspector:
+        config:
+          dir: internal/adapter/pkgmeta/mocks
+          filename: inspector.go
+      Verifier:
+        config:
+          dir: internal/adapter/pkgverify/mocks
+          filename: verifier.go
+      Generator:
+        config:
+          dir: internal/adapter/repogen/mocks
+          filename: generator.go
+      Signer:
+        config:
+          dir: internal/adapter/gpg/mocks
+          filename: signer.go
+  github.com/meigma/release/internal/cli:
+    interfaces:
+      PackageRepositoryPublisher:
+        config:
+          dir: internal/cli/mocks
+          filename: package_repository_publisher.go

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +23,29 @@ const (
 	flagDist = "dist"
 	// octalBase formats file modes as octal strings.
 	octalBase = 8
+	// envNativePackageSigning enables RPM and APK package signing.
+	envNativePackageSigning = "RELEASE_NATIVE_PACKAGE_SIGNING"
+	// envRPMSigningKeyFile is the nFPM RPM private-key path.
+	envRPMSigningKeyFile = "RELEASE_RPM_SIGNING_KEY_FILE"
+	// envAPKSigningKeyFile is the nFPM APK private-key path.
+	envAPKSigningKeyFile = "RELEASE_APK_SIGNING_KEY_FILE"
+	// envRPMPassphrase is the standard GoReleaser nFPM RPM passphrase.
+	envRPMPassphrase = "NFPM_RELEASE_RPM_PASSPHRASE" // #nosec G101 -- environment variable name, not a credential
+	// envAPKPassphrase is the standard GoReleaser nFPM APK passphrase.
+	envAPKPassphrase = "NFPM_RELEASE_APK_PASSPHRASE" // #nosec G101 -- environment variable name, not a credential
 )
+
+// nativeSigning contains the validated nFPM signing environment.
+type nativeSigning struct {
+	// rpmKeyFile is the RPM private-key path.
+	rpmKeyFile string
+	// apkKeyFile is the APK private-key path.
+	apkKeyFile string
+	// rpmPassphrase decrypts the RPM private key.
+	rpmPassphrase string
+	// apkPassphrase decrypts the APK private key.
+	apkPassphrase string
+}
 
 // newStageCommand constructs the stage verb.
 func newStageCommand(options Options) *cobra.Command {
@@ -77,6 +100,11 @@ func runStage(ctx context.Context, options Options) error {
 		)))
 	}
 
+	signing, err := resolveNativeSigning(options.LookupEnv)
+	if err != nil {
+		return writeCommandResult(options, "stage", nil, UsageError(err))
+	}
+
 	if options.RunGoReleaser == nil {
 		return writeCommandResult(options, "stage", nil, errors.New("goreleaser runner is not configured"))
 	}
@@ -84,10 +112,11 @@ func runStage(ctx context.Context, options Options) error {
 	// GoReleaser is chatty; both streams go to the CLI stderr so --json
 	// stdout stays exactly one envelope.
 	err = options.RunGoReleaser(ctx, goprof.GoReleaserOptions{
-		Path:   lookupValue(options.LookupEnv, envGoreleaserPath),
-		Dist:   rootName,
-		Stdout: options.Err,
-		Stderr: options.Err,
+		Path:    lookupValue(options.LookupEnv, envGoreleaserPath),
+		Dist:    rootName,
+		Environ: nativeSigningEnvironment(os.Environ(), signing),
+		Stdout:  options.Err,
+		Stderr:  options.Err,
 	})
 	if err != nil {
 		return writeCommandResult(options, "stage", nil, err)
@@ -122,6 +151,104 @@ func runStage(ctx context.Context, options Options) error {
 	}
 
 	return writeCommandResult(options, "stage", result, nil)
+}
+
+// resolveNativeSigning validates opt-in package-signing configuration.
+func resolveNativeSigning(lookup LookupEnv) (nativeSigning, error) {
+	raw, ok := lookup(envNativePackageSigning)
+	if !ok {
+		return nativeSigning{}, nil
+	}
+
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		return nativeSigning{}, fmt.Errorf("%s: %w", envNativePackageSigning, err)
+	}
+	if !enabled {
+		return nativeSigning{}, nil
+	}
+
+	signing := nativeSigning{}
+	required := []struct {
+		// name is the required environment variable.
+		name string
+		// destination receives the environment value.
+		destination *string
+	}{
+		{name: envRPMSigningKeyFile, destination: &signing.rpmKeyFile},
+		{name: envAPKSigningKeyFile, destination: &signing.apkKeyFile},
+		{name: envRPMPassphrase, destination: &signing.rpmPassphrase},
+		{name: envAPKPassphrase, destination: &signing.apkPassphrase},
+	}
+	for _, value := range required {
+		raw, exists := lookup(value.name)
+		if !exists || raw == "" {
+			return nativeSigning{}, fmt.Errorf("%s is required when %s is true", value.name, envNativePackageSigning)
+		}
+		*value.destination = raw
+	}
+
+	if err := validatePrivateKeyFile(envRPMSigningKeyFile, signing.rpmKeyFile); err != nil {
+		return nativeSigning{}, err
+	}
+	if err := validatePrivateKeyFile(envAPKSigningKeyFile, signing.apkKeyFile); err != nil {
+		return nativeSigning{}, err
+	}
+
+	return signing, nil
+}
+
+// validatePrivateKeyFile requires a regular owner-only private-key file.
+func validatePrivateKeyFile(name, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", name)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%s permissions %04o allow group or other access", name, info.Mode().Perm())
+	}
+
+	return nil
+}
+
+// nativeSigningEnvironment removes ambient native-signing values and overlays
+// the validated values. Disabled signing supplies empty values because
+// GoReleaser resolves the key-file templates before nFPM decides whether to sign.
+func nativeSigningEnvironment(base []string, signing nativeSigning) []string {
+	values := []struct {
+		// name is the environment variable name.
+		name string
+		// value is the environment variable value.
+		value string
+	}{
+		{name: envRPMSigningKeyFile, value: signing.rpmKeyFile},
+		{name: envAPKSigningKeyFile, value: signing.apkKeyFile},
+		{name: envRPMPassphrase, value: signing.rpmPassphrase},
+		{name: envAPKPassphrase, value: signing.apkPassphrase},
+	}
+	names := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		names[value.name] = struct{}{}
+	}
+
+	environ := make([]string, 0, len(base)+len(values))
+	for _, item := range base {
+		name, _, found := strings.Cut(item, "=")
+		if found {
+			if _, replaced := names[name]; replaced {
+				continue
+			}
+		}
+		environ = append(environ, item)
+	}
+	for _, value := range values {
+		environ = append(environ, value.name+"="+value.value)
+	}
+
+	return environ
 }
 
 // writeImageInputs persists the OCI build-input projection under dist.

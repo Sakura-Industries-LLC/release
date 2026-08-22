@@ -1,0 +1,108 @@
+name: Reusable Package Repository Publication
+
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: Producer repository as owner/name.
+        required: true
+        type: string
+      tag:
+        description: Exact stable producer release tag.
+        required: true
+        type: string
+      config-path:
+        description: Reviewed package repository configuration in the caller checkout.
+        required: false
+        default: .config/package-repository.yaml
+        type: string
+      keys-path:
+        description: Reviewed public-key directory in the caller checkout.
+        required: false
+        default: .config
+        type: string
+      cloudflare-account-id:
+        description: Cloudflare account containing the existing R2 bucket.
+        required: true
+        type: string
+      r2-bucket:
+        description: Existing R2 package repository bucket.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish package repository
+    runs-on: ubuntu-24.04
+    environment: packages-production
+    timeout-minutes: 45
+    concurrency:
+      group: package-repository-production
+      cancel-in-progress: false
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Check out repository policy and public keys
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up verification tools
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          mise_toml: |
+            [tools]
+            "aqua:cli/cli" = "2.97.0"
+            "aqua:sigstore/cosign" = "3.1.3"
+          install_args: 'aqua:cli/cli aqua:sigstore/cosign'
+          cache: true
+
+      - name: Set up release-cli from reusable workflow source
+        id: setup-cli
+        uses: $/.github/actions/setup-release-cli
+        with:
+          local-build: always
+
+      - name: Set up aggregate repository signing
+        id: signing
+        uses: $/.github/actions/setup-package-repository
+        with:
+          gpg-private-key: ${{ secrets.PACKAGE_REPOSITORY_GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.PACKAGE_REPOSITORY_GPG_PASSPHRASE }}
+          apk-private-key: ${{ secrets.PACKAGE_REPOSITORY_APK_PRIVATE_KEY }}
+
+      - name: Publish verified native packages
+        shell: bash
+        env:
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+          PRODUCER_REPOSITORY: ${{ inputs.repository }}
+          PRODUCER_TAG: ${{ inputs.tag }}
+          PACKAGE_CONFIG: ${{ inputs.config-path }}
+          PACKAGE_KEYS: ${{ inputs.keys-path }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+          RELEASE_R2_BUCKET: ${{ inputs.r2-bucket }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_GPG_HOME: ${{ steps.signing.outputs.gpg-home }}
+          RELEASE_GPG_KEY_ID: ${{ steps.signing.outputs.gpg-key-id }}
+          RELEASE_GPG_PASSPHRASE_FILE: ${{ steps.signing.outputs.gpg-passphrase-file }}
+          RELEASE_APK_SIGNING_KEY: ${{ steps.signing.outputs.apk-private-key-file }}
+        run: |
+          set -euo pipefail
+          "${RELEASE_CLI}" publish package-repository \
+            --repository "${PRODUCER_REPOSITORY}" \
+            --tag "${PRODUCER_TAG}" \
+            --config "${PACKAGE_CONFIG}" \
+            --keys "${PACKAGE_KEYS}" \
+            --cloudflare-account-id "${CLOUDFLARE_ACCOUNT_ID}" \
+            --r2-bucket "${RELEASE_R2_BUCKET}" \
+            --gpg-home "${RELEASE_GPG_HOME}" \
+            --gpg-key-id "${RELEASE_GPG_KEY_ID}" \
+            --gpg-passphrase-file "${RELEASE_GPG_PASSPHRASE_FILE}" \
+            --apk-signing-key "${RELEASE_APK_SIGNING_KEY}" \
+            --json

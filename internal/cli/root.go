@@ -231,6 +231,9 @@ type Options struct {
 	NewComposer func(path string) (image.Composer, error)
 	// RunGoReleaser builds the release bundle. Nil selects [goprof.RunGoReleaser].
 	RunGoReleaser func(ctx context.Context, options goprof.GoReleaserOptions) error
+	// PackageRepositoryPublisher, when set, is the complete package publication seam.
+	// Tests inject it to avoid network, process, and object-storage side effects.
+	PackageRepositoryPublisher PackageRepositoryPublisher
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -271,6 +274,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	root.AddCommand(newInitCommand(options))
 	publish := newPublishCommand(options)
 	publish.AddCommand(newGitHubCommand(options))
+	publish.AddCommand(newPackageRepositoryCommand(options))
 	root.AddCommand(publish)
 	root.AddCommand(newImageCommand(options))
 	root.AddCommand(newVersionCommand(options))
