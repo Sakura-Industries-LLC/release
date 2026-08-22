@@ -52,10 +52,10 @@ type producerFile struct {
 	Repository string `yaml:"repository"`
 	// Packages is the complete producer-owned package allowlist.
 	Packages []string `yaml:"packages"`
-	// ChecksumWorkflow signs checksums.txt and its Sigstore bundle.
-	ChecksumWorkflow string `yaml:"checksum_workflow"`
-	// AttestationWorkflow creates GitHub build-provenance attestations.
-	AttestationWorkflow string `yaml:"attestation_workflow"`
+	// ChecksumIdentity is the exact Cosign certificate identity that signs checksums.txt.
+	ChecksumIdentity string `yaml:"checksum_identity"`
+	// AttestationSigner is the GitHub workflow that attests release payloads.
+	AttestationSigner string `yaml:"attestation_signer"`
 	// RPMKey verifies producer RPM package signatures.
 	RPMKey publicKeyFile `yaml:"rpm_key"`
 	// APKKey verifies producer APK package signatures.
@@ -130,9 +130,9 @@ func mapPublicationConfig(file publicationConfigFile) (PublicationConfig, error)
 			APKKey:     mapPublicKey(source.APKKey),
 		})
 		config.Sources = append(config.Sources, SourcePolicy{
-			Repository:          repository,
-			ChecksumWorkflow:    source.ChecksumWorkflow,
-			AttestationWorkflow: source.AttestationWorkflow,
+			Repository:        repository,
+			ChecksumIdentity:  ChecksumIdentity(source.ChecksumIdentity),
+			AttestationSigner: AttestationSigner(source.AttestationSigner),
 		})
 	}
 

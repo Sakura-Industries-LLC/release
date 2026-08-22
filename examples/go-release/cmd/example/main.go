@@ -26,6 +26,6 @@ func run() int {
 		return 0
 	}
 
-	fmt.Println("example is a copyable Meigma GitHub Release consumer.")
+	fmt.Println("example is a copyable reusable-workflow consumer.")
 	return 0
 }

@@ -28,6 +28,6 @@ archs:
 
 annotations:
   org.opencontainers.image.title: example
-  org.opencontainers.image.description: Example Go command using the Meigma release workflows.
+  org.opencontainers.image.description: Example Go command using the reusable release workflows.
   org.opencontainers.image.source: https://github.com/OWNER/REPOSITORY
-  org.opencontainers.image.licenses: LicenseRef-Proprietary
+  org.opencontainers.image.licenses: Apache-2.0 OR MIT

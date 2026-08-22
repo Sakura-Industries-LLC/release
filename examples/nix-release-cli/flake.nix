@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     release = {
-      url = "github:meigma/release/v0.1.3";
+      url = "github:meigma/release/v0.1.16";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

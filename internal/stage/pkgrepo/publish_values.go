@@ -31,14 +31,20 @@ var (
 // PublishState is the converged remote repository state.
 type PublishState string
 
-// SourcePolicy binds one producer to its trusted checksum and attestation workflows.
+// ChecksumIdentity is one exact Cosign certificate identity URL.
+type ChecksumIdentity string
+
+// AttestationSigner is one GitHub attestation signer workflow.
+type AttestationSigner string
+
+// SourcePolicy binds one producer to explicit shared-workflow trust identities.
 type SourcePolicy struct {
 	// Repository is the allowlisted producer repository.
 	Repository Repository
-	// ChecksumWorkflow is the repository-relative workflow that signs checksums.txt.
-	ChecksumWorkflow string
-	// AttestationWorkflow is the repository-relative workflow that attests release payloads.
-	AttestationWorkflow string
+	// ChecksumIdentity is the exact Cosign certificate identity that signs checksums.txt.
+	ChecksumIdentity ChecksumIdentity
+	// AttestationSigner is the GitHub workflow that attests release payloads.
+	AttestationSigner AttestationSigner
 }
 
 // PublicationConfig is the complete reviewed package-repository publication policy.
@@ -95,8 +101,8 @@ type AttestationRequest struct {
 	SourceRef string
 	// SourceDigest is the full source commit SHA.
 	SourceDigest string
-	// SignerWorkflow is the repository-relative trusted workflow path.
-	SignerWorkflow string
+	// SignerWorkflow is the trusted GitHub attestation signer workflow.
+	SignerWorkflow AttestationSigner
 }
 
 // StoredObject is one object discovered in repository storage.
@@ -244,31 +250,104 @@ func (p SourcePolicy) Validate() error {
 	if _, err := ParseRepository(string(p.Repository)); err != nil {
 		return err
 	}
-	if !workflowPattern.MatchString(p.ChecksumWorkflow) {
-		return fmt.Errorf("checksum workflow %q is invalid", p.ChecksumWorkflow)
+	if _, err := ParseChecksumIdentity(string(p.ChecksumIdentity)); err != nil {
+		return err
 	}
-	if !workflowPattern.MatchString(p.AttestationWorkflow) {
-		return fmt.Errorf("attestation workflow %q is invalid", p.AttestationWorkflow)
+	if _, err := ParseAttestationSigner(string(p.AttestationSigner)); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-// ChecksumIdentity returns the exact GitHub Actions certificate identity for tag.
-func (p SourcePolicy) ChecksumIdentity(tag string) (string, error) {
-	if err := p.Validate(); err != nil {
-		return "", err
+// ParseChecksumIdentity validates one exact Cosign certificate identity.
+//
+// The identity must be
+// https://github.com/<owner>/<repo>/.github/workflows/<file>@<40-character-sha>
+// with a lowercase owner and repository. Branches, tags, missing refs,
+// credentials, queries, fragments, and non-GitHub hosts are rejected.
+func ParseChecksumIdentity(value string) (ChecksumIdentity, error) {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("checksum identity %q is invalid: %w", value, err)
 	}
-	if _, err := ParseTag(tag); err != nil {
-		return "", err
+	if parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("checksum identity %q must be an absolute HTTPS URL", value)
+	}
+	if parsed.Host != "github.com" {
+		return "", fmt.Errorf("checksum identity %q must use host github.com", value)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("checksum identity %q must not contain credentials, a query, or a fragment", value)
 	}
 
-	return "https://github.com/" + string(p.Repository) + "/" + p.ChecksumWorkflow + "@refs/tags/" + tag, nil
+	pathAndRef := strings.TrimPrefix(parsed.EscapedPath(), "/")
+	workflowPath, ref, found := strings.Cut(pathAndRef, "@")
+	if !found || ref == "" {
+		return "", fmt.Errorf("checksum identity %q is missing an immutable commit SHA", value)
+	}
+	if !commitPattern.MatchString(ref) {
+		return "", fmt.Errorf("checksum identity %q must pin a full lowercase commit SHA", value)
+	}
+	repository, workflow, ok := splitOwnerWorkflow(workflowPath)
+	if !ok {
+		return "", fmt.Errorf("checksum identity %q is not a GitHub workflow identity", value)
+	}
+	if _, parseErr := ParseRepository(repository); parseErr != nil {
+		return "", fmt.Errorf("checksum identity %q: %w", value, parseErr)
+	}
+	if !workflowPattern.MatchString(workflow) {
+		return "", fmt.Errorf("checksum identity %q has an invalid workflow path", value)
+	}
+	canonical := "https://github.com/" + repository + "/" + workflow + "@" + ref
+	if value != canonical {
+		return "", fmt.Errorf("checksum identity %q is invalid", value)
+	}
+
+	return ChecksumIdentity(value), nil
 }
 
-// AttestationSigner returns the gh signer-workflow value for this producer.
-func (p SourcePolicy) AttestationSigner() string {
-	return string(p.Repository) + "/" + p.AttestationWorkflow
+// ParseAttestationSigner validates one GitHub attestation signer workflow.
+//
+// The signer must be <owner>/<repo>/.github/workflows/<file> with a lowercase
+// owner and repository. URLs, refs, credentials, and relative paths are rejected.
+func ParseAttestationSigner(value string) (AttestationSigner, error) {
+	if strings.Contains(value, "://") || strings.ContainsAny(value, "?#@") {
+		return "", fmt.Errorf(
+			"attestation signer %q must be owner/repository/.github/workflows/<file>",
+			value,
+		)
+	}
+	repository, workflow, ok := splitOwnerWorkflow(value)
+	if !ok {
+		return "", fmt.Errorf(
+			"attestation signer %q must be owner/repository/.github/workflows/<file>",
+			value,
+		)
+	}
+	if _, err := ParseRepository(repository); err != nil {
+		return "", fmt.Errorf("attestation signer %q: %w", value, err)
+	}
+	if !workflowPattern.MatchString(workflow) {
+		return "", fmt.Errorf("attestation signer %q has an invalid workflow path", value)
+	}
+	canonical := repository + "/" + workflow
+	if value != canonical {
+		return "", fmt.Errorf("attestation signer %q is invalid", value)
+	}
+
+	return AttestationSigner(value), nil
+}
+
+// splitOwnerWorkflow splits owner/name/.github/workflows/<file> into repository and workflow path.
+func splitOwnerWorkflow(value string) (string, string, bool) {
+	const marker = "/.github/workflows/"
+	repository, file, found := strings.Cut(value, marker)
+	if !found || repository == "" || file == "" || strings.Contains(file, "/") {
+		return "", "", false
+	}
+
+	return repository, ".github/workflows/" + file, true
 }
 
 // Validate checks one downloaded release and its exact source binding.

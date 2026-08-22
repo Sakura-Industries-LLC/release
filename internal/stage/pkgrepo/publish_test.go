@@ -26,6 +26,7 @@ import (
 	"github.com/meigma/release/internal/rel"
 	"github.com/meigma/release/internal/stage"
 	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/meigma/release/internal/stage/pubgh"
 )
 
 // TestPublisherPublishesVerifiedRelease proves the complete package-repository orchestration contract.
@@ -47,8 +48,13 @@ func TestPublisherPublishesVerifiedRelease(t *testing.T) {
 		Repository: "meigma/release",
 		Tag:        "v1.2.3",
 	}, mock.Anything).RunAndReturn(fixture.fetchRelease).Once()
-	bundles.EXPECT().Verify(mock.Anything, mock.Anything).Return(nil).Once()
-	attestations.EXPECT().Verify(mock.Anything, mock.Anything).Return(nil).Times(len(fixture.assets))
+	bundles.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(request pubgh.BlobVerification) bool {
+		return request.Identity == "https://github.com/shared/workflows/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567"
+	})).Return(nil).Once()
+	attestations.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(request pkgrepo.AttestationRequest) bool {
+		return request.Repository == "meigma/release" &&
+			request.SignerWorkflow == "shared/workflows/.github/workflows/publish-github-release.yml"
+	})).Return(nil).Times(len(fixture.assets))
 	store.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	for index, asset := range fixture.assets {
 		inspector.EXPECT().Inspect(
@@ -185,11 +191,13 @@ func (f *publisherFixture) input() pkgrepo.PublishInput {
 		Config: pkgrepo.PublicationConfig{
 			Origin:     "https://pkgs.meigma.dev",
 			Repository: buildConfig(),
-			Sources: []pkgrepo.SourcePolicy{{
-				Repository:          "meigma/release",
-				ChecksumWorkflow:    ".github/workflows/go-pre-publish.yml",
-				AttestationWorkflow: ".github/workflows/publish-github-release.yml",
-			}},
+			Sources: []pkgrepo.SourcePolicy{
+				{
+					Repository:        "meigma/release",
+					ChecksumIdentity:  "https://github.com/shared/workflows/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+					AttestationSigner: "shared/workflows/.github/workflows/publish-github-release.yml",
+				},
+			},
 		},
 		Request: pkgrepo.Request{Repository: "meigma/release", Tag: "v1.2.3"},
 		Keys:    f.keys,

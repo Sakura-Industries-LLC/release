@@ -2,15 +2,15 @@ package:
   name: example
   version: ${{vars.version}}
   epoch: 0
-  description: Example Go command using the Meigma release workflows.
+  description: Example Go command using the reusable release workflows.
   target-architecture:
     - x86_64
     - aarch64
-  vendor: Meigma
-  homepage: https://github.com/meigma/release
-  maintainer: Meigma <contact@meigma.dev>
+  vendor: Example Organization
+  homepage: https://github.com/OWNER/REPOSITORY
+  maintainer: Release Team <releases@example.com>
   copyright:
-    - license: LicenseRef-Proprietary
+    - license: Apache-2.0 OR MIT
 
 vars:
   version: 0.0.0

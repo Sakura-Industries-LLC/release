@@ -1,12 +1,17 @@
 # Go release example
 
-This directory models a repository named `example` with module `example.com/meigma/release-consumer` and command `./cmd/example`. It contains the minimum source needed to build GitHub Release assets and a multi-architecture OCI image, plus a disabled package-repository dispatch job. It is not a complete CI policy: add the consumer repository's own build, test, review, and branch-protection controls.
+This directory is the maintained template for one static Go application in one
+repository. It includes the release workflows, a minimal command, GitHub
+Release and OCI configuration, Homebrew and Scoop control generation, and a
+native package-repository request.
 
-See [Configure GitHub Releases](../../docs/how-to/configure-github-releases.md) for release credential setup and [Configure OCI image publication](../../docs/how-to/configure-oci-images.md) for image configuration, publication, and verification. [Set up the shared package repository](../../docs/how-to/set-up-package-repository.md) defines the central receiver, producer policy, public keys, and signing prerequisites; [Install release-cli from native package repositories](../../docs/how-to/install-release-cli-from-package-repositories.md) shows the resulting client flow. See [Rehearse and recover GitHub Releases](../../docs/how-to/rehearse-and-recover-github-releases.md) before the first publication. Use [Upgrade GitHub Release workflows](../../docs/how-to/upgrade-github-release-workflows.md) to change the pinned revision. The reusable interfaces are defined in the [GitHub Release contract](../../docs/reference/github-release-contract.md), [OCI image contract](../../docs/reference/oci-image-contract.md), and [package repository contract](../../docs/reference/package-repository-contract.md).
+It is not a complete repository policy. Add the adopter's CI, review, rulesets,
+and ownership controls.
 
-## Files to copy
+## Copy the example
 
-Copy these release files into an existing Go repository, preserving their paths:
+Copy these paths into an existing Go repository without overwriting its source
+or module files:
 
 - `.github/workflows/release-please.yml`
 - `.github/workflows/release.yml`
@@ -18,68 +23,69 @@ Copy these release files into an existing Go repository, preserving their paths:
 - `mise.toml`
 - `mise.lock`
 
-To reproduce the complete minimal consumer in a new empty repository, also copy:
+For a new disposable repository, also copy `go.mod` and `cmd/example/`. Do not
+copy this README into the producer.
 
-- `go.mod`
-- `cmd/example/main.go`
+## Replace the template values
 
-Do not copy this README into the consumer repository.
+Before the workflows run:
 
-## Release build
+1. Replace every `REPLACE_WITH_RELEASE_COMMIT_SHA` in
+   `.github/workflows/release.yml` with one reviewed, full 40-character
+   `meigma/release` commit SHA.
+2. Replace `OWNER/REPOSITORY` in `.goreleaser.yaml` and `apko.yaml` with the
+   producer owner and repository.
+3. Replace `HOMEBREW-OWNER`, `HOMEBREW-TAP`, `SCOOP-OWNER`,
+   `SCOOP-BUCKET`, and the `PACKAGE-REPOSITORY-*` values only after those
+   adopter-owned destinations exist.
+4. Replace the `example` project, package, binary, cask, manifest, command path,
+   module path, and Release Please package name.
+5. Replace the organization metadata, maintainer, description, homepage, and
+   SPDX license expression.
+6. Change the Release Please branch and manifest version when the repository
+   does not use a new `main`-branch release history.
+7. Update the linker variables when the command does not define
+   `main.version` and `main.commit`.
 
-The producer workflow sets up `release-cli` and runs:
+The one full SHA selects every reusable workflow and checksum signer identity.
+It also selects the sibling setup action and the CLI release stamp. Do not mix
+release-unit revisions or add an independent CLI pin.
 
-```text
-release-cli stage --profile go --dist dist
+## Default safety controls
+
+The caller begins with:
+
+```yaml
+sign-and-notarize-macos: false
+sign-native-packages: false
+publish-image: false
+publish-release: false
+publish-homebrew: false
+publish-scoop: false
+publish-package-repository: false
 ```
 
-The stage command runs `goreleaser release --clean --skip=publish` under mise's environment, then validates the release bundle and writes the OCI input projection. GoReleaser shells out to the mise-managed Go, Syft, and Cosign executables during the build.
+The first tag therefore builds and verifies release assets and the OCI layout,
+populates a draft GitHub Release, and performs a dry-run registry plan. It does
+not write GHCR, open a tap or bucket pull request, dispatch native package
+publication, or make the draft public.
 
-The GoReleaser configuration packages each Linux build as DEB, RPM, and APK
-and emits one SBOM for every archive and native package. These standalone
-packages are GitHub Release assets. The example does not configure native
-RPM or APK signing. Its package-repository request remains disabled until the
-producer is reviewed, allowlisted, and configured with both signing keys.
+The supported publication configuration enables `publish-image` and
+`publish-release` together. Enable Homebrew, Scoop, or package-repository
+publication only in a run that also makes the GitHub Release public.
 
-GoReleaser has no command-line distribution-directory option in this invocation. The consumer's `.goreleaser.yaml` must write the same distribution directory that the workflow passes to `release-cli stage --dist`. This example uses GoReleaser's default `dist` directory and passes `--dist dist`.
+The Homebrew and Scoop entries use `skip_upload: true`. GoReleaser generates
+their controls inside the authoritative Actions artifact, but the dedicated
+publishers own destination pull requests. The package-repository request stays
+disabled until producer-native RPM and APK signing, central policy, public
+keys, R2, and the protected receiver environment exist.
 
-The `--clean` option deletes and rebuilds `dist`. Keep `release.disable: true` in `.goreleaser.yaml`; `--skip=publish` is a second boundary against GoReleaser publication. Keep `changelog.disable: true` because Release Please owns release notes.
+## Documentation
 
-## Values to replace
-
-Replace these project-specific example values:
-
-- `example.com/meigma/release-consumer` in `go.mod` with the consumer's module path.
-- `./cmd/example` in `.goreleaser.yaml` with the consumer command package.
-- Project name, build ID, archive ID, nFPM ID, binary name, and Release Please package name `example` with the consumer's project and binary names.
-- Package name, vendor, homepage, maintainer, description, license, and installed command path in `.goreleaser.yaml` and `melange.yaml`.
-- Package name, entrypoint, image annotations, and source URL in `apko.yaml`.
-- The literal command name and default output in `cmd/example/main.go` if you copy the sample command.
-- Branch name `main` in `.github/workflows/release-please.yml` if the consumer uses another default branch.
-- `initial-version` value `0.1.0` in `release-please-config.json` if the first intended release differs.
-- Manifest value `0.0.0` in `.release-please-manifest.json` if the consumer already has a release. Use its latest released version without the `v` prefix.
-- Linker variables `main.version` and `main.commit` in `.goreleaser.yaml` if the consumer command exposes version data through different variables. The copied sample defines both variables and prints `example <version> (<commit>)` for `--version`.
-- Package repository owner and repository name in `.github/workflows/release.yml` with the reviewed central receiver.
-
-The release-asset and OCI jobs use one full commit SHA for their reusable
-workflow references and checksum signing identity. That SHA is their consumer
-pin for the complete release unit. The current baseline pin is the `v0.1.3`
-release revision, `0fc99489d31d400bc3f69d6636d60e7d3f3d0251`.
-
-The disabled package-repository job uses the `v0.1.16` revision,
-`583937edadfbae183e49f16df46b98e0b36807ba`, because that revision introduced
-the dispatch workflow and multi-version repository fix. Upgrade the complete
-release unit to a reviewed current revision before enabling the job.
-
-Keep these contract values unchanged:
-
-- all four reusable workflow references at `0fc99489d31d400bc3f69d6636d60e7d3f3d0251`;
-- `checksum-signing-workflow-ref` value `meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251`;
-- disabled package-repository workflow reference at `583937edadfbae183e49f16df46b98e0b36807ba`;
-- organization variable `MEIGMA_RELEASE_APP_CLIENT_ID`;
-- organization secret `MEIGMA_RELEASE_APP_PRIVATE_KEY`; and
-- the locked Go 1.26.6, GoReleaser 2.17.1, Syft 1.51.0, Cosign 3.1.3, GitHub CLI 2.97.0, Melange 0.59.1, and apko 1.2.37 versions unless the shared workflow contract is deliberately updated.
-
-The caller sets `publish-image: false`, `publish-release: false`, and `publish-package-repository: false`. The first run therefore leaves a populated draft without writing to GHCR or dispatching to a central package repository. After inspecting the draft and `oci-image` artifact, change the image and GitHub Release inputs to `true` and follow the recovery guide to publish through the same tag and release. Enable package-repository dispatch only after the release is public, the central receiver allowlists the producer, native RPM and APK signing is configured, and the receiver's protected environment is ready.
-
-The OCI builder retains the signed APK repository, apko lock, SPDX files, and OCI layout in the `oci-image` workflow artifact. The separate publisher verifies that artifact before pushing, signing, and attesting `ghcr.io/owner/repository`.
+- [Release your first Go application](../../docs/tutorials/release-your-first-go-application.md)
+- [Prepare your GitHub organization](../../docs/how-to/prepare-your-github-organization.md)
+- [Adopt the release workflows](../../docs/how-to/adopt-the-release-workflows.md)
+- [Add Homebrew and Scoop](../../docs/how-to/add-homebrew-and-scoop.md)
+- [Operate a native package repository](../../docs/how-to/operate-a-native-package-repository.md)
+- [Operate and recover releases](../../docs/how-to/operate-and-recover-releases.md)
+- [Release system reference](../../docs/reference/release-system.md)

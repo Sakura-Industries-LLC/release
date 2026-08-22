@@ -33,8 +33,8 @@ producers:
   - repository: meigma/release
     packages:
       - release-cli
-    checksum_workflow: .github/workflows/go-pre-publish.yml
-    attestation_workflow: .github/workflows/publish-github-release.yml
+    checksum_identity: https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567
+    attestation_signer: meigma/release/.github/workflows/publish-github-release.yml
     rpm_key:
       source: keys/release-rpm.asc
       published: release-rpm-001.asc

@@ -118,11 +118,12 @@ func (p *Publisher) Publish(ctx context.Context, input PublishInput) (PublishRes
 		return PublishResult{}, err
 	}
 
-	identity, err := policy.ChecksumIdentity(input.Request.Tag)
-	if err != nil {
-		return PublishResult{}, err
+	if policyErr := policy.Validate(); policyErr != nil {
+		return PublishResult{}, policyErr
 	}
-	bundle, err := pubgh.VerifyBundle(ctx, releaseRoot.FS(), p.bundles, pubgh.TrustPolicy{Identity: identity})
+	bundle, err := pubgh.VerifyBundle(ctx, releaseRoot.FS(), p.bundles, pubgh.TrustPolicy{
+		Identity: string(policy.ChecksumIdentity),
+	})
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("verify release bundle: %w", err)
 	}
@@ -336,7 +337,7 @@ func (p *Publisher) verifyReleasePackages(
 			Repository:     input.Request.Repository,
 			SourceRef:      "refs/tags/" + input.Request.Tag,
 			SourceDigest:   release.Commit,
-			SignerWorkflow: policy.AttestationSigner(),
+			SignerWorkflow: policy.AttestationSigner,
 		}); err != nil {
 			return nil, nil, fmt.Errorf("verify package attestation %s: %w", entry.Name, err)
 		}

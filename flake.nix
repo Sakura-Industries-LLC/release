@@ -50,6 +50,7 @@
           meta = {
             description = "Validate and publish Meigma release artifacts";
             homepage = "https://github.com/meigma/release";
+            license = with pkgs.lib.licenses; [ asl20 mit ];
             mainProgram = "release-cli";
             platforms = systems;
           };

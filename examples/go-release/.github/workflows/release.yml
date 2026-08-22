@@ -16,27 +16,36 @@ jobs:
     name: Build release assets
     if: github.event.deleted == false
     permissions:
-      actions: read
-      # Required because the called workflow verifies the release-cli
-      # attestation while installing it; a callee cannot exceed this ceiling.
       attestations: read
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
+    uses: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    with:
+      sign-and-notarize-macos: false
+      sign-native-packages: false
+    secrets:
+      macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
+      macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
+      macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      macos-notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      rpm-signing-key: ${{ secrets.RPM_SIGNING_KEY }}
+      rpm-signing-passphrase: ${{ secrets.RPM_SIGNING_PASSPHRASE }}
+      apk-signing-key: ${{ secrets.APK_SIGNING_KEY }}
+      apk-signing-passphrase: ${{ secrets.APK_SIGNING_PASSPHRASE }}
 
   oci-image:
     name: Build OCI image
     needs: release-assets
     permissions:
       actions: read
-      # Required because the called workflow verifies the release-cli
-      # attestation while installing it; a callee cannot exceed this ceiling.
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/go-oci-build.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
+    uses: meigma/release/.github/workflows/go-oci-build.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       artifact-id: ${{ needs.release-assets.outputs.oci-input-artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.oci-input-artifact-digest }}
+
   oci-publish:
     name: Publish OCI image
     needs: oci-image
@@ -47,19 +56,17 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: meigma/release/.github/workflows/publish-oci-image.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
+    uses: meigma/release/.github/workflows/publish-oci-image.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       artifact-id: ${{ needs.oci-image.outputs.artifact-id }}
       artifact-digest: ${{ needs.oci-image.outputs.artifact-digest }}
       image-digest: ${{ needs.oci-image.outputs.image-digest }}
       publish-image: false
 
-
   github-release:
     name: Publish GitHub Release
     needs:
       - release-assets
-      - oci-image
       - oci-publish
     permissions:
       actions: read
@@ -67,11 +74,11 @@ jobs:
       attestations: write
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/publish-github-release.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
+    uses: meigma/release/.github/workflows/publish-github-release.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@0fc99489d31d400bc3f69d6636d60e7d3f3d0251
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
       require-oci-image: true
       oci-image-reference: ${{ needs.oci-publish.outputs.image-reference }}
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
@@ -79,14 +86,56 @@ jobs:
     secrets:
       release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
 
+  homebrew-publish:
+    name: Open Homebrew tap pull request
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    uses: meigma/release/.github/workflows/publish-homebrew.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+      tap: HOMEBREW-OWNER/HOMEBREW-TAP
+      cask: example
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-homebrew: false
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+
+  scoop-publish:
+    name: Open Scoop bucket pull request
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    uses: meigma/release/.github/workflows/publish-scoop.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+      bucket: SCOOP-OWNER/SCOOP-BUCKET
+      manifest: example
+      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      publish-scoop: false
+    secrets:
+      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+
   package-repository:
     name: Request package repository publication
     needs: github-release
     permissions: {}
-    uses: meigma/release/.github/workflows/request-package-repository.yml@583937edadfbae183e49f16df46b98e0b36807ba # v0.1.16
+    uses: meigma/release/.github/workflows/request-package-repository.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
-      package-repository-owner: OWNER
-      package-repository-name: packages
+      package-repository-owner: PACKAGE-REPOSITORY-OWNER
+      package-repository-name: PACKAGE-REPOSITORY-NAME
       release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
       publish-package-repository: false
     secrets:

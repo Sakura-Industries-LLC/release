@@ -1,21 +1,58 @@
-# Meigma release workflows
+# Release workflows
 
-This repository defines the reusable workflows and repository contracts that Meigma uses to build, sign, attest, and publish Go binaries through GitHub Releases, multi-architecture OCI images through GHCR, and native Linux packages through a static Cloudflare R2 repository. It also builds and publishes `release-cli`, which owns release verification and publication behavior. The repository's tagged release builds the CLI from its own source and supplies that binary to the reusable workflows.
+This repository publishes `release-cli` and reusable GitHub Actions workflows
+for releasing one static Go application from one repository. A release can
+produce GitHub Release assets, a multi-architecture image in GHCR, Homebrew and
+Scoop update pull requests, and signed DEB, RPM, and APK repositories in
+Cloudflare R2.
+
+## Supported release
+
+The supported application contract is intentionally narrow:
+
+- one Go application and binary per repository;
+- stable, unscoped `vMAJOR.MINOR.PATCH` tags;
+- static Darwin, Linux, and Windows binaries for `amd64` and `arm64`;
+- Linux `amd64` and `arm64` images at `ghcr.io/<owner>/<repository>`;
+- DEB, RPM, and APK packages;
+- cask-only Homebrew taps; and
+- root-layout Scoop buckets.
+
+Each consumer pins every reusable workflow and signer identity to one reviewed,
+full `meigma/release` commit SHA. The workflows, setup action, and
+`release-cli` at that commit form one release unit.
+
+## Release flow
+
+```text
+Release Please pull request
+  -> stable tag and draft GitHub Release
+  -> build, sign, and verify release assets
+  -> build and verify the OCI image
+  -> publish and attest the image
+  -> attest assets and publish the GitHub Release
+  -> open reviewed Homebrew and Scoop pull requests
+  -> optionally request central native-package publication
+```
+
+Publication controls are disabled in the
+[copyable Go example](examples/go-release/). Rehearse the complete build and
+inspect its draft and workflow artifacts before enabling destinations.
 
 ## Documentation
 
-- [Install `release-cli` with mise](docs/how-to/install-release-cli-with-mise.md)
-- [Install `release-cli` with Nix](docs/how-to/install-release-cli-with-nix.md)
-- [Configure GitHub releases](docs/how-to/configure-github-releases.md)
-- [Configure OCI image publication](docs/how-to/configure-oci-images.md)
-- [Rehearse and recover GitHub releases](docs/how-to/rehearse-and-recover-github-releases.md)
-- [Upgrade GitHub release workflows](docs/how-to/upgrade-github-release-workflows.md)
-- [Set up the shared package repository](docs/how-to/set-up-package-repository.md)
-- [`release-cli` contract reference](docs/reference/release-cli-contract.md)
-- [GitHub release contract reference](docs/reference/github-release-contract.md)
-- [OCI image contract reference](docs/reference/oci-image-contract.md)
-- [Package repository contract reference](docs/reference/package-repository-contract.md)
-- [Copyable Go release example](examples/go-release/)
-- [Copyable Nix consumer example](examples/nix-release-cli/)
+- [Release your first Go application](docs/tutorials/release-your-first-go-application.md)
+- [Prepare your GitHub organization](docs/how-to/prepare-your-github-organization.md)
+- [Adopt the release workflows](docs/how-to/adopt-the-release-workflows.md)
+- [Add Homebrew and Scoop](docs/how-to/add-homebrew-and-scoop.md)
+- [Operate a native package repository](docs/how-to/operate-a-native-package-repository.md)
+- [Operate and recover releases](docs/how-to/operate-and-recover-releases.md)
+- [Install `release-cli`](docs/how-to/install-release-cli.md)
+- [Release system reference](docs/reference/release-system.md)
+- [`release-cli` reference](docs/reference/release-cli.md)
+- [Architecture and trust](docs/explanation/architecture-and-trust.md)
 
-Consumer repositories call the reusable workflows at one full commit SHA. The current released pin is `0fc99489d31d400bc3f69d6636d60e7d3f3d0251` (`v0.1.3`).
+## License
+
+Licensed under either the [Apache License 2.0](LICENSE-APACHE) or the
+[MIT License](LICENSE-MIT), at your option.

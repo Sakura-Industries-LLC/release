@@ -106,10 +106,8 @@ func (v *Verifier) Verify(ctx context.Context, request pkgrepo.AttestationReques
 	if !commitPattern.MatchString(request.SourceDigest) {
 		return fmt.Errorf("source digest %q is not a full lowercase SHA", request.SourceDigest)
 	}
-	workflowPrefix := string(request.Repository) + "/.github/workflows/"
-	if !strings.HasPrefix(request.SignerWorkflow, workflowPrefix) ||
-		strings.Contains(strings.TrimPrefix(request.SignerWorkflow, workflowPrefix), "/") {
-		return fmt.Errorf("signer workflow %q does not belong to %q", request.SignerWorkflow, request.Repository)
+	if _, parseErr := pkgrepo.ParseAttestationSigner(string(request.SignerWorkflow)); parseErr != nil {
+		return parseErr
 	}
 
 	err = execx.Run(ctx, execx.Command{
@@ -118,7 +116,7 @@ func (v *Verifier) Verify(ctx context.Context, request pkgrepo.AttestationReques
 		Args: []string{
 			"attestation", "verify", request.Path,
 			"--repo", string(request.Repository),
-			"--signer-workflow", request.SignerWorkflow,
+			"--signer-workflow", string(request.SignerWorkflow),
 			"--source-ref", request.SourceRef,
 			"--source-digest", request.SourceDigest,
 			"--deny-self-hosted-runners",

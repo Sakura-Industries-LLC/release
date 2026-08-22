@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	validChecksumIdentity  = "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567"
+	validAttestationSigner = "meigma/release/.github/workflows/publish-github-release.yml"
+)
+
 func TestParsePublicationConfig(t *testing.T) {
 	t.Parallel()
 
@@ -17,6 +22,15 @@ func TestParsePublicationConfig(t *testing.T) {
 		wantErr string
 	}{
 		{name: "accepted reviewed policy", input: validPublicationConfig()},
+		{
+			name: "accepted cross-repository signer",
+			input: strings.Replace(
+				validPublicationConfig(),
+				"repository: meigma/release",
+				"repository: acme/app",
+				1,
+			),
+		},
 		{
 			name:    "unknown field",
 			input:   strings.Replace(validPublicationConfig(), "origin:", "unknown: value\norigin:", 1),
@@ -43,14 +57,14 @@ func TestParsePublicationConfig(t *testing.T) {
 			wantErr: "path prefix",
 		},
 		{
-			name: "invalid checksum workflow",
+			name: "invalid checksum identity",
 			input: strings.Replace(
 				validPublicationConfig(),
-				".github/workflows/go-pre-publish.yml",
-				"scripts/publish.yml",
+				validChecksumIdentity,
+				"https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
 				1,
 			),
-			wantErr: "checksum workflow",
+			wantErr: "checksum identity",
 		},
 		{
 			name:    "invalid repository",
@@ -79,35 +93,144 @@ func TestParsePublicationConfig(t *testing.T) {
 			assert.Equal(t, ChannelStable, got.Repository.Channel)
 			assert.Equal(t, "https://pkgs.meigma.dev", got.Origin)
 			require.Len(t, got.Repository.Producers, 1)
+			require.Len(t, got.Sources, 1)
+			assert.Equal(t, ChecksumIdentity(validChecksumIdentity), got.Sources[0].ChecksumIdentity)
+			assert.Equal(t, AttestationSigner(validAttestationSigner), got.Sources[0].AttestationSigner)
+			if strings.Contains(test.name, "cross-repository") {
+				assert.Equal(t, Repository("acme/app"), got.Repository.Producers[0].Repository)
+				assert.Equal(t, Repository("acme/app"), got.Sources[0].Repository)
+				return
+			}
 			assert.Equal(t, Repository("meigma/release"), got.Repository.Producers[0].Repository)
 			assert.Equal(t, []PackageName{"release-cli"}, got.Repository.Producers[0].Packages)
-			require.Len(t, got.Sources, 1)
-			assert.Equal(t, ".github/workflows/go-pre-publish.yml", got.Sources[0].ChecksumWorkflow)
 		})
 	}
 }
 
-func TestSourcePolicyDerivesExactIdentities(t *testing.T) {
+func TestParseChecksumIdentityRejectsNonImmutableValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name:    "tag ref",
+			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
+			wantErr: "full lowercase commit SHA",
+		},
+		{
+			name:    "branch ref",
+			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@main",
+			wantErr: "full lowercase commit SHA",
+		},
+		{
+			name:    "missing ref",
+			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml",
+			wantErr: "immutable commit SHA",
+		},
+		{
+			name:    "short SHA",
+			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef01234567",
+			wantErr: "full lowercase commit SHA",
+		},
+		{
+			name:    "relative identity",
+			input:   ".github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			wantErr: "absolute HTTPS URL",
+		},
+		{
+			name:    "non-GitHub host",
+			input:   "https://gitlab.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			wantErr: "host github.com",
+		},
+		{
+			name:    "credentials",
+			input:   "https://user:token@github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			wantErr: "credentials",
+		},
+		{
+			name:    "query",
+			input:   validChecksumIdentity + "?ref=main",
+			wantErr: "query",
+		},
+		{
+			name:    "fragment",
+			input:   validChecksumIdentity + "#section",
+			wantErr: "fragment",
+		},
+		{
+			name:    "uppercase owner",
+			input:   "https://github.com/Meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			wantErr: "lowercase owner/name",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParseChecksumIdentity(test.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
+func TestParseAttestationSignerRejectsMalformedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name:    "relative workflow",
+			input:   ".github/workflows/publish-github-release.yml",
+			wantErr: "owner/repository/.github/workflows/<file>",
+		},
+		{
+			name:    "URL identity",
+			input:   "https://github.com/meigma/release/.github/workflows/publish-github-release.yml",
+			wantErr: "owner/repository/.github/workflows/<file>",
+		},
+		{
+			name:    "pinned ref",
+			input:   "meigma/release/.github/workflows/publish-github-release.yml@0123456789abcdef0123456789abcdef01234567",
+			wantErr: "owner/repository/.github/workflows/<file>",
+		},
+		{
+			name:    "uppercase owner",
+			input:   "Meigma/release/.github/workflows/publish-github-release.yml",
+			wantErr: "lowercase owner/name",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParseAttestationSigner(test.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
+func TestSourcePolicyKeepsExplicitIdentities(t *testing.T) {
 	t.Parallel()
 
 	policy := SourcePolicy{
-		Repository:          "meigma/release",
-		ChecksumWorkflow:    ".github/workflows/go-pre-publish.yml",
-		AttestationWorkflow: ".github/workflows/publish-github-release.yml",
+		Repository:        "acme/app",
+		ChecksumIdentity:  ChecksumIdentity(validChecksumIdentity),
+		AttestationSigner: AttestationSigner(validAttestationSigner),
 	}
 
-	identity, err := policy.ChecksumIdentity("v1.2.3")
-	require.NoError(t, err)
-	assert.Equal(
-		t,
-		"https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
-		identity,
-	)
-	assert.Equal(
-		t,
-		"meigma/release/.github/workflows/publish-github-release.yml",
-		policy.AttestationSigner(),
-	)
+	require.NoError(t, policy.Validate())
+	assert.Equal(t, ChecksumIdentity(validChecksumIdentity), policy.ChecksumIdentity)
+	assert.Equal(t, AttestationSigner(validAttestationSigner), policy.AttestationSigner)
 }
 
 func TestPackageObjectFormatAcceptsOnlyCanonicalTrees(t *testing.T) {
@@ -172,8 +295,8 @@ func validProducerYAML() string {
 	return `  - repository: meigma/release
     packages:
       - release-cli
-    checksum_workflow: .github/workflows/go-pre-publish.yml
-    attestation_workflow: .github/workflows/publish-github-release.yml
+    checksum_identity: ` + validChecksumIdentity + `
+    attestation_signer: ` + validAttestationSigner + `
     rpm_key:
       source: keys/release-rpm.asc
       published: release-rpm-001.asc

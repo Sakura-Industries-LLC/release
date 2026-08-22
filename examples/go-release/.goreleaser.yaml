@@ -31,6 +31,21 @@ builds:
       - -X main.commit={{ .FullCommit }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+notarize:
+  macos:
+    - enabled: '{{ eq .Env.MACOS_NOTARIZE_ENABLED "true" }}'
+      ids:
+        - example
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: example
     ids:
@@ -48,11 +63,11 @@ nfpms:
   - id: release
     ids:
       - example
-    vendor: Meigma
-    homepage: https://github.com/meigma/release
-    maintainer: Meigma <contact@meigma.dev>
-    description: Example Go command using the Meigma release workflows.
-    license: LicenseRef-Proprietary
+    vendor: Example Organization
+    homepage: https://github.com/OWNER/REPOSITORY
+    maintainer: Release Team <releases@example.com>
+    description: Example Go command using the reusable release workflows.
+    license: Apache-2.0 OR MIT
     formats:
       - deb
       - rpm
@@ -65,6 +80,35 @@ nfpms:
       signature:
         key_file: "{{ .Env.RELEASE_APK_SIGNING_KEY_FILE }}"
         key_name: example-001
+
+homebrew_casks:
+  - name: example
+    ids:
+      - example
+    binaries:
+      - example
+    repository:
+      owner: HOMEBREW-OWNER
+      name: HOMEBREW-TAP
+    homepage: https://github.com/OWNER/REPOSITORY
+    description: Example Go command
+    license: Apache-2.0 OR MIT
+    url:
+      template: "https://github.com/OWNER/REPOSITORY/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    skip_upload: true
+
+scoops:
+  - name: example
+    ids:
+      - example
+    repository:
+      owner: SCOOP-OWNER
+      name: SCOOP-BUCKET
+    homepage: https://github.com/OWNER/REPOSITORY
+    description: Example Go command
+    license: Apache-2.0 OR MIT
+    url_template: "https://github.com/OWNER/REPOSITORY/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    skip_upload: true
 
 checksum:
   name_template: checksums.txt
