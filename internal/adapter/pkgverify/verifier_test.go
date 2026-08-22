@@ -1,6 +1,8 @@
 package pkgverify
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"os"
 	"path/filepath"
@@ -82,16 +84,18 @@ func TestVerifyRPMUsesEphemeralDatabase(t *testing.T) {
 	}, invocations[1])
 }
 
-// TestVerifyAPKPreservesSignatureKeyBasename proves apk can resolve the embedded key name.
-func TestVerifyAPKPreservesSignatureKeyBasename(t *testing.T) {
+// TestVerifyAPKUsesSignatureDeclaredKeyBasename proves config filenames need not match producer key names.
+func TestVerifyAPKUsesSignatureDeclaredKeyBasename(t *testing.T) {
 	skipWindows(t)
 	t.Parallel()
 
 	fake, record, environ := verifierFake(t)
+	packagePath := filepath.Join(t.TempDir(), "release-cli.apk")
+	writeAPKSignature(t, packagePath, "meigma-release-001.rsa.pub")
 	request := pkgrepo.VerificationRequest{
 		Format:    pkgrepo.FormatAPK,
-		Package:   filepath.Join(t.TempDir(), "release-cli.apk"),
-		PublicKey: filepath.Join(t.TempDir(), "meigma-release-001.rsa.pub"),
+		Package:   packagePath,
+		PublicKey: filepath.Join(t.TempDir(), "repository-apk.rsa.pub"),
 	}
 	err := New(Options{DockerPath: fake, Environ: environ}).Verify(context.Background(), request)
 	require.NoError(t, err)
@@ -130,11 +134,33 @@ func TestVerifyFailureDoesNotEchoPaths(t *testing.T) {
 		Package:   filepath.Join(t.TempDir(), "sensitive-package.apk"),
 		PublicKey: filepath.Join(t.TempDir(), "sensitive-key.rsa.pub"),
 	}
+	writeAPKSignature(t, request.Package, "sensitive-key.rsa.pub")
 	err := New(Options{DockerPath: fake, Environ: environ}).Verify(context.Background(), request)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "signature rejected")
 	assert.NotContains(t, err.Error(), request.Package)
 	assert.NotContains(t, err.Error(), request.PublicKey)
+}
+
+// writeAPKSignature writes the bounded signature stream needed by verifier tests.
+func writeAPKSignature(t *testing.T, packagePath, keyName string) {
+	t.Helper()
+
+	file, err := os.Create(packagePath)
+	require.NoError(t, err)
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	signature := []byte("signature")
+	require.NoError(t, tarWriter.WriteHeader(&tar.Header{
+		Name: apkSignaturePrefix + keyName,
+		Mode: 0o644,
+		Size: int64(len(signature)),
+	}))
+	_, err = tarWriter.Write(signature)
+	require.NoError(t, err)
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzipWriter.Close())
+	require.NoError(t, file.Close())
 }
 
 // verifierFake writes one fake Docker executable and returns its isolated environment.

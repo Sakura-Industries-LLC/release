@@ -1,6 +1,9 @@
 package pkgverify
 
 import (
+	"archive/tar"
+	"bufio"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -42,6 +45,10 @@ const (
 	containerRPMDBPath = "/rpmdb"
 	// containerAPKKeysPath is the APK public-key directory.
 	containerAPKKeysPath = "/keys"
+	// apkSignaturePrefix identifies the public-key basename declared by an APK signature.
+	apkSignaturePrefix = ".SIGN.RSA."
+	// maxAPKSignatureStreamSize bounds decompression while locating an APK signature.
+	maxAPKSignatureStreamSize int64 = 1024 * 1024
 )
 
 // Options configures a [Verifier].
@@ -143,9 +150,12 @@ func (v *Verifier) verifyRPM(ctx context.Context, request pkgrepo.VerificationRe
 	return nil
 }
 
-// verifyAPK checks one package against a key mounted under its signature basename.
+// verifyAPK checks one package against the key basename declared by its signature.
 func (v *Verifier) verifyAPK(ctx context.Context, request pkgrepo.VerificationRequest) error {
-	keyName := filepath.Base(request.PublicKey)
+	keyName, err := apkSignatureKeyName(request.Package)
+	if err != nil {
+		return fmt.Errorf("read APK signature key: %w", err)
+	}
 	containerKey := containerAPKKeysPath + "/" + keyName
 	if err := v.runDocker(ctx, []string{
 		"-v", request.Package + ":" + containerAPKPath + ":ro",
@@ -155,6 +165,49 @@ func (v *Verifier) verifyAPK(ctx context.Context, request pkgrepo.VerificationRe
 	}
 
 	return nil
+}
+
+// apkSignatureKeyName reads the public-key basename from the bounded APK signature stream.
+func apkSignatureKeyName(packagePath string) (string, error) {
+	file, err := os.Open(packagePath)
+	if err != nil {
+		return "", fmt.Errorf("open APK: %w", err)
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(bufio.NewReader(file))
+	if err != nil {
+		return "", fmt.Errorf("open APK signature stream: %w", err)
+	}
+	defer gzipReader.Close()
+	gzipReader.Multistream(false)
+
+	limited := &io.LimitedReader{R: gzipReader, N: maxAPKSignatureStreamSize + 1}
+	tarReader := tar.NewReader(limited)
+	for {
+		header, nextErr := tarReader.Next()
+		if errors.Is(nextErr, io.EOF) {
+			break
+		}
+		if nextErr != nil {
+			return "", fmt.Errorf("read APK signature stream: %w", nextErr)
+		}
+
+		keyName, found := strings.CutPrefix(header.Name, apkSignaturePrefix)
+		if !found {
+			continue
+		}
+		if keyName == "" || !strings.HasSuffix(keyName, ".rsa.pub") ||
+			strings.ContainsAny(keyName, "/\\:\x00") {
+			return "", fmt.Errorf("APK signature key name %q is invalid", keyName)
+		}
+		return keyName, nil
+	}
+	if limited.N == 0 {
+		return "", errors.New("APK signature stream exceeds size limit")
+	}
+
+	return "", errors.New("APK does not contain an RSA signature")
 }
 
 // runDocker runs one fixed networkless read-only verification command.
