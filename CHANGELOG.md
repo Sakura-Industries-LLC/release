@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/meigma/release/compare/v0.1.9...v0.1.10) (2026-08-22)
+
+
+### Bug Fixes
+
+* **packages:** restore generated tree ownership ([#48](https://github.com/meigma/release/issues/48)) ([c704d1c](https://github.com/meigma/release/commit/c704d1cc599b3fceb69c275822ba0b55d0613edc))
+
 ## [0.1.9](https://github.com/meigma/release/compare/v0.1.8...v0.1.9) (2026-08-22)
 
 
