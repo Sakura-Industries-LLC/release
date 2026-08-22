@@ -183,9 +183,10 @@ func validateGenerateRequest(ctx context.Context, generator *Generator, request 
 	if err := validateOwnerOnlyFile(generator.apkSigningKey); err != nil {
 		return err
 	}
-	keyName := filepath.Base(generator.apkSigningKey)
-	if keyName == "." || keyName == string(filepath.Separator) || strings.ContainsAny(keyName, ":,\n\r") {
-		return fmt.Errorf("APK signing key basename %q is unsafe", keyName)
+	keyName := request.APKSigningKeyName
+	if keyName == "" || keyName == "." || filepath.Base(keyName) != keyName ||
+		strings.ContainsAny(keyName, "/\\:,\n\r") {
+		return fmt.Errorf("APK signing key name %q is unsafe", keyName)
 	}
 
 	return nil
@@ -246,8 +247,7 @@ chown -R "$owner" /repo/rpm
 // generateAPK runs apk index and abuild-sign with a fixed source epoch.
 func (g *Generator) generateAPK(ctx context.Context, request pkgrepo.GenerateRequest) error {
 	epoch := strconv.FormatInt(request.ReleaseTime.Unix(), 10)
-	keyName := filepath.Base(g.apkSigningKey)
-	containerKey := path.Join(containerKeys, keyName)
+	containerKey := path.Join(containerKeys, request.APKSigningKeyName)
 	script := `set -eu
 owner="$(stat -c '%u:%g' /repo)"
 export SOURCE_DATE_EPOCH=` + epoch + `

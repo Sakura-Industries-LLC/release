@@ -118,10 +118,11 @@ func Build(
 	}
 
 	request := GenerateRequest{
-		Root:        input.Output.Name(),
-		Channel:     input.Config.Channel,
-		ReleaseTime: input.ReleaseTime,
-		ValidUntil:  input.ValidUntil,
+		Root:              input.Output.Name(),
+		Channel:           input.Config.Channel,
+		APKSigningKeyName: strings.TrimSuffix(path.Base(input.Config.APKKey.Published), ".pub"),
+		ReleaseTime:       input.ReleaseTime,
+		ValidUntil:        input.ValidUntil,
 	}
 	if generateErr := generator.Generate(ctx, request); generateErr != nil {
 		return BuildResult{}, fmt.Errorf("generate repository metadata: %w", generateErr)

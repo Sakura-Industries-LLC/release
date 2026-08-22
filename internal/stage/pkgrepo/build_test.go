@@ -52,6 +52,7 @@ func TestBuildProducesOrderedSignedRepository(t *testing.T) {
 	generator.EXPECT().Generate(mock.Anything, mock.MatchedBy(func(request pkgrepo.GenerateRequest) bool {
 		return request.Root == fixture.outputDir &&
 			request.Channel == pkgrepo.ChannelStable &&
+			request.APKSigningKeyName == "apk-index-001.rsa" &&
 			request.ReleaseTime.Equal(fixture.releaseTime) &&
 			request.ValidUntil.Equal(fixture.validUntil)
 	})).Run(func(_ context.Context, request pkgrepo.GenerateRequest) {

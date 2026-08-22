@@ -172,6 +172,8 @@ type GenerateRequest struct {
 	Root string
 	// Channel is the configured repository channel.
 	Channel Channel
+	// APKSigningKeyName is the private-key basename matching the published public key.
+	APKSigningKeyName string
 	// ReleaseTime is the deterministic metadata creation time.
 	ReleaseTime time.Time
 	// ValidUntil is the APT metadata expiry time and must follow ReleaseTime.

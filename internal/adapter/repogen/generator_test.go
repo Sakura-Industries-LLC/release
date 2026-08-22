@@ -117,6 +117,20 @@ func TestGenerateRejectsExposedAPKPrivateKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "allow group or other access")
 }
 
+// TestGenerateRejectsUnsafeAPKSigningKeyName keeps the key mount inside its fixed directory.
+func TestGenerateRejectsUnsafeAPKSigningKeyName(t *testing.T) {
+	skipWindows(t)
+	t.Parallel()
+
+	fixture := newGeneratorFixture(t)
+	request := fixture.request()
+	request.APKSigningKeyName = "../outside.rsa"
+
+	err := fixture.generator.Generate(context.Background(), request)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "APK signing key name")
+}
+
 // generatorFixture owns one fake three-format generation run.
 type generatorFixture struct {
 	// generator is the configured adapter under test.
@@ -139,27 +153,32 @@ func newGeneratorFixture(t *testing.T) *generatorFixture {
 	writeAPTIndexes(t, root)
 	writeFile(t, filepath.Join(root, "apt", "dists", "stable", "Release"), []byte(buildRelease(t, root, true)))
 	fake := filepath.Join(directory, "docker")
-	key := filepath.Join(directory, "apk-index-001.rsa")
+	key := filepath.Join(directory, "materialized-private-key.pem")
 	record := filepath.Join(directory, "args")
 	writeFile(t, fake, []byte(fakeGeneratorScript))
 	require.NoError(t, os.Chmod(fake, 0o755))
 	writeFile(t, key, []byte("private key sentinel"))
 	environ := append(os.Environ(), "REPOGEN_RECORD="+record)
 	return &generatorFixture{
-		generator: New(Options{DockerPath: fake, APKSigningKey: key, Environ: environ}),
-		root:      root,
-		key:       key,
-		record:    record,
+		generator: New(Options{
+			DockerPath:    fake,
+			APKSigningKey: key,
+			Environ:       environ,
+		}),
+		root:   root,
+		key:    key,
+		record: record,
 	}
 }
 
 // request returns the deterministic generation request used by the accepted spike.
 func (f *generatorFixture) request() pkgrepo.GenerateRequest {
 	return pkgrepo.GenerateRequest{
-		Root:        f.root,
-		Channel:     pkgrepo.ChannelStable,
-		ReleaseTime: time.Date(2026, time.August, 21, 12, 0, 0, 0, time.UTC),
-		ValidUntil:  time.Date(2027, time.August, 21, 12, 0, 0, 0, time.UTC),
+		Root:              f.root,
+		Channel:           pkgrepo.ChannelStable,
+		APKSigningKeyName: "apk-index-001.rsa",
+		ReleaseTime:       time.Date(2026, time.August, 21, 12, 0, 0, 0, time.UTC),
+		ValidUntil:        time.Date(2027, time.August, 21, 12, 0, 0, 0, time.UTC),
 	}
 }
 
