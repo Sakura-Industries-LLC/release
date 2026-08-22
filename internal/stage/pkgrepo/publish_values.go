@@ -343,7 +343,7 @@ func packageObjectFormat(name string, channel Channel) (Format, bool) {
 	}
 	channelName := string(channel)
 	if strings.HasPrefix(name, path.Join("rpm", channelName)+"/") &&
-		strings.Contains(name, "/Packages/") && strings.HasSuffix(name, ".rpm") {
+		strings.Contains(name, "/packages/") && strings.HasSuffix(name, ".rpm") {
 		return FormatRPM, true
 	}
 	if strings.HasPrefix(name, path.Join("apk", channelName, "main")+"/") && strings.HasSuffix(name, ".apk") {

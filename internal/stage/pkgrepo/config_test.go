@@ -127,12 +127,13 @@ func TestPackageObjectFormatAcceptsOnlyCanonicalTrees(t *testing.T) {
 		},
 		{
 			name:   "RPM package",
-			path:   "rpm/stable/x86_64/Packages/release-cli-1.2.3-1.x86_64.rpm",
+			path:   "rpm/stable/x86_64/packages/release-cli-1.2.3-1.x86_64.rpm",
 			format: FormatRPM,
 			ok:     true,
 		},
 		{name: "APK package", path: "apk/stable/main/aarch64/release-cli-1.2.3.apk", format: FormatAPK, ok: true},
-		{name: "wrong channel", path: "rpm/testing/x86_64/Packages/release-cli.rpm"},
+		{name: "wrong channel", path: "rpm/testing/x86_64/packages/release-cli.rpm"},
+		{name: "legacy uppercase RPM path", path: "rpm/stable/x86_64/Packages/release-cli.rpm"},
 		{name: "metadata suffix", path: "rpm/stable/x86_64/repodata/primary.xml.gz"},
 		{name: "traversal", path: "../apt/pool/main/release-cli.deb"},
 	}
