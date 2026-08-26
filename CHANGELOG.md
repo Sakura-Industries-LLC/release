@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/meigma/release/compare/v0.1.17...v0.1.18) (2026-08-26)
+
+
+### Features
+
+* **image:** support multi-binary Go release units ([#69](https://github.com/meigma/release/issues/69)) ([1fd191d](https://github.com/meigma/release/commit/1fd191d70b91684c8a30ce866d724f74e5c23cbb))
+
 ## [0.1.17](https://github.com/meigma/release/compare/v0.1.16...v0.1.17) (2026-08-22)
 
 
