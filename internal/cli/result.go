@@ -78,6 +78,10 @@ type ScoopBucketInitResult struct {
 
 // BinaryResult describes one verified canonical binary.
 type BinaryResult struct {
+	// Arch is the GOARCH of the selected binary.
+	Arch string `json:"arch"`
+	// Name is the binary filename.
+	Name string `json:"name"`
 	// Path is the original GoReleaser path, including the --dist basename prefix.
 	Path string `json:"path"`
 	// Mode is the observed permission bits as an octal string.
@@ -88,8 +92,8 @@ type BinaryResult struct {
 type StageResult struct {
 	// Assets is the number of checksummed payloads that matched.
 	Assets int `json:"assets"`
-	// Binaries maps GOARCH onto the verified binary path and mode.
-	Binaries map[string]BinaryResult `json:"binaries"`
+	// Binaries are the verified Linux binaries, architecture-major then name-ascending.
+	Binaries []BinaryResult `json:"binaries"`
 }
 
 // ArtifactHandoffResult is one verified Actions artifact.

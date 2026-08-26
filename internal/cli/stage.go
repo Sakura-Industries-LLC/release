@@ -141,13 +141,15 @@ func runStage(ctx context.Context, options Options) error {
 
 	result := StageResult{
 		Assets:   report.Assets,
-		Binaries: make(map[string]BinaryResult, len(report.Binaries)),
+		Binaries: make([]BinaryResult, 0, len(report.Binaries)),
 	}
 	for _, binary := range report.Binaries {
-		result.Binaries[binary.Arch] = BinaryResult{
+		result.Binaries = append(result.Binaries, BinaryResult{
+			Arch: binary.Arch,
+			Name: binary.Name,
 			Path: binary.Path,
 			Mode: strconv.FormatUint(uint64(binary.Mode), octalBase),
-		}
+		})
 	}
 
 	return writeCommandResult(options, "stage", result, nil)

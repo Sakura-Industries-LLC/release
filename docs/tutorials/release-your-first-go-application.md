@@ -89,9 +89,10 @@ Edit the copied files as follows:
    and release URL owner and repository to `acme/widget`; and replace the
    example organization metadata.
 4. In `release-please-config.json`, set `package-name` to `widget`.
-5. In `melange.yaml`, set the package and installed binary to `widget`, and
-   replace the example organization metadata.
-6. In `apko.yaml`, set the package and entrypoint to `widget` and use
+5. In `melange.yaml`, set the package name to `widget`, install the staged
+   `widget` file at `/usr/bin/widget`, and replace the example organization
+   metadata.
+6. In `apko.yaml`, set the package and entrypoint to `/usr/bin/widget` and use
    `https://github.com/acme/widget` as the source annotation.
 
 Keep these release controls unchanged:

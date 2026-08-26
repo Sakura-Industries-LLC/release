@@ -92,9 +92,12 @@ goreleaser release --clean --skip=publish
 ```
 
 The command then verifies every `checksums.txt` entry, requires a regular
-`checksums.txt.sigstore.json`, reads `artifacts.json`, requires one static
-executable Linux binary for `amd64` and one for `arm64`, confines both paths,
-and writes `oci-build-inputs.json`.
+`checksums.txt.sigstore.json`, reads `artifacts.json`, and selects every
+`linux/{amd64,arm64}` Binary record. Duplicate `(arch, name)` pairs are
+rejected. The name set must be identical and nonempty on both architectures; a
+name present on only one architecture is an error that names it. Selected
+paths are confined, and the command writes `oci-build-inputs.json` as
+`release.dev/oci-build-inputs/v2`.
 
 Native package signing is controlled by environment only:
 
@@ -116,8 +119,7 @@ JSON result:
 | Field | Contract |
 | --- | --- |
 | `assets` | Number of checksum-verified payloads. |
-| `binaries.amd64.path`, `binaries.arm64.path` | Original dist-prefixed paths from `artifacts.json`. |
-| `binaries.<arch>.mode` | Observed permission bits in octal. |
+| `binaries` | Selected Linux binaries in platform-major order (`amd64` then `arm64`), then name ascending. Each entry has `arch`, `name`, original dist-prefixed `path`, and observed permission `mode` in octal. |
 
 `--clean` deletes and rebuilds the distribution directory. This command is not
 read-only.
@@ -146,23 +148,24 @@ Required Actions context is `GITHUB_REPOSITORY`, `GITHUB_REPOSITORY_OWNER`,
 `GITHUB_SERVER_URL`, and `GITHUB_SHA`. Work and output roots must be disjoint,
 absent or empty, and neither may contain the other.
 
-The command verifies the projected binary digests and ELF contract, stages each
-as `application`, creates an ephemeral Melange signing key, builds `x86_64` and
-`aarch64` APK repositories, writes the public key, locks apko, and composes the
-OCI layout and architecture SBOMs. The private Melange key remains under the
-scratch root.
+The command verifies the projected binary digests and ELF contract, stages
+each file at `work/sources/<apkarch>/<binary-name>`, creates an ephemeral
+Melange signing key, builds `x86_64` and `aarch64` APK repositories, writes
+the public key, locks apko, and composes the OCI layout and architecture
+SBOMs. The private Melange key remains under the scratch root.
 
 `oci-build-inputs.json` is limited to 4 MiB.
 
-The `release.dev/image-build/v1` JSON result contains `version`, `binary`,
-`work`, `output`, `build_date`, and two `packages` entries. Each package entry
-contains `platform`, APK `arch`, output-relative `package`, and
-`binary_digest`.
+The `release.dev/image-build/v2` JSON result contains `version`, `binaries`
+(sorted name-ascending), `work`, `output`, `build_date`, and two `packages`
+entries. Each package entry contains `platform`, APK `arch`, output-relative
+`package`, and `binary_digests`. Each `binary_digests` entry is
+`{name, digest}` sorted by name.
 
 ## `image verify`
 
 ```text
-release-cli image verify --output DIR --work DIR --binary NAME \
+release-cli image verify --output DIR --work DIR \
   [--version VERSION] [--json]
 ```
 
@@ -170,28 +173,30 @@ release-cli image verify --output DIR --work DIR --binary NAME \
 | --- | --- | --- | --- |
 | Output root | `--output` | `RELEASE_OUTPUT` | Required. |
 | Scratch root | `--work` | `RELEASE_WORK` | Required. |
-| Binary | `--binary` | `RELEASE_BINARY` | Required. |
 | Version | `--version` | `RELEASE_VERSION` | Tag name without one leading `v`. |
 
 The command also requires `GITHUB_SHA`, `GITHUB_SERVER_URL`, and
-`GITHUB_REPOSITORY`. It verifies:
+`GITHUB_REPOSITORY`. Expected binary names and canonical digests come from
+the staged `work/sources/<apkarch>/<binary-name>` trees and the v2
+projection. It verifies:
 
 - one OCI index with Linux `amd64` and `arm64` manifests;
 - required source, version, revision, title, description, and license
   annotations on index, manifests, and config labels;
-- one layer, entrypoint `/usr/bin/<binary>`, and runtime user `65532`;
-- one regular binary with ownership `0:0`, mode `0755`, no special bits, and
-  bytes equal to the staged canonical binary; and
+- one layer, runtime user `65532`, and an Entrypoint of exactly
+  `/usr/bin/<name>` for one expected staged name on every platform;
+- every expected name present exactly once in that layer as a regular `0755`
+  uid/gid `0` file within 64 MiB, with bytes equal to its canonical digest;
+  and
 - one SPDX `APPLICATION` package at `<version>-r0` per architecture.
 
-Index, manifest, config, and SPDX JSON documents are limited to 4 MiB. The
-binary entry in each layer is limited to 64 MiB.
+Index, manifest, config, and SPDX JSON documents are limited to 4 MiB.
 
 The index digest is SHA-256 of the exact `layout/index.json` bytes. On success,
 the command writes it to `image-digest.txt` and returns a
-`release.dev/image-verify/v1` result containing `version`, `binary`,
-`index_digest`, and two platform records with manifest, config, layer, and
-binary digests.
+`release.dev/image-verify/v2` result containing `version`, `binaries` (sorted
+name-ascending), `index_digest`, and two platform records with manifest,
+config, layer, and `binary_digests` (`{name, digest}` sorted by name).
 
 ## `plan tags`
 

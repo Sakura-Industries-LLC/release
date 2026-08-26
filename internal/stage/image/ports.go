@@ -29,11 +29,11 @@ type Composer interface {
 	Build(ctx context.Context, request ComposeRequest) error
 }
 
-// APKBuildSource is one architecture's staged application tree.
+// APKBuildSource is one architecture's staged binary tree.
 type APKBuildSource struct {
 	// Arch is the APK architecture built from this source tree.
 	Arch APKArch
-	// Dir is the absolute directory containing the staged file named "application".
+	// Dir is the absolute directory containing the staged binary files.
 	Dir string
 }
 

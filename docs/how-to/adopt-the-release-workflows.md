@@ -4,8 +4,15 @@ Use this guide to add the reusable release unit to an existing Go application
 repository. Complete [Prepare your GitHub organization](prepare-your-github-organization.md)
 first.
 
-The supported unit releases one application and one binary from one repository.
-Use a separate repository and caller for each additional application.
+The unit stages every Linux `amd64` and `arm64` GoReleaser binary from one
+repository into one GitHub Release and one multi-architecture image. The binary
+name set must be identical and nonempty on both architectures. A name present
+on only one architecture is an error. Duplicate `(arch, name)` pairs are
+rejected. Each platform config Entrypoint must be exactly `/usr/bin/<name>`
+for one of those staged names.
+
+Use a separate repository and caller for another application, image name, or
+unscoped tag stream.
 
 ## Select one immutable release unit
 
@@ -71,7 +78,9 @@ mixed revision is not a supported migration state.
 
 Edit `.goreleaser.yaml` for the producer's command:
 
-- set `project_name`, build ID, archive ID, binary name, and `main` package;
+- set `project_name`, each build ID, archive ID, GoReleaser `binary` name, and
+  `main` package. Linux `amd64` and `arm64` must publish the same set of
+  binary names;
 - keep `CGO_ENABLED=0` only if the command is genuinely static on all supported
   targets;
 - keep Darwin, Linux, and Windows on `amd64` and `arm64`;
@@ -145,22 +154,36 @@ an undeclared replacement when the lock is incomplete.
 
 ## Adapt Melange and apko
 
+Staging writes each canonical Linux binary to
+`work/sources/<apkarch>/<binary-name>`, where `<binary-name>` is the
+GoReleaser `builds[].binary` value. The previous staged filename was
+`application`. Melange must install each file by its real name.
+
 In `melange.yaml`:
 
-- use the application binary as the package name;
+- set the Melange package name;
 - keep `version: ${{vars.version}}`;
 - keep `x86_64` and `aarch64`;
 - replace the organization metadata and SPDX license expression; and
-- install the staged `application` file at `/usr/bin/<binary>` with mode `0755`
-  and ownership `0:0`.
+- install each staged file by its GoReleaser binary name at
+  `/usr/bin/<name>` with mode `0755` and ownership `0:0`.
+
+A single-binary repository is the same contract with one name. Change any
+pipeline that still copies `application` to the real binary name before the
+next release-unit pin.
 
 In `apko.yaml`:
 
 - consume the same Melange package;
-- set the entrypoint to `/usr/bin/<binary>`;
+- set the entrypoint to `/usr/bin/<name>` for one staged binary name;
 - keep `amd64` and `arm64`;
 - keep numeric runtime user and group `65532`; and
 - set title, description, source, and SPDX license annotations.
+
+Each platform config Entrypoint must be exactly `["/usr/bin/<name>"]` for
+some expected staged name. The same name is required on every platform. The
+image has one entrypoint; additional staged binaries are present at
+`/usr/bin/<name>` and are not extra entrypoints.
 
 The current example includes CA certificates. Keep them for a command that
 makes TLS connections. Add other runtime files through apko packages rather
@@ -247,6 +270,7 @@ After the first image publication, confirm GHCR visibility as described in the
 organization guide. Consumers that require repeatability must use the
 `ghcr.io/<owner>/<repository>@sha256:<digest>` output, not a moving channel tag.
 
-To release another application, repeat this guide in another repository. Do
-not add a second command, component-prefixed tag, or second image name to the
-same caller.
+To release another application or image, repeat this guide in another
+repository. Do not add a component-prefixed tag or second image name to the
+same caller. Additional GoReleaser binaries in the same repository are staged
+into the same image when both architectures publish the same name set.

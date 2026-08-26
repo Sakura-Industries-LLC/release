@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,9 +20,7 @@ import (
 
 const (
 	// BuildSchema is the versioned image-build result identifier.
-	BuildSchema = "release.dev/image-build/v1"
-	// applicationFile is the staged binary name inside each APK source tree.
-	applicationFile = "application"
+	BuildSchema = "release.dev/image-build/v2"
 	// sourcesDir is the scratch directory that holds per-architecture trees.
 	sourcesDir = "sources"
 	// configurationDir is the output directory for copied build configs.
@@ -46,7 +45,7 @@ const (
 	apkoConfigFile = "apko.yaml"
 	// lockfileName is the Dir-relative apko lock output path.
 	lockfileName = "apko.lock.json"
-	// checksumsFile is the GNU sha256sum listing of staged application files.
+	// checksumsFile is the GNU sha256sum listing of staged binary files.
 	checksumsFile = "canonical-binaries.sha256"
 	// apkIndexFile is the APK index basename written per architecture.
 	apkIndexFile = "APKINDEX.tar.gz"
@@ -58,7 +57,7 @@ const (
 	annotationVersion = "org.opencontainers.image.version"
 	// annotationRevision is the OCI revision annotation key.
 	annotationRevision = "org.opencontainers.image.revision"
-	// fileModeExecutable is the mode of each staged application file.
+	// fileModeExecutable is the mode of each staged binary file.
 	fileModeExecutable = 0o755
 	// fileModeFile is the mode of copied configuration, checksums, and keys.
 	fileModeFile = 0o644
@@ -70,7 +69,7 @@ const (
 type BuildBinary struct {
 	// Platform is the Linux OCI platform this binary was built for.
 	Platform Platform
-	// Name is the binary filename, identical across platforms.
+	// Name is the binary filename for this platform.
 	Name string
 	// Path is the Source-relative confined path of the staged file.
 	Path string
@@ -80,8 +79,8 @@ type BuildBinary struct {
 
 // BuildInput is the staged binaries, configs, and roots [Build] consumes.
 type BuildInput struct {
-	// Binaries are the canonical Linux facts. [Build] requires exactly one
-	// [PlatformAMD64] and one [PlatformARM64] with identical names.
+	// Binaries are the canonical Linux facts. [Build] requires a nonempty
+	// identical name set on [PlatformAMD64] and [PlatformARM64].
 	Binaries []BuildBinary
 	// Source is the extracted oci-input artifact root.
 	Source fs.FS
@@ -113,8 +112,8 @@ type BuildResult struct {
 	Schema string `json:"schema"`
 	// Version is the candidate MAJOR.MINOR.PATCH version.
 	Version string `json:"version"`
-	// Binary is the staged binary filename shared by every platform.
-	Binary string `json:"binary"`
+	// Binaries are the staged binary filenames, sorted name-ascending.
+	Binaries []string `json:"binaries"`
 	// Work is the scratch workspace path, [os.Root.Name] of the work root.
 	Work string `json:"work"`
 	// Output is the authoritative output path, [os.Root.Name] of the output root.
@@ -133,8 +132,16 @@ type PackageResult struct {
 	Arch string `json:"arch"`
 	// Package is the output-relative APK path, packages/<arch>/<file>.apk.
 	Package string `json:"package"`
-	// BinaryDigest is the verified canonical digest of the staged application.
-	BinaryDigest string `json:"binary_digest"`
+	// BinaryDigests are the verified canonical digests, sorted by name.
+	BinaryDigests []BinaryDigest `json:"binary_digests"`
+}
+
+// BinaryDigest is one staged binary's verified digest.
+type BinaryDigest struct {
+	// Name is the binary filename.
+	Name string `json:"name"`
+	// Digest is the verified canonical digest of the staged file.
+	Digest string `json:"digest"`
 }
 
 // stagedBinary is one platform's validated input plus its verified digest.
@@ -143,41 +150,41 @@ type stagedBinary struct {
 	platform Platform
 	// arch is the APK architecture that platform maps onto.
 	arch APKArch
-	// name is the binary filename shared with the other platform.
+	// name is the binary filename for this platform.
 	name string
 	// path is the Source-relative confined path.
 	path string
-	// digest is the verified canonical digest of the staged application.
+	// digest is the verified canonical digest of the staged file.
 	digest rel.Digest
 }
 
 // Build stages binaries, builds signed APK repositories, and composes an OCI layout.
 //
 // It fails closed before any write when the input is incomplete or malformed:
-// a nil context, root, reader, or port; a binary list that is not exactly one
-// [PlatformAMD64] and one [PlatformARM64] with identical nonempty names and
-// confined paths; a zero version or digest; a BuildDate that is not RFC 3339;
-// or an empty Namespace, SourceURL, Commit, or Reference. Both the work and
-// output roots must contain no entries; a pre-existing entry is refused and
-// names the populated root and one offending entry. Workspace and output
-// directories are then created with [os.Root.Mkdir] and must not already
-// exist; only the intermediate work/sources element uses MkdirAll.
+// a nil context, root, reader, or port; a nonempty binary list whose name set
+// is not identical across [PlatformAMD64] and [PlatformARM64]; a duplicate
+// (platform, name) pair; a zero version or digest; a BuildDate that is not
+// RFC 3339; or an empty Namespace, SourceURL, Commit, or Reference. Both the
+// work and output roots must contain no entries; a pre-existing entry is
+// refused and names the populated root and one offending entry. Workspace and
+// output directories are then created with [os.Root.Mkdir] and must not
+// already exist; only the intermediate work/sources element uses MkdirAll.
 //
 // Each binary is streamed once through SHA-256 into
-// work/sources/<apkarch>/application at mode 0755. The computed digest must
+// work/sources/<apkarch>/<binary-name> at mode 0755. The computed digest must
 // match the expected digest. The written file is then parsed as ELF and must
 // be a static 64-bit little-endian ET_EXEC for that architecture.
 //
 // After staging, Build writes work/vars.json, copies the Melange and apko
 // configs to output/configuration, and writes output/canonical-binaries.sha256
-// in GNU coreutils form with x86_64 first. It then calls [APKBuilder.Build]
-// and requires the returned repository root and public key to match the
-// request, plus exactly one nonempty APK and a nonempty APKINDEX.tar.gz per
-// architecture. The public key is copied to the output root. [Composer.Build]
-// then locks and writes the layout. Build requires apko.lock.json,
-// layout/index.json, layout/oci-layout, and both architecture SBOMs to be
-// nonempty regular files. It does not parse those files and does not write
-// image-digest.txt.
+// in GNU coreutils form with x86_64 first and names ascending within each
+// architecture. It then calls [APKBuilder.Build] and requires the returned
+// repository root and public key to match the request, plus exactly one
+// nonempty APK and a nonempty APKINDEX.tar.gz per architecture. The public
+// key is copied to the output root. [Composer.Build] then locks and writes
+// the layout. Build requires apko.lock.json, layout/index.json,
+// layout/oci-layout, and both architecture SBOMs to be nonempty regular
+// files. It does not parse those files and does not write image-digest.txt.
 //
 // Platforms are processed in canonical order: linux/amd64, then linux/arm64.
 func Build(ctx context.Context, input BuildInput, apk APKBuilder, composer Composer) (BuildResult, error) {
@@ -241,7 +248,7 @@ func Build(ctx context.Context, input BuildInput, apk APKBuilder, composer Compo
 	return BuildResult{
 		Schema:    BuildSchema,
 		Version:   input.Version.String(),
-		Binary:    staged[0].name,
+		Binaries:  stagedBinaryNames(staged),
 		Work:      input.Work.Name(),
 		Output:    input.Output.Name(),
 		BuildDate: input.BuildDate,
@@ -297,55 +304,96 @@ func validateBuild(ctx context.Context, input BuildInput, apk APKBuilder, compos
 	return validateBinaries(input.Binaries)
 }
 
-// validateBinaries requires exactly one binary per required platform.
+// validateBinaries requires a nonempty identical name set on both platforms.
 func validateBinaries(binaries []BuildBinary) ([]stagedBinary, error) {
-	if len(binaries) != len(requiredPlatforms()) {
-		return nil, fmt.Errorf("need %d binaries, got %d", len(requiredPlatforms()), len(binaries))
+	if len(binaries) == 0 {
+		return nil, errors.New("binaries is empty")
 	}
 
-	byPlatform := make(map[Platform]BuildBinary, len(binaries))
-	var name string
+	type platformName struct {
+		// platform is the Linux OCI platform.
+		platform Platform
+		// name is the binary filename.
+		name string
+	}
+	seen := make(map[platformName]struct{}, len(binaries))
+	namesByPlatform := map[Platform]map[string]struct{}{
+		PlatformAMD64: {},
+		PlatformARM64: {},
+	}
+	byKey := make(map[platformName]BuildBinary, len(binaries))
 	for _, binary := range binaries {
 		platform, err := ParsePlatform(binary.Platform.String())
 		if err != nil {
 			return nil, err
 		}
-		if _, exists := byPlatform[platform]; exists {
-			return nil, fmt.Errorf("duplicate platform %s", platform)
-		}
 		if err := validateBinaryName(binary.Name); err != nil {
 			return nil, err
 		}
-		if name == "" {
-			name = binary.Name
-		} else if binary.Name != name {
-			return nil, fmt.Errorf("binary name %q does not match %q", binary.Name, name)
+		key := platformName{platform: platform, name: binary.Name}
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("duplicate platform %s name %q", platform, binary.Name)
 		}
+		seen[key] = struct{}{}
 		if !filepath.IsLocal(binary.Path) {
 			return nil, fmt.Errorf("path %q is not a confined local path", binary.Path)
 		}
 		if binary.Digest == "" {
-			return nil, fmt.Errorf("digest for %s is empty", platform)
+			return nil, fmt.Errorf("digest for %s %q is empty", platform, binary.Name)
 		}
-		byPlatform[platform] = binary
+		namesByPlatform[platform][binary.Name] = struct{}{}
+		byKey[key] = binary
 	}
 
-	staged := make([]stagedBinary, 0, len(requiredPlatforms()))
+	names, err := matchingBinaryNames(namesByPlatform)
+	if err != nil {
+		return nil, err
+	}
+
+	staged := make([]stagedBinary, 0, len(requiredPlatforms())*len(names))
 	for _, platform := range requiredPlatforms() {
-		binary, ok := byPlatform[platform]
-		if !ok {
-			return nil, fmt.Errorf("missing binary for %s", platform)
+		for _, name := range names {
+			binary := byKey[platformName{platform: platform, name: name}]
+			staged = append(staged, stagedBinary{
+				platform: platform,
+				arch:     platform.APKArch(),
+				name:     binary.Name,
+				path:     binary.Path,
+				digest:   binary.Digest,
+			})
 		}
-		staged = append(staged, stagedBinary{
-			platform: platform,
-			arch:     platform.APKArch(),
-			name:     binary.Name,
-			path:     binary.Path,
-			digest:   binary.Digest,
-		})
 	}
 
 	return staged, nil
+}
+
+// matchingBinaryNames requires every name on both required platforms.
+func matchingBinaryNames(namesByPlatform map[Platform]map[string]struct{}) ([]string, error) {
+	union := make(map[string]struct{})
+	for _, names := range namesByPlatform {
+		for name := range names {
+			union[name] = struct{}{}
+		}
+	}
+	ordered := make([]string, 0, len(union))
+	for name := range union {
+		ordered = append(ordered, name)
+	}
+	slices.Sort(ordered)
+	if len(ordered) == 0 {
+		return nil, errors.New("binaries is empty")
+	}
+
+	for _, platform := range requiredPlatforms() {
+		have := namesByPlatform[platform]
+		for _, name := range ordered {
+			if _, ok := have[name]; !ok {
+				return nil, fmt.Errorf("missing binary %q for %s", name, platform)
+			}
+		}
+	}
+
+	return ordered, nil
 }
 
 // validateBinaryName rejects an empty name or a name that contains a path separator.
@@ -424,7 +472,7 @@ func stageBinary(source fs.FS, work *os.Root, binary *stagedBinary) error {
 	}
 	defer src.Close()
 
-	stagedPath := path.Join(sourcesDir, binary.arch.String(), applicationFile)
+	stagedPath := path.Join(sourcesDir, binary.arch.String(), binary.name)
 	dest, err := work.OpenFile(stagedPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileModeExecutable)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", stagedPath, err)
@@ -517,7 +565,7 @@ func writeChecksums(output *os.Root, staged []stagedBinary) error {
 		if !ok {
 			return fmt.Errorf("digest %s is missing the sha256: prefix", binary.digest)
 		}
-		relPath := path.Join(sourcesDir, binary.arch.String(), applicationFile)
+		relPath := path.Join(sourcesDir, binary.arch.String(), binary.name)
 		b.WriteString(hexDigest)
 		b.WriteString("  ")
 		b.WriteString(relPath)
@@ -532,8 +580,13 @@ func writeChecksums(output *os.Root, staged []stagedBinary) error {
 
 // apkRequest builds the [APKBuilder] request from validated input.
 func apkRequest(input BuildInput, staged []stagedBinary) APKBuildRequest {
-	sources := make([]APKBuildSource, 0, len(staged))
+	seen := make(map[APKArch]struct{}, len(requiredPlatforms()))
+	sources := make([]APKBuildSource, 0, len(requiredPlatforms()))
 	for _, binary := range staged {
+		if _, exists := seen[binary.arch]; exists {
+			continue
+		}
+		seen[binary.arch] = struct{}{}
 		sources = append(sources, APKBuildSource{
 			Arch: binary.arch,
 			Dir:  filepath.Join(input.Work.Name(), sourcesDir, binary.arch.String()),
@@ -569,21 +622,54 @@ func checkRepositories(
 		return nil, fmt.Errorf("apk public key %q does not match %q", repos.PublicKey, wantKey)
 	}
 
-	packages := make([]PackageResult, 0, len(staged))
-	for _, binary := range staged {
-		pkg, err := requirePackage(output, binary.arch)
+	packages := make([]PackageResult, 0, len(requiredPlatforms()))
+	for _, platform := range requiredPlatforms() {
+		arch := platform.APKArch()
+		pkg, err := requirePackage(output, arch)
 		if err != nil {
 			return nil, err
 		}
 		packages = append(packages, PackageResult{
-			Platform:     binary.platform.String(),
-			Arch:         binary.arch.String(),
-			Package:      pkg,
-			BinaryDigest: binary.digest.String(),
+			Platform:      platform.String(),
+			Arch:          arch.String(),
+			Package:       pkg,
+			BinaryDigests: packageBinaryDigests(staged, platform),
 		})
 	}
 
 	return packages, nil
+}
+
+// packageBinaryDigests returns name-sorted digests for platform.
+func packageBinaryDigests(staged []stagedBinary, platform Platform) []BinaryDigest {
+	out := make([]BinaryDigest, 0)
+	for _, binary := range staged {
+		if binary.platform != platform {
+			continue
+		}
+		out = append(out, BinaryDigest{Name: binary.name, Digest: binary.digest.String()})
+	}
+	slices.SortFunc(out, func(a, b BinaryDigest) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return out
+}
+
+// stagedBinaryNames returns unique binary names in ascending order.
+func stagedBinaryNames(staged []stagedBinary) []string {
+	seen := make(map[string]struct{}, len(staged))
+	var names []string
+	for _, binary := range staged {
+		if _, exists := seen[binary.name]; exists {
+			continue
+		}
+		seen[binary.name] = struct{}{}
+		names = append(names, binary.name)
+	}
+	slices.Sort(names)
+
+	return names
 }
 
 // requirePackage requires a nonempty APKINDEX and exactly one nonempty APK for arch.

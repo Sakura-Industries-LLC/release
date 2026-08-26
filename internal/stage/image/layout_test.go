@@ -683,12 +683,12 @@ func expectedImage(t *testing.T) image.ExpectedImage {
 
 	return image.ExpectedImage{
 		Version:  version,
-		Binary:   testBinaryName,
+		Binaries: []string{testBinaryName},
 		Revision: testCommit,
 		Source:   testSourceURL,
-		Canonical: map[image.APKArch]rel.Digest{
-			image.ArchX8664:   digestOf(t, []byte(testAMD64Binary)),
-			image.ArchAArch64: digestOf(t, []byte(testARM64Binary)),
+		Canonical: map[image.APKArch]map[string]rel.Digest{
+			image.ArchX8664:   {testBinaryName: digestOf(t, []byte(testAMD64Binary))},
+			image.ArchAArch64: {testBinaryName: digestOf(t, []byte(testARM64Binary))},
 		},
 	}
 }

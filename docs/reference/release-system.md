@@ -9,7 +9,7 @@ failure handling, see [Operate and recover releases](../how-to/operate-and-recov
 
 | Domain | Supported contract |
 | --- | --- |
-| Application layout | One Go application and binary per repository. |
+| Application layout | One Go repository, one unscoped tag stream, and one GHCR image. Linux `amd64` and `arm64` must publish the same nonempty set of static binary names. |
 | Source tags | Stable, unscoped `vMAJOR.MINOR.PATCH`. |
 | Binary operating systems | Darwin, Linux, and Windows. |
 | Binary architectures | `amd64` and `arm64`. |
@@ -328,7 +328,7 @@ one convergent repository publication.
 
 The producer supplies:
 
-- one Go module and command;
+- one Go module and one or more commands that share that module;
 - `.goreleaser.yaml` schema version 2;
 - `mise.toml` and `mise.lock` with Go, GoReleaser, Syft, Cosign, GitHub CLI,
   Melange, and apko;
@@ -353,14 +353,20 @@ A compatible GoReleaser configuration:
 - uses `skip_upload: true` for Homebrew and Scoop controls; and
 - keeps nFPM ID `release` when optional native signing is enabled.
 
-Staging requires exactly one executable static Linux binary for `amd64` and one
-for `arm64`, both with the same filename. It writes the digest-bound
-`oci-build-inputs.json` projection.
+Staging selects every `linux/{amd64,arm64}` GoReleaser Binary record. It
+rejects a duplicate `(arch, name)` pair and requires the name set to be
+identical and nonempty on both architectures. A name present on only one
+architecture is an error that names it. The `release.dev/oci-build-inputs/v2`
+projection lists those binaries in platform-major order (`linux/amd64` before
+`linux/arm64`), then name ascending within a platform.
 
 Melange packages the projected files for `x86_64` and `aarch64` without
-compiling them. apko composes one index for `amd64` and `arm64`, runs as numeric
-user and group `65532`, installs one `/usr/bin/<binary>` entrypoint, and carries
-source, version, revision, title, description, and license annotations.
+compiling them. Each staged file is named for its GoReleaser binary, not
+`application`. apko composes one index for `amd64` and `arm64`, runs as numeric
+user and group `65532`, and requires each platform config Entrypoint to be
+exactly `/usr/bin/<name>` for one staged binary name. The same name is required
+on every platform. Source, version, revision, title, description, and license
+annotations remain required.
 
 ## Actions artifacts and public assets
 
@@ -617,7 +623,7 @@ immutable R2 conflict. A public release has no automated rollback.
 The current release system does not support:
 
 - languages other than the Go producer profile;
-- more than one application, binary, or image entrypoint per repository;
+- more than one application, GHCR image, or image entrypoint per repository;
 - monorepo component tags or scoped versions;
 - prereleases or build metadata;
 - CGO-dependent or dynamically linked commands;

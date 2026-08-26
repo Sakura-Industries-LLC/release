@@ -77,7 +77,7 @@ type CanonicalBinary struct {
 	Path ArtifactPath
 	// RelativePath is Path with the leading root name stripped for [io/fs.FS] lookup.
 	RelativePath RelativePath
-	// Name is the binary filename, identical across selected platforms.
+	// Name is the binary filename from this record.
 	Name BinaryName
 }
 
@@ -170,7 +170,7 @@ func (n BinaryName) String() string {
 }
 
 // requiredArchs returns the closed set of Linux GOARCH values that must
-// each appear exactly once as a Binary record.
+// each appear with the same nonempty binary name set.
 func requiredArchs() []string {
 	return []string{"amd64", "arm64"}
 }
@@ -198,62 +198,50 @@ func parseArtifacts(r io.Reader) ([]Record, error) {
 	return records, nil
 }
 
-// SelectBinaries returns exactly one linux Binary per required architecture.
+// SelectBinaries returns every linux Binary for the required architectures.
 //
-// Zero, duplicate, or missing architectures fail with a diagnostic that names
-// the architectures that were found. Paths must be relative to root, the
-// basename of the --dist directory (GoReleaser writes "<dir>/..."). After
-// selection succeeds, every binary must carry the same [BinaryName].
+// Each linux/{amd64,arm64} Binary is selected. A duplicate (architecture, name)
+// pair fails with a diagnostic that names the pair. Paths must be relative to
+// root, the basename of the --dist directory (GoReleaser writes "<dir>/...").
+// The name set must be nonempty and identical across both architectures; a
+// name present on only one architecture is an error that names it. The result
+// is sorted architecture-major (amd64, then arm64), then name-ascending.
 func SelectBinaries(records []Record, root RootName) ([]CanonicalBinary, error) {
 	if root == "" {
 		return nil, errors.New("dist root name is empty")
 	}
-	required := requiredArchs()
-	selected := make(map[Arch]CanonicalBinary, len(required))
-	rawNames := make(map[Arch]string, len(required))
+	selected := make(map[archName]CanonicalBinary)
 	var found []string
 
 	for _, record := range records {
 		if record.Type != binaryType || record.GOOS != linuxOS {
 			continue
 		}
-		next, err := selectLinuxBinary(record, root, selected, rawNames, found)
+		next, err := selectLinuxBinary(record, root, selected, found)
 		if err != nil {
 			return nil, err
 		}
 		found = next
 	}
 
-	var missing []string
-	out := make([]CanonicalBinary, 0, len(required))
-	for _, name := range required {
-		arch := Arch(name)
-		binary, ok := selected[arch]
-		if !ok {
-			missing = append(missing, name)
-			continue
-		}
-		out = append(out, binary)
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf(
-			"missing linux Binary record for %s; found %s",
-			joinArchs(missing),
-			joinArchs(found),
-		)
-	}
-
-	return assignSharedNames(out, rawNames)
+	return assembleBinaries(selected, found)
 }
 
-// selectLinuxBinary records one linux Binary for its architecture.
+// archName is a selected architecture and binary filename pair.
+type archName struct {
+	// arch is the Linux GOARCH.
+	arch Arch
+	// name is the binary filename.
+	name BinaryName
+}
+
+// selectLinuxBinary records one linux Binary for its (architecture, name) pair.
 //
 // found is the architectures seen so far, including this record's GOARCH.
 func selectLinuxBinary(
 	record Record,
 	root RootName,
-	selected map[Arch]CanonicalBinary,
-	rawNames map[Arch]string,
+	selected map[archName]CanonicalBinary,
 	found []string,
 ) ([]string, error) {
 	found = append(found, record.GOARCH)
@@ -265,10 +253,16 @@ func selectLinuxBinary(
 			joinArchs(found),
 		)
 	}
-	if _, exists := selected[arch]; exists {
+	name, err := ParseBinaryName(record.Name)
+	if err != nil {
+		return found, err
+	}
+	key := archName{arch: arch, name: name}
+	if _, exists := selected[key]; exists {
 		return found, fmt.Errorf(
-			"duplicate linux/%s Binary record; found %s",
+			"duplicate linux/%s Binary record for %q; found %s",
 			record.GOARCH,
+			name,
 			joinArchs(found),
 		)
 	}
@@ -280,36 +274,75 @@ func selectLinuxBinary(
 	if err != nil {
 		return found, err
 	}
-	selected[arch] = CanonicalBinary{
+	selected[key] = CanonicalBinary{
 		Arch:         arch,
 		Path:         artifactPath,
 		RelativePath: relative,
+		Name:         name,
 	}
-	rawNames[arch] = record.Name
 
 	return found, nil
 }
 
-// assignSharedNames requires every selected binary to share one filename.
-func assignSharedNames(binaries []CanonicalBinary, rawNames map[Arch]string) ([]CanonicalBinary, error) {
-	var shared BinaryName
-	for i, binary := range binaries {
-		parsed, err := ParseBinaryName(rawNames[binary.Arch])
-		if err != nil {
-			return nil, err
-		}
-		if i > 0 && parsed != shared {
-			return nil, fmt.Errorf(
-				"linux architecture binaries have different names %q and %q",
-				shared,
-				parsed,
-			)
-		}
-		shared = parsed
-		binaries[i].Name = parsed
+// assembleBinaries requires a nonempty identical name set on both architectures.
+func assembleBinaries(selected map[archName]CanonicalBinary, found []string) ([]CanonicalBinary, error) {
+	required := requiredArchs()
+	namesByArch := make(map[Arch]map[BinaryName]struct{}, len(required))
+	for _, raw := range required {
+		namesByArch[Arch(raw)] = make(map[BinaryName]struct{})
+	}
+	for key := range selected {
+		namesByArch[key.arch][key.name] = struct{}{}
 	}
 
-	return binaries, nil
+	union := make(map[BinaryName]struct{})
+	for _, names := range namesByArch {
+		for name := range names {
+			union[name] = struct{}{}
+		}
+	}
+	if len(union) == 0 {
+		return nil, fmt.Errorf(
+			"missing linux Binary record for %s; found %s",
+			joinArchs(required),
+			joinArchs(found),
+		)
+	}
+
+	var names []string
+	for name := range union {
+		names = append(names, name.String())
+	}
+	slices.Sort(names)
+
+	for _, raw := range required {
+		arch := Arch(raw)
+		have := namesByArch[arch]
+		var missing []string
+		for _, name := range names {
+			if _, ok := have[BinaryName(name)]; !ok {
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf(
+				"missing linux/%s Binary record for %s; found %s",
+				arch,
+				joinArchs(missing),
+				joinArchs(found),
+			)
+		}
+	}
+
+	out := make([]CanonicalBinary, 0, len(selected))
+	for _, raw := range required {
+		arch := Arch(raw)
+		for _, name := range names {
+			out = append(out, selected[archName{arch: arch, name: BinaryName(name)}])
+		}
+	}
+
+	return out, nil
 }
 
 // VerifyBinaries checks each selected path against fsys.

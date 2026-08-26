@@ -171,14 +171,12 @@ jobs:
           output="$(jq -er '.result.output' <<<"${envelope}")"
           version="$(jq -er '.result.version' <<<"${envelope}")"
           result_build_date="$(jq -er '.result.build_date' <<<"${envelope}")"
-          binary_name="$(jq -er '.result.binary' <<<"${envelope}")"
 
           {
             printf 'work=%s\n' "${work}"
             printf 'output=%s\n' "${output}"
             printf 'version=%s\n' "${version}"
             printf 'build-date=%s\n' "${result_build_date}"
-            printf 'binary-name=%s\n' "${binary_name}"
           } >>"${GITHUB_OUTPUT}"
 
       - name: Verify authoritative OCI image
@@ -187,13 +185,12 @@ jobs:
           RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
           RELEASE_OUTPUT: ${{ steps.build.outputs.output }}
           RELEASE_WORK: ${{ steps.build.outputs.work }}
-          RELEASE_BINARY: ${{ steps.build.outputs.binary-name }}
           RELEASE_VERSION: ${{ steps.build.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           # The CLI reads the layout byte for byte: the index, every platform
-          # manifest and config, the staged binary inside the layer blob, and
+          # manifest and config, every staged binary inside the layer blob, and
           # the SPDX documents. Revision and source provenance come from the
           # Actions environment, so they are not passed as flags. The CLI also
           # writes image-digest.txt into the output root for the publisher.

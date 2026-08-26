@@ -26,4 +26,4 @@ environment:
 
 pipeline:
   - runs: |
-      install -Dm755 -o 0 -g 0 application "${{targets.destdir}}/usr/bin/example"
+      install -Dm755 -o 0 -g 0 example "${{targets.destdir}}/usr/bin/example"

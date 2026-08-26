@@ -1,9 +1,10 @@
 # Go release example
 
-This directory is the maintained template for one static Go application in one
+This directory is the maintained template for one static Go command in one
 repository. It includes the release workflows, a minimal command, GitHub
 Release and OCI configuration, Homebrew and Scoop control generation, and a
-native package-repository request.
+native package-repository request. Melange installs the staged `example`
+binary by that GoReleaser name; the image entrypoint is `/usr/bin/example`.
 
 It is not a complete repository policy. Add the adopter's CI, review, rulesets,
 and ownership controls.
@@ -39,7 +40,8 @@ Before the workflows run:
    `SCOOP-BUCKET`, and the `PACKAGE-REPOSITORY-*` values only after those
    adopter-owned destinations exist.
 4. Replace the `example` project, package, binary, cask, manifest, command path,
-   module path, and Release Please package name.
+   module path, and Release Please package name. `melange.yaml` must install
+   the staged file by that GoReleaser binary name, not `application`.
 5. Replace the organization metadata, maintainer, description, homepage, and
    SPDX license expression.
 6. Change the Release Please branch and manifest version when the repository

@@ -558,22 +558,28 @@ func TestImageBuildJSONSuccess(t *testing.T) {
 	result := decodeImageBuildResult(t, stdout)
 	assert.Equal(t, image.BuildSchema, result.Schema)
 	assert.Equal(t, imageVersion, result.Version)
-	assert.Equal(t, imageBinaryName, result.Binary)
+	assert.Equal(t, []string{imageBinaryName}, result.Binaries)
 	assert.Equal(t, work, result.Work)
 	assert.Equal(t, output, result.Output)
 	assert.Equal(t, imageBuildDate, result.BuildDate)
 	assert.Equal(t, []image.PackageResult{
 		{
-			Platform:     "linux/amd64",
-			Arch:         "x86_64",
-			Package:      "packages/x86_64/release-cli-1.2.3-r0.apk",
-			BinaryDigest: tree.amd64Digest,
+			Platform: "linux/amd64",
+			Arch:     "x86_64",
+			Package:  "packages/x86_64/release-cli-1.2.3-r0.apk",
+			BinaryDigests: []image.BinaryDigest{{
+				Name:   imageBinaryName,
+				Digest: tree.amd64Digest,
+			}},
 		},
 		{
-			Platform:     "linux/arm64",
-			Arch:         "aarch64",
-			Package:      "packages/aarch64/release-cli-1.2.3-r0.apk",
-			BinaryDigest: tree.arm64Digest,
+			Platform: "linux/arm64",
+			Arch:     "aarch64",
+			Package:  "packages/aarch64/release-cli-1.2.3-r0.apk",
+			BinaryDigests: []image.BinaryDigest{{
+				Name:   imageBinaryName,
+				Digest: tree.arm64Digest,
+			}},
 		},
 	}, result.Packages)
 }
@@ -644,5 +650,5 @@ func TestImageBuildFactoryPaths(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, imageMelangePath, gotMelange)
 	assert.Equal(t, imageApkoPath, gotApko)
-	assert.Equal(t, imageBinaryName, decodeImageBuildResult(t, stdout).Binary)
+	assert.Equal(t, []string{imageBinaryName}, decodeImageBuildResult(t, stdout).Binaries)
 }

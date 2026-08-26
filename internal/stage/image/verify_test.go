@@ -31,7 +31,7 @@ func TestVerifyLayoutHappyPath(t *testing.T) {
 	result := got.Result(expected)
 	assert.Equal(t, image.VerifySchema, result.Schema)
 	assert.Equal(t, testVersion, result.Version)
-	assert.Equal(t, testBinaryName, result.Binary)
+	assert.Equal(t, []string{testBinaryName}, result.Binaries)
 	assert.Equal(t, digestOf(t, fixture.indexBytes).String(), result.IndexDigest)
 	require.Len(t, result.Platforms, 2)
 	assert.Equal(t, "linux/amd64", result.Platforms[0].Platform)
@@ -39,10 +39,16 @@ func TestVerifyLayoutHappyPath(t *testing.T) {
 	assert.Equal(t, fixture.amd64.Manifest.String(), result.Platforms[0].Manifest)
 	assert.Equal(t, fixture.amd64.Config.String(), result.Platforms[0].Config)
 	assert.Equal(t, fixture.amd64.Layer.String(), result.Platforms[0].Layer)
-	assert.Equal(t, digestOf(t, []byte(testAMD64Binary)).String(), result.Platforms[0].BinaryDigest)
+	assert.Equal(t, []image.BinaryDigest{{
+		Name:   testBinaryName,
+		Digest: digestOf(t, []byte(testAMD64Binary)).String(),
+	}}, result.Platforms[0].BinaryDigests)
 	assert.Equal(t, "linux/arm64", result.Platforms[1].Platform)
 	assert.Equal(t, "aarch64", result.Platforms[1].Arch)
-	assert.Equal(t, digestOf(t, []byte(testARM64Binary)).String(), result.Platforms[1].BinaryDigest)
+	assert.Equal(t, []image.BinaryDigest{{
+		Name:   testBinaryName,
+		Digest: digestOf(t, []byte(testARM64Binary)).String(),
+	}}, result.Platforms[1].BinaryDigests)
 }
 
 func TestVerifyLayoutAcceptsPlainTarLayer(t *testing.T) {
@@ -90,8 +96,11 @@ func TestVerifyLayoutIgnoresPrefixedDecoyEntry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(
 		t,
-		digestOf(t, []byte(testAMD64Binary)).String(),
-		got.Result(expectedImage(t)).Platforms[0].BinaryDigest,
+		[]image.BinaryDigest{{
+			Name:   testBinaryName,
+			Digest: digestOf(t, []byte(testAMD64Binary)).String(),
+		}},
+		got.Result(expectedImage(t)).Platforms[0].BinaryDigests,
 	)
 }
 
@@ -122,6 +131,57 @@ func TestVerifyLayoutCanonicalOrder(t *testing.T) {
 	require.Len(t, result.Platforms, 2)
 	assert.Equal(t, "linux/amd64", result.Platforms[0].Platform)
 	assert.Equal(t, "linux/arm64", result.Platforms[1].Platform)
+}
+
+func TestVerifyLayoutMultipleBinaries(t *testing.T) {
+	t.Parallel()
+
+	const agent = "incus-agent"
+	const server = "incus-server"
+	amd64Agent := []byte("amd64-agent")
+	amd64Server := []byte("amd64-server")
+	arm64Agent := []byte("arm64-agent")
+	arm64Server := []byte("arm64-server")
+
+	fixture := newVerifyLayout(t, mutateSpec(func(spec *layoutSpec) {
+		spec.platforms[0].entrypoint = []string{"/usr/bin/" + agent}
+		spec.platforms[0].layers[0].entries = []tarEntry{
+			{name: "usr/bin/" + server, body: amd64Server, mode: 0o755},
+			{name: "usr/bin/" + agent, body: amd64Agent, mode: 0o755},
+		}
+		spec.platforms[1].entrypoint = []string{"/usr/bin/" + agent}
+		spec.platforms[1].layers[0].entries = []tarEntry{
+			{name: "usr/bin/" + agent, body: arm64Agent, mode: 0o755},
+			{name: "usr/bin/" + server, body: arm64Server, mode: 0o755},
+		}
+	}))
+	version, err := rel.ParseVersion(testVersion)
+	require.NoError(t, err)
+	expected := image.ExpectedImage{
+		Version:  version,
+		Binaries: []string{agent, server},
+		Revision: testCommit,
+		Source:   testSourceURL,
+		Canonical: map[image.APKArch]map[string]rel.Digest{
+			image.ArchX8664: {
+				agent:  digestOf(t, amd64Agent),
+				server: digestOf(t, amd64Server),
+			},
+			image.ArchAArch64: {
+				agent:  digestOf(t, arm64Agent),
+				server: digestOf(t, arm64Server),
+			},
+		},
+	}
+
+	got, err := image.VerifyLayout(fixture.files, expected)
+	require.NoError(t, err)
+	result := got.Result(expected)
+	assert.Equal(t, []string{agent, server}, result.Binaries)
+	assert.Equal(t, []image.BinaryDigest{
+		{Name: agent, Digest: digestOf(t, amd64Agent).String()},
+		{Name: server, Digest: digestOf(t, amd64Server).String()},
+	}, result.Platforms[0].BinaryDigests)
 }
 
 func TestVerifyLayoutErrors(t *testing.T) {
@@ -485,7 +545,7 @@ func TestVerifyLayoutErrors(t *testing.T) {
 				spec.platforms[0].layers[0].entries[0].body = []byte("tampered")
 			})).files,
 			expected: expectedImage,
-			wantErr:  "linux/amd64 image binary has digest",
+			wantErr:  `linux/amd64 image binary "release-cli" has digest`,
 		},
 		{
 			name: "unsupported layer media type",
@@ -496,16 +556,32 @@ func TestVerifyLayoutErrors(t *testing.T) {
 			wantErr:  "linux/amd64 layer media type is",
 		},
 		{
-			name:  "empty binary name",
+			name:  "empty binary name list",
 			files: newVerifyLayout(t, defaultLayoutSpec()).files,
 			expected: func(t *testing.T) image.ExpectedImage {
 				t.Helper()
 				expected := expectedImage(t)
-				expected.Binary = ""
+				expected.Binaries = nil
 
 				return expected
 			},
-			wantErr: "binary name is empty",
+			wantErr: "binary name list is empty",
+		},
+		{
+			name:  "entrypoint not in expected set",
+			files: newVerifyLayout(t, defaultLayoutSpec()).files,
+			expected: func(t *testing.T) image.ExpectedImage {
+				t.Helper()
+				expected := expectedImage(t)
+				expected.Binaries = []string{"other"}
+				expected.Canonical = map[image.APKArch]map[string]rel.Digest{
+					image.ArchX8664:   {"other": digestOf(t, []byte(testAMD64Binary))},
+					image.ArchAArch64: {"other": digestOf(t, []byte(testARM64Binary))},
+				}
+
+				return expected
+			},
+			wantErr: "linux/amd64 config Entrypoint is",
 		},
 	}
 
@@ -585,15 +661,7 @@ func TestVerifySBOMsErrors(t *testing.T) {
 				},
 				"sbom-aarch64.spdx.json": {Data: sbomBytes(t, testVersion)},
 			},
-			wantErr: "sbom-x86_64.spdx.json has no APPLICATION package at version 1.2.3-r0",
-		},
-		{
-			name: "wrong versionInfo",
-			files: fstest.MapFS{
-				"sbom-x86_64.spdx.json":  {Data: sbomBytes(t, "9.9.9")},
-				"sbom-aarch64.spdx.json": {Data: sbomBytes(t, testVersion)},
-			},
-			wantErr: "sbom-x86_64.spdx.json has no APPLICATION package at version 1.2.3-r0",
+			wantErr: "sbom-x86_64.spdx.json has no APPLICATION package",
 		},
 	}
 
@@ -614,14 +682,18 @@ func TestCanonicalDigests(t *testing.T) {
 	amd64 := []byte(testAMD64Binary)
 	arm64 := []byte(testARM64Binary)
 	work := fstest.MapFS{
-		path.Join("sources", "x86_64", "application"):  {Data: amd64},
-		path.Join("sources", "aarch64", "application"): {Data: arm64},
+		path.Join("sources", "x86_64", testBinaryName):  {Data: amd64},
+		path.Join("sources", "aarch64", testBinaryName): {Data: arm64},
 	}
 
-	got, err := image.CanonicalDigests(work, []image.APKArch{image.ArchX8664, image.ArchAArch64})
+	got, err := image.CanonicalDigests(
+		work,
+		[]image.APKArch{image.ArchX8664, image.ArchAArch64},
+		[]string{testBinaryName},
+	)
 	require.NoError(t, err)
-	assert.Equal(t, digestOf(t, amd64), got[image.ArchX8664])
-	assert.Equal(t, digestOf(t, arm64), got[image.ArchAArch64])
+	assert.Equal(t, digestOf(t, amd64), got[image.ArchX8664][testBinaryName])
+	assert.Equal(t, digestOf(t, arm64), got[image.ArchAArch64][testBinaryName])
 }
 
 func TestCanonicalDigestsErrors(t *testing.T) {
@@ -631,26 +703,36 @@ func TestCanonicalDigestsErrors(t *testing.T) {
 		name    string
 		work    fs.FS
 		arches  []image.APKArch
+		names   []string
 		wantErr string
 	}{
 		{
 			name:    "nil filesystem",
 			arches:  []image.APKArch{image.ArchX8664},
+			names:   []string{testBinaryName},
 			wantErr: "work filesystem is nil",
 		},
 		{
-			name:    "missing application",
+			name:    "empty names",
 			work:    fstest.MapFS{},
 			arches:  []image.APKArch{image.ArchX8664},
-			wantErr: "sources/x86_64/application",
+			wantErr: "canonical binary name list is empty",
+		},
+		{
+			name:    "missing binary",
+			work:    fstest.MapFS{},
+			arches:  []image.APKArch{image.ArchX8664},
+			names:   []string{testBinaryName},
+			wantErr: "sources/x86_64/" + testBinaryName,
 		},
 		{
 			name: "non-regular entry",
 			work: fstest.MapFS{
-				"sources/x86_64/application": {Mode: fs.ModeDir},
+				path.Join("sources", "x86_64", testBinaryName): {Mode: fs.ModeDir},
 			},
 			arches:  []image.APKArch{image.ArchX8664},
-			wantErr: "sources/x86_64/application is not a regular file",
+			names:   []string{testBinaryName},
+			wantErr: "sources/x86_64/" + testBinaryName + " is not a regular file",
 		},
 	}
 
@@ -658,7 +740,7 @@ func TestCanonicalDigestsErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := image.CanonicalDigests(test.work, test.arches)
+			_, err := image.CanonicalDigests(test.work, test.arches, test.names)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.wantErr)
 		})

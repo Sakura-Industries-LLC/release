@@ -230,8 +230,8 @@ func TestStageMissingArchitectureRecord(t *testing.T) {
 	)
 	require.Error(t, err)
 	assert.Equal(t, 1, cli.ExitCode(err))
-	assert.Contains(t, err.Error(), "missing linux Binary record for arm64")
-	assertFailureEnvelope(t, stdout, "missing linux Binary record for arm64")
+	assert.Contains(t, err.Error(), "missing linux/arm64 Binary record for app")
+	assertFailureEnvelope(t, stdout, "missing linux/arm64 Binary record for app")
 }
 
 func TestStageEscapedPath(t *testing.T) {

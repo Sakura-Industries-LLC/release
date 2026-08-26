@@ -114,8 +114,18 @@ func TestSelectBinaries(t *testing.T) {
 				},
 			},
 			want: []goprof.CanonicalBinary{
-				canonical("amd64", "dist/release-cli_linux_amd64/release-cli", "release-cli_linux_amd64/release-cli"),
-				canonical("arm64", "dist/release-cli_linux_arm64/release-cli", "release-cli_linux_arm64/release-cli"),
+				canonical(
+					"amd64",
+					"dist/release-cli_linux_amd64/release-cli",
+					"release-cli_linux_amd64/release-cli",
+					"release-cli",
+				),
+				canonical(
+					"arm64",
+					"dist/release-cli_linux_arm64/release-cli",
+					"release-cli_linux_arm64/release-cli",
+					"release-cli",
+				),
 			},
 		},
 		{
@@ -126,8 +136,8 @@ func TestSelectBinaries(t *testing.T) {
 				linuxBinary("arm64", "build/app_linux_arm64/app"),
 			},
 			want: []goprof.CanonicalBinary{
-				canonical("amd64", "build/app_linux_amd64/app", "app_linux_amd64/app"),
-				canonical("arm64", "build/app_linux_arm64/app", "app_linux_arm64/app"),
+				canonical("amd64", "build/app_linux_amd64/app", "app_linux_amd64/app", "release-cli"),
+				canonical("arm64", "build/app_linux_arm64/app", "app_linux_arm64/app", "release-cli"),
 			},
 		},
 		{
@@ -137,7 +147,7 @@ func TestSelectBinaries(t *testing.T) {
 				{Type: "Archive", GOOS: "linux", GOARCH: "amd64", Path: "dist/a.tar.gz", Name: "a.tar.gz"},
 				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
 			},
-			wantErr: "missing linux Binary record for amd64; found arm64",
+			wantErr: "missing linux/amd64 Binary record for release-cli; found arm64",
 		},
 		{
 			name:     "wrong goos is ignored then missing architecture fails",
@@ -152,17 +162,17 @@ func TestSelectBinaries(t *testing.T) {
 				},
 				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
 			},
-			wantErr: "missing linux Binary record for amd64; found arm64",
+			wantErr: "missing linux/amd64 Binary record for release-cli; found arm64",
 		},
 		{
-			name:     "duplicate architecture",
+			name:     "duplicate architecture and name",
 			rootName: "dist",
 			records: []goprof.Record{
 				linuxBinary("amd64", "dist/release-cli_linux_amd64/release-cli"),
 				linuxBinary("amd64", "dist/release-cli_linux_amd64_alt/release-cli"),
 				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
 			},
-			wantErr: "duplicate linux/amd64 Binary record",
+			wantErr: `duplicate linux/amd64 Binary record for "release-cli"`,
 		},
 		{
 			name:     "missing architecture",
@@ -170,7 +180,7 @@ func TestSelectBinaries(t *testing.T) {
 			records: []goprof.Record{
 				linuxBinary("amd64", "dist/release-cli_linux_amd64/release-cli"),
 			},
-			wantErr: "missing linux Binary record for arm64; found amd64",
+			wantErr: "missing linux/arm64 Binary record for release-cli; found amd64",
 		},
 		{
 			name:     "unexpected extra architecture",
@@ -201,13 +211,13 @@ func TestSelectBinaries(t *testing.T) {
 			wantErr: "is not dist/-relative",
 		},
 		{
-			name:     "differing binary names",
+			name:     "asymmetric name set",
 			rootName: "dist",
 			records: []goprof.Record{
 				linuxBinaryNamed("amd64", "dist/release-cli_linux_amd64/release-cli", "release-cli"),
 				linuxBinaryNamed("arm64", "dist/release-cli_linux_arm64/other", "other"),
 			},
-			wantErr: `linux architecture binaries have different names "release-cli" and "other"`,
+			wantErr: `missing linux/amd64 Binary record for other`,
 		},
 		{
 			name:     "empty binary name",
@@ -226,6 +236,42 @@ func TestSelectBinaries(t *testing.T) {
 				linuxBinary("arm64", "dist/release-cli_linux_arm64/release-cli"),
 			},
 			wantErr: "contains a path separator",
+		},
+		{
+			name:     "selects two names sorted architecture-major then name-ascending",
+			rootName: "dist",
+			records: []goprof.Record{
+				linuxBinaryNamed("arm64", "dist/server_linux_arm64/incus-server", "incus-server"),
+				linuxBinaryNamed("amd64", "dist/agent_linux_amd64/incus-agent", "incus-agent"),
+				linuxBinaryNamed("amd64", "dist/server_linux_amd64/incus-server", "incus-server"),
+				linuxBinaryNamed("arm64", "dist/agent_linux_arm64/incus-agent", "incus-agent"),
+			},
+			want: []goprof.CanonicalBinary{
+				canonical(
+					"amd64",
+					"dist/agent_linux_amd64/incus-agent",
+					"agent_linux_amd64/incus-agent",
+					"incus-agent",
+				),
+				canonical(
+					"amd64",
+					"dist/server_linux_amd64/incus-server",
+					"server_linux_amd64/incus-server",
+					"incus-server",
+				),
+				canonical(
+					"arm64",
+					"dist/agent_linux_arm64/incus-agent",
+					"agent_linux_arm64/incus-agent",
+					"incus-agent",
+				),
+				canonical(
+					"arm64",
+					"dist/server_linux_arm64/incus-server",
+					"server_linux_arm64/incus-server",
+					"incus-server",
+				),
+			},
 		},
 	}
 	for _, test := range tests {
@@ -290,8 +336,8 @@ func TestVerifyBinariesMapFS(t *testing.T) {
 	t.Parallel()
 
 	binaries := []goprof.CanonicalBinary{
-		canonical("amd64", "dist/app_linux_amd64/app", "app_linux_amd64/app"),
-		canonical("arm64", "dist/app_linux_arm64/app", "app_linux_arm64/app"),
+		canonical("amd64", "dist/app_linux_amd64/app", "app_linux_amd64/app", "app"),
+		canonical("arm64", "dist/app_linux_arm64/app", "app_linux_arm64/app", "app"),
 	}
 
 	err := goprof.VerifyBinaries(fstest.MapFS{
@@ -317,8 +363,8 @@ func TestVerifyBinariesTempDir(t *testing.T) {
 	writeExec(t, filepath.Join(root, arm64Path), []byte("arm64"))
 
 	binaries := []goprof.CanonicalBinary{
-		canonical("amd64", "dist/app_linux_amd64/app", filepath.ToSlash(amd64Path)),
-		canonical("arm64", "dist/app_linux_arm64/app", filepath.ToSlash(arm64Path)),
+		canonical("amd64", "dist/app_linux_amd64/app", filepath.ToSlash(amd64Path), "app"),
+		canonical("arm64", "dist/app_linux_arm64/app", filepath.ToSlash(arm64Path), "app"),
 	}
 	require.NoError(t, goprof.VerifyBinaries(os.DirFS(root), binaries))
 
@@ -363,12 +409,12 @@ func linuxBinaryNamed(arch, path, name string) goprof.Record {
 }
 
 // canonical builds a CanonicalBinary from already-valid test strings.
-func canonical(arch, path, relative string) goprof.CanonicalBinary {
+func canonical(arch, path, relative, name string) goprof.CanonicalBinary {
 	return goprof.CanonicalBinary{
 		Arch:         goprof.Arch(arch),
 		Path:         goprof.ArtifactPath(path),
 		RelativePath: goprof.RelativePath(relative),
-		Name:         goprof.BinaryName("release-cli"),
+		Name:         goprof.BinaryName(name),
 	}
 }
 
@@ -399,7 +445,7 @@ func TestConfineRejectsDotDotOnDisk(t *testing.T) {
 	})
 
 	err := goprof.VerifyBinaries(os.DirFS(root), []goprof.CanonicalBinary{
-		canonical("amd64", "dist/../outside", "../outside"),
+		canonical("amd64", "dist/../outside", "../outside", "release-cli"),
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "escapes the dist root")

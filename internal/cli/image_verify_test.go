@@ -27,9 +27,9 @@ const (
 	imageVerifyCommand = "image verify"
 	// imageVerifyDigestFile is the output-relative index digest artifact.
 	imageVerifyDigestFile = "image-digest.txt"
-	// imageVerifyAMD64Binary is the staged amd64 application fixture.
+	// imageVerifyAMD64Binary is the staged amd64 binary fixture.
 	imageVerifyAMD64Binary = "amd64-application"
-	// imageVerifyARM64Binary is the staged arm64 application fixture.
+	// imageVerifyARM64Binary is the staged arm64 binary fixture.
 	imageVerifyARM64Binary = "arm64-application"
 	// imageVerifyCreated is the index created annotation fixture.
 	imageVerifyCreated = "2024-01-02T03:04:05Z"
@@ -45,7 +45,7 @@ const (
 	imageVerifyLayoutJSON = `{"imageLayoutVersion":"1.0.0"}`
 	// imageVerifyFileMode is the mode of regular fixture files.
 	imageVerifyFileMode = 0o644
-	// imageVerifyExecMode is the mode of staged application files and the layer entry.
+	// imageVerifyExecMode is the mode of staged binary files and the layer entry.
 	imageVerifyExecMode = 0o755
 	// imageVerifyDirMode is the mode of fixture directories.
 	imageVerifyDirMode = 0o755
@@ -60,7 +60,6 @@ func TestImageVerifyJSONSuccess(t *testing.T) {
 		"--json",
 		"--output", tree.output,
 		"--work", tree.work,
-		"--binary", imageBinaryName,
 		"--version", imageVersion,
 	})
 	require.NoError(t, err)
@@ -75,24 +74,30 @@ func TestImageVerifyJSONSuccess(t *testing.T) {
 	result := decodeImageVerifyResult(t, stdout)
 	assert.Equal(t, image.VerifySchema, result.Schema)
 	assert.Equal(t, imageVersion, result.Version)
-	assert.Equal(t, imageBinaryName, result.Binary)
+	assert.Equal(t, []string{imageBinaryName}, result.Binaries)
 	assert.Equal(t, tree.indexDigest, result.IndexDigest)
 	assert.Equal(t, []image.VerifiedPlatform{
 		{
-			Platform:     "linux/amd64",
-			Arch:         "x86_64",
-			Manifest:     tree.amd64.manifest,
-			Config:       tree.amd64.config,
-			Layer:        tree.amd64.layer,
-			BinaryDigest: tree.amd64.binary,
+			Platform: "linux/amd64",
+			Arch:     "x86_64",
+			Manifest: tree.amd64.manifest,
+			Config:   tree.amd64.config,
+			Layer:    tree.amd64.layer,
+			BinaryDigests: []image.BinaryDigest{{
+				Name:   imageBinaryName,
+				Digest: tree.amd64.binary,
+			}},
 		},
 		{
-			Platform:     "linux/arm64",
-			Arch:         "aarch64",
-			Manifest:     tree.arm64.manifest,
-			Config:       tree.arm64.config,
-			Layer:        tree.arm64.layer,
-			BinaryDigest: tree.arm64.binary,
+			Platform: "linux/arm64",
+			Arch:     "aarch64",
+			Manifest: tree.arm64.manifest,
+			Config:   tree.arm64.config,
+			Layer:    tree.arm64.layer,
+			BinaryDigests: []image.BinaryDigest{{
+				Name:   imageBinaryName,
+				Digest: tree.arm64.binary,
+			}},
 		},
 	}, result.Platforms)
 	assert.Equal(t, tree.indexDigest+"\n", readImageDigestFile(t, tree.output))
@@ -106,7 +111,6 @@ func TestImageVerifySilentSuccess(t *testing.T) {
 		"image", "verify",
 		"--output", tree.output,
 		"--work", tree.work,
-		"--binary", imageBinaryName,
 		"--version", imageVersion,
 	})
 	require.NoError(t, err)
@@ -131,7 +135,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 				return []string{
 					"image", "verify",
 					"--work", work,
-					"--binary", imageBinaryName,
 					"--version", imageVersion,
 				}
 			},
@@ -144,24 +147,10 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 				return []string{
 					"image", "verify",
 					"--output", output,
-					"--binary", imageBinaryName,
 					"--version", imageVersion,
 				}
 			},
 			want: "--work is required",
-		},
-		{
-			name: "missing binary",
-			env:  imageVerifyEnv(),
-			args: func(output, work string) []string {
-				return []string{
-					"image", "verify",
-					"--output", output,
-					"--work", work,
-					"--version", imageVersion,
-				}
-			},
-			want: "binary name is empty",
 		},
 		{
 			name: "unresolvable version",
@@ -171,7 +160,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 					"image", "verify",
 					"--output", output,
 					"--work", work,
-					"--binary", imageBinaryName,
 				}
 			},
 			want: "--version is required when GITHUB_REF_NAME is unset",
@@ -184,7 +172,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 					"image", "verify",
 					"--output", output,
 					"--work", work,
-					"--binary", imageBinaryName,
 					"--version", imageVersion,
 				}
 			},
@@ -198,7 +185,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 					"image", "verify",
 					"--output", output,
 					"--work", work,
-					"--binary", imageBinaryName,
 					"--version", imageVersion,
 				}
 			},
@@ -212,7 +198,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 					"image", "verify",
 					"--output", output,
 					"--work", work,
-					"--binary", imageBinaryName,
 					"--version", imageVersion,
 				}
 			},
@@ -236,54 +221,6 @@ func TestImageVerifyMissingValuesAreUsage(t *testing.T) {
 	}
 }
 
-func TestImageVerifyInvalidBinaryIsUsage(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		binary string
-		want   string
-	}{
-		{
-			name:   "empty binary",
-			binary: "",
-			want:   "binary name is empty",
-		},
-		{
-			name:   "path separator",
-			binary: "usr/bin/tool",
-			want:   `binary name "usr/bin/tool" contains a path separator`,
-		},
-		{
-			name:   "dot-dot",
-			binary: "..",
-			want:   `binary name ".." is not a filename`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			output := t.TempDir()
-			work := t.TempDir()
-			stdout, err := executeImageVerifyStdout(t, imageVerifyEnv(), []string{
-				"image", "verify",
-				"--json",
-				"--output", output,
-				"--work", work,
-				"--binary", tt.binary,
-				"--version", imageVersion,
-			})
-			require.Error(t, err)
-			assert.Equal(t, 2, cli.ExitCode(err))
-			assert.Contains(t, err.Error(), tt.want)
-			assertImageVerifyFailureEnvelope(t, stdout, tt.want)
-			assertPathAbsent(t, filepath.Join(output, imageVerifyDigestFile))
-		})
-	}
-}
-
 func TestImageVerifyLayoutFailure(t *testing.T) {
 	t.Parallel()
 
@@ -296,7 +233,6 @@ func TestImageVerifyLayoutFailure(t *testing.T) {
 		"--json",
 		"--output", tree.output,
 		"--work", tree.work,
-		"--binary", imageBinaryName,
 		"--version", imageVersion,
 	})
 	require.Error(t, err)
@@ -316,7 +252,6 @@ func TestImageVerifySBOMFailure(t *testing.T) {
 		"--json",
 		"--output", tree.output,
 		"--work", tree.work,
-		"--binary", imageBinaryName,
 		"--version", imageVersion,
 	})
 	require.Error(t, err)
@@ -349,7 +284,6 @@ func TestImageVerifyMissingLayoutOrSBOMs(t *testing.T) {
 				"--json",
 				"--output", tree.output,
 				"--work", tree.work,
-				"--binary", imageBinaryName,
 				"--version", imageVersion,
 			})
 			require.Error(t, err)
@@ -382,7 +316,7 @@ type imageVerifyPlatform struct {
 	config string
 	// layer is the single layer digest.
 	layer string
-	// binary is the staged application digest.
+	// binary is the staged binary digest.
 	binary string
 }
 
@@ -506,11 +440,11 @@ func writeImageVerifySBOMs(t *testing.T, output string) {
 	writeFile(t, filepath.Join(output, "sboms", "sbom-index.spdx.json"), `{"packages":[]}`)
 }
 
-// writeImageVerifyApplication writes work/sources/<arch>/application.
+// writeImageVerifyApplication writes work/sources/<arch>/<binary-name>.
 func writeImageVerifyApplication(t *testing.T, work, arch string, binary []byte) {
 	t.Helper()
 
-	path := filepath.Join(work, "sources", arch, "application")
+	path := filepath.Join(work, "sources", arch, imageBinaryName)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), imageVerifyDirMode))
 	require.NoError(t, os.WriteFile(path, binary, imageVerifyExecMode))
 }

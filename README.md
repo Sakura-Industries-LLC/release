@@ -1,16 +1,18 @@
 # Release workflows
 
 This repository publishes `release-cli` and reusable GitHub Actions workflows
-for releasing one static Go application from one repository. A release can
-produce GitHub Release assets, a multi-architecture image in GHCR, Homebrew and
-Scoop update pull requests, and signed DEB, RPM, and APK repositories in
-Cloudflare R2.
+for releasing static Go binaries from one repository. A release can produce
+GitHub Release assets, a multi-architecture image in GHCR, Homebrew and Scoop
+update pull requests, and signed DEB, RPM, and APK repositories in Cloudflare
+R2.
 
 ## Supported release
 
 The supported application contract is intentionally narrow:
 
-- one Go application and binary per repository;
+- one Go repository, one unscoped tag stream, and one GHCR image;
+- Linux `amd64` and `arm64` must publish the same nonempty set of static
+  binary names;
 - stable, unscoped `vMAJOR.MINOR.PATCH` tags;
 - static Darwin, Linux, and Windows binaries for `amd64` and `arm64`;
 - Linux `amd64` and `arm64` images at `ghcr.io/<owner>/<repository>`;

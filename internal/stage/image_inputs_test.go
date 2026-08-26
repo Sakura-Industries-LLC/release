@@ -62,6 +62,70 @@ func TestNewImageInputs(t *testing.T) {
 	assert.Equal(t, validImageInputs(), got)
 }
 
+func TestNewImageInputsSortsPlatformMajorThenName(t *testing.T) {
+	t.Parallel()
+
+	got, err := stage.NewImageInputs("go", stage.Report{
+		Binaries: []stage.Binary{
+			{
+				Arch:         "arm64",
+				Path:         "dist/server_linux_arm64/incus-server",
+				RelativePath: "server_linux_arm64/incus-server",
+				Name:         "incus-server",
+				Digest:       "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+			},
+			{
+				Arch:         "amd64",
+				Path:         "dist/server_linux_amd64/incus-server",
+				RelativePath: "server_linux_amd64/incus-server",
+				Name:         "incus-server",
+				Digest:       "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+			},
+			{
+				Arch:         "arm64",
+				Path:         "dist/agent_linux_arm64/incus-agent",
+				RelativePath: "agent_linux_arm64/incus-agent",
+				Name:         "incus-agent",
+				Digest:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			},
+			{
+				Arch:         "amd64",
+				Path:         "dist/agent_linux_amd64/incus-agent",
+				RelativePath: "agent_linux_amd64/incus-agent",
+				Name:         "incus-agent",
+				Digest:       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []stage.ImageInputBinary{
+		{
+			Platform: "linux/amd64",
+			Name:     "incus-agent",
+			Path:     "agent_linux_amd64/incus-agent",
+			Digest:   validImageDigest,
+		},
+		{
+			Platform: "linux/amd64",
+			Name:     "incus-server",
+			Path:     "server_linux_amd64/incus-server",
+			Digest:   "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+		},
+		{
+			Platform: "linux/arm64",
+			Name:     "incus-agent",
+			Path:     "agent_linux_arm64/incus-agent",
+			Digest:   otherImageDigest,
+		},
+		{
+			Platform: "linux/arm64",
+			Name:     "incus-server",
+			Path:     "server_linux_arm64/incus-server",
+			Digest:   "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		},
+	}, got.Binaries)
+}
+
 func TestDecodeImageInputsRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 
@@ -138,20 +202,20 @@ func TestImageInputsValidate(t *testing.T) {
 			wantErr: `oci-build-inputs schema "release.dev/oci-build-inputs/v0" is unsupported`,
 		},
 		{
-			name: "wrong binary count",
+			name: "empty binaries",
 			mutate: func(inputs stage.ImageInputs) stage.ImageInputs {
-				inputs.Binaries = inputs.Binaries[:1]
+				inputs.Binaries = nil
 				return inputs
 			},
-			wantErr: "oci-build-inputs has 1 binaries, want 2",
+			wantErr: "oci-build-inputs binaries is empty",
 		},
 		{
-			name: "duplicate platform",
+			name: "duplicate platform and name",
 			mutate: func(inputs stage.ImageInputs) stage.ImageInputs {
 				inputs.Binaries[1].Platform = "linux/amd64"
 				return inputs
 			},
-			wantErr: `oci-build-inputs binaries[1] duplicates platform "linux/amd64" from binaries[0]`,
+			wantErr: `oci-build-inputs binaries[1] duplicates platform "linux/amd64" name "release-cli" from binaries[0]`,
 		},
 		{
 			name: "unknown platform",
@@ -162,12 +226,12 @@ func TestImageInputsValidate(t *testing.T) {
 			wantErr: `oci-build-inputs binaries[1] platform "linux/s390x" is not linux/amd64 or linux/arm64`,
 		},
 		{
-			name: "mismatched names",
+			name: "asymmetric name set",
 			mutate: func(inputs stage.ImageInputs) stage.ImageInputs {
 				inputs.Binaries[1].Name = "other"
 				return inputs
 			},
-			wantErr: `oci-build-inputs binaries have different names "release-cli" and "other"`,
+			wantErr: `oci-build-inputs is missing linux/amd64 binary "other"`,
 		},
 		{
 			name: "absolute path",

@@ -6,6 +6,6 @@
 // [Composer]. [VerifyLayout] reads the on-disk layout byte for byte and checks
 // the index, manifests, configs, and layer binary against [ExpectedImage].
 // [VerifySBOMs] checks the architecture SPDX documents. [CanonicalDigests]
-// hashes work/sources/<arch>/application. The package does not import the
+// hashes work/sources/<arch>/<binary-name>. The package does not import the
 // staging projection; callers convert that wire type into [BuildInput].
 package image

@@ -19,7 +19,7 @@ import (
 
 const (
 	// VerifySchema is the versioned image-verify result identifier.
-	VerifySchema = "release.dev/image-verify/v1"
+	VerifySchema = "release.dev/image-verify/v2"
 	// bytesPerKiB is the number of bytes in a kibibyte.
 	bytesPerKiB = 1024
 	// kibibytesPerMiB is the number of kibibytes in a mebibyte.

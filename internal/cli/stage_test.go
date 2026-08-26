@@ -57,7 +57,7 @@ func TestStageJSONStillWritesImageInputs(t *testing.T) {
 	assert.Equal(t, 1, countJSONDocuments(stdout))
 	assert.Contains(t, stdout, `"command":"stage"`)
 	assert.Contains(t, stdout, `"ok":true`)
-	assert.NotContains(t, stdout, `"schema":"release.dev/oci-build-inputs/v1"`)
+	assert.NotContains(t, stdout, `"schema":"release.dev/oci-build-inputs/v2"`)
 
 	payload, err := os.ReadFile(filepath.Join(dist, stage.ImageInputsName))
 	require.NoError(t, err)
@@ -446,7 +446,7 @@ func expectedImageInputs() stage.ImageInputs {
 
 // expectedImageInputsJSON is the compact projection document written for [goodDist].
 func expectedImageInputsJSON() string {
-	return `{"schema":"release.dev/oci-build-inputs/v1","profile":"go","binaries":[` +
+	return `{"schema":"release.dev/oci-build-inputs/v2","profile":"go","binaries":[` +
 		`{"platform":"linux/amd64","name":"app","path":"app_linux_amd64/app","digest":"sha256:` + sha256Hex("amd64") + `"},` +
 		`{"platform":"linux/arm64","name":"app","path":"app_linux_arm64/app","digest":"sha256:` + sha256Hex("arm64") + `"}` +
 		"]}\n"

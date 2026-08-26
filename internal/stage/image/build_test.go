@@ -57,6 +57,60 @@ func TestBuildHappyPath(t *testing.T) {
 	assertStagedLayout(t, tc)
 }
 
+func TestBuildMultipleBinaries(t *testing.T) {
+	t.Parallel()
+
+	tc := newBuildTest(t)
+	agent := "incus-agent"
+	server := "incus-server"
+	serverAMD64 := tc.amd64
+	serverARM64 := tc.arm64
+
+	agentAMD64Path := "agent_linux_amd64/incus-agent"
+	agentARM64Path := "agent_linux_arm64/incus-agent"
+	serverAMD64Path := "server_linux_amd64/incus-server"
+	serverARM64Path := "server_linux_arm64/incus-server"
+	tc.input.Source = fstest.MapFS{
+		agentAMD64Path:  {Data: tc.amd64},
+		agentARM64Path:  {Data: tc.arm64},
+		serverAMD64Path: {Data: serverAMD64},
+		serverARM64Path: {Data: serverARM64},
+	}
+	tc.input.Binaries = []image.BuildBinary{
+		{Platform: image.PlatformAMD64, Name: agent, Path: agentAMD64Path, Digest: digestOf(t, tc.amd64)},
+		{Platform: image.PlatformAMD64, Name: server, Path: serverAMD64Path, Digest: digestOf(t, serverAMD64)},
+		{Platform: image.PlatformARM64, Name: server, Path: serverARM64Path, Digest: digestOf(t, serverARM64)},
+		{Platform: image.PlatformARM64, Name: agent, Path: agentARM64Path, Digest: digestOf(t, tc.arm64)},
+	}
+
+	wantAPK := wantAPKRequest(tc)
+	wantCompose := wantComposeRequest(tc)
+	expectSuccessfulAPK(t, tc, wantAPK)
+	expectSuccessfulCompose(t, tc, wantCompose)
+
+	got, err := image.Build(context.Background(), tc.input, tc.apk, tc.composer)
+	require.NoError(t, err)
+	assert.Equal(t, []string{agent, server}, got.Binaries)
+	assert.Equal(t, []image.BinaryDigest{
+		{Name: agent, Digest: digestOf(t, tc.amd64).String()},
+		{Name: server, Digest: digestOf(t, serverAMD64).String()},
+	}, got.Packages[0].BinaryDigests)
+	assertMode(t, tc.work, filepath.Join("sources", "x86_64", agent), 0o755)
+	assertMode(t, tc.work, filepath.Join("sources", "x86_64", server), 0o755)
+	assertMode(t, tc.work, filepath.Join("sources", "aarch64", agent), 0o755)
+	assertMode(t, tc.work, filepath.Join("sources", "aarch64", server), 0o755)
+
+	checksums, err := tc.output.ReadFile("canonical-binaries.sha256")
+	require.NoError(t, err)
+	assert.Equal(t,
+		hexDigest(t, tc.amd64)+"  sources/x86_64/"+agent+"\n"+
+			hexDigest(t, serverAMD64)+"  sources/x86_64/"+server+"\n"+
+			hexDigest(t, tc.arm64)+"  sources/aarch64/"+agent+"\n"+
+			hexDigest(t, serverARM64)+"  sources/aarch64/"+server+"\n",
+		string(checksums),
+	)
+}
+
 func TestBuildDigestMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -546,10 +600,10 @@ func TestBuildRejectsInvalidInput(t *testing.T) {
 			}(),
 			apk:     valid.apk,
 			compose: valid.composer,
-			wantErr: "need 2 binaries, got 1",
+			wantErr: `missing binary "release-cli" for linux/arm64`,
 		},
 		{
-			name: "mismatched names",
+			name: "asymmetric names",
 			ctx:  context.Background(),
 			input: func() image.BuildInput {
 				in := valid.input
@@ -560,7 +614,7 @@ func TestBuildRejectsInvalidInput(t *testing.T) {
 			}(),
 			apk:     valid.apk,
 			compose: valid.composer,
-			wantErr: "binary name",
+			wantErr: `missing binary "other" for linux/amd64`,
 		},
 		{
 			name: "escaping path",
@@ -720,22 +774,28 @@ func wantBuildResult(t *testing.T, tc *buildTest) image.BuildResult {
 	return image.BuildResult{
 		Schema:    image.BuildSchema,
 		Version:   testVersion,
-		Binary:    testBinaryName,
+		Binaries:  []string{testBinaryName},
 		Work:      tc.work.Name(),
 		Output:    tc.output.Name(),
 		BuildDate: testBuildDate,
 		Packages: []image.PackageResult{
 			{
-				Platform:     image.PlatformAMD64.String(),
-				Arch:         image.ArchX8664.String(),
-				Package:      path.Join("packages", "x86_64", testAMD64APK),
-				BinaryDigest: digestOf(t, tc.amd64).String(),
+				Platform: image.PlatformAMD64.String(),
+				Arch:     image.ArchX8664.String(),
+				Package:  path.Join("packages", "x86_64", testAMD64APK),
+				BinaryDigests: []image.BinaryDigest{{
+					Name:   testBinaryName,
+					Digest: digestOf(t, tc.amd64).String(),
+				}},
 			},
 			{
-				Platform:     image.PlatformARM64.String(),
-				Arch:         image.ArchAArch64.String(),
-				Package:      path.Join("packages", "aarch64", testARM64APK),
-				BinaryDigest: digestOf(t, tc.arm64).String(),
+				Platform: image.PlatformARM64.String(),
+				Arch:     image.ArchAArch64.String(),
+				Package:  path.Join("packages", "aarch64", testARM64APK),
+				BinaryDigests: []image.BinaryDigest{{
+					Name:   testBinaryName,
+					Digest: digestOf(t, tc.arm64).String(),
+				}},
 			},
 		},
 	}
@@ -793,8 +853,8 @@ func expectIdleComposer(tc *buildTest) {
 func assertStagedLayout(t *testing.T, tc *buildTest) {
 	t.Helper()
 
-	assertMode(t, tc.work, filepath.Join("sources", "x86_64", "application"), 0o755)
-	assertMode(t, tc.work, filepath.Join("sources", "aarch64", "application"), 0o755)
+	assertMode(t, tc.work, filepath.Join("sources", "x86_64", testBinaryName), 0o755)
+	assertMode(t, tc.work, filepath.Join("sources", "aarch64", testBinaryName), 0o755)
 	assertMode(t, tc.output, filepath.Join("configuration", "melange.yaml"), 0o644)
 	assertMode(t, tc.output, filepath.Join("configuration", "apko.yaml"), 0o644)
 	assertMode(t, tc.output, "apk-signing.rsa.pub", 0o644)
@@ -823,8 +883,8 @@ func assertStagedLayout(t *testing.T, tc *buildTest) {
 func wantChecksums(t *testing.T, tc *buildTest) string {
 	t.Helper()
 
-	return hexDigest(t, tc.amd64) + "  sources/x86_64/application\n" +
-		hexDigest(t, tc.arm64) + "  sources/aarch64/application\n"
+	return hexDigest(t, tc.amd64) + "  sources/x86_64/" + testBinaryName + "\n" +
+		hexDigest(t, tc.arm64) + "  sources/aarch64/" + testBinaryName + "\n"
 }
 
 // assertMode requires name under root to be a regular file with perm.

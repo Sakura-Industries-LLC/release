@@ -73,7 +73,7 @@ type Binary struct {
 	Path string
 	// RelativePath is Path with the leading dist root name stripped.
 	RelativePath string
-	// Name is the binary filename, identical across selected platforms.
+	// Name is the binary filename for this architecture.
 	Name string
 	// Digest is the SHA-256 digest of the staged binary.
 	Digest Digest

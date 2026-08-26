@@ -188,7 +188,7 @@ onboarding is a reviewed policy and public-key change rather than a grant of
 shared production credentials. A replay can converge from current object state,
 and an immutable conflict fails instead of silently replacing history.
 
-## One application per repository is a deliberate limit
+## One repository, one image, one unscoped tag stream
 
 The repository name determines the GHCR image name, the caller has one stable
 unscoped tag stream, the OCI layout has one entrypoint, and Release Please owns
@@ -196,10 +196,17 @@ one root manifest version. Supporting multiple applications would require
 component-aware tags, separate asset namespaces, multiple image names, and more
 complex ownership and recovery rules across every publisher.
 
-Keeping one application per repository avoids that cross-product. The tradeoff
-is more repositories and repeated organization setup. The repeated unit is
-operationally visible: each application has one App installation entry, one
-release-unit SHA, one draft, one image, and one set of optional destinations.
+One repository may stage several GoReleaser binaries into that single image
+when Linux `amd64` and `arm64` publish the same nonempty name set. The image
+entrypoint remains `/usr/bin/<name>` for one of those names. Multiple
+applications, image names, or unscoped tag streams still require separate
+repositories.
+
+Keeping one application identity per repository avoids that cross-product. The
+tradeoff is more repositories and repeated organization setup. The repeated
+unit is operationally visible: each application has one App installation
+entry, one release-unit SHA, one draft, one image, and one set of optional
+destinations.
 
 ## Unsupported cases preserve these boundaries
 

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -108,7 +110,6 @@ func newImageVerifyCommand(options Options) *cobra.Command {
 	}
 	cmd.Flags().String(flagOutput, "", "path to the authoritative artifact output root")
 	cmd.Flags().String(flagWork, "", "path to the scratch workspace")
-	cmd.Flags().String(flagBinary, "", "staged binary filename")
 	cmd.Flags().String(flagVersion, "", "stable MAJOR.MINOR.PATCH version")
 
 	return cmd
@@ -162,13 +163,17 @@ func runImageVerify(options Options) error {
 	}
 
 	arches := imageVerifyArches()
-	canonical, err := image.CanonicalDigests(work.FS(), arches)
+	names, err := listStagedBinaryNames(work.FS())
+	if err != nil {
+		return writeCommandResult(options, commandImageVerify, nil, err)
+	}
+	canonical, err := image.CanonicalDigests(work.FS(), arches, names)
 	if err != nil {
 		return writeCommandResult(options, commandImageVerify, nil, err)
 	}
 	want := image.ExpectedImage{
 		Version:   expected.Version,
-		Binary:    expected.Binary,
+		Binaries:  names,
 		Revision:  expected.Revision,
 		Source:    expected.Source,
 		Canonical: canonical,
@@ -208,8 +213,6 @@ type imageVerifyConfig struct {
 	Output string
 	// Work is the scratch workspace.
 	Work string
-	// Binary is the staged binary filename.
-	Binary string
 	// Version is the candidate stable release version.
 	Version rel.Version
 	// Revision is the expected org.opencontainers.image.revision value.
@@ -235,9 +238,6 @@ func resolveImageVerify(options Options) (imageVerifyConfig, error) {
 	if settings.Work == "" {
 		return imageVerifyConfig{}, fmt.Errorf("--%s is required", flagWork)
 	}
-	if err := validateImageVerifyBinary(settings.Binary); err != nil {
-		return imageVerifyConfig{}, err
-	}
 
 	version, err := resolvePlanVersion(settings, options.LookupEnv)
 	if err != nil {
@@ -259,7 +259,6 @@ func resolveImageVerify(options Options) (imageVerifyConfig, error) {
 	return imageVerifyConfig{
 		Output:   settings.Output,
 		Work:     settings.Work,
-		Binary:   settings.Binary,
 		Version:  version,
 		Revision: revision,
 		Source:   strings.TrimRight(serverURL, "/") + "/" + repository,
@@ -282,6 +281,51 @@ func validateImageVerifyBinary(name string) error {
 	}
 
 	return nil
+}
+
+// listStagedBinaryNames reads work/sources/<arch> and requires the same nonempty name set.
+func listStagedBinaryNames(work fs.FS) ([]string, error) {
+	arches := imageVerifyArches()
+	namesByArch := make(map[image.APKArch]map[string]struct{}, len(arches))
+	union := make(map[string]struct{})
+	for _, arch := range arches {
+		dir := path.Join("sources", arch.String())
+		entries, err := fs.ReadDir(work, dir)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", dir, err)
+		}
+		names := make(map[string]struct{})
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if err := validateImageVerifyBinary(name); err != nil {
+				return nil, fmt.Errorf("%s/%s: %w", dir, name, err)
+			}
+			names[name] = struct{}{}
+			union[name] = struct{}{}
+		}
+		namesByArch[arch] = names
+	}
+	if len(union) == 0 {
+		return nil, errors.New("staged binary name list is empty")
+	}
+	ordered := make([]string, 0, len(union))
+	for name := range union {
+		ordered = append(ordered, name)
+	}
+	slices.Sort(ordered)
+	for _, arch := range arches {
+		have := namesByArch[arch]
+		for _, name := range ordered {
+			if _, ok := have[name]; !ok {
+				return nil, fmt.Errorf("missing staged binary %q for %s", name, arch)
+			}
+		}
+	}
+
+	return ordered, nil
 }
 
 // imageVerifyArches returns the closed APK architecture set in canonical order.

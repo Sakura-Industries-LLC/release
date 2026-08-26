@@ -14,8 +14,8 @@ import (
 // Stage verifies a Go profile dist directory whose basename is root.
 //
 // It parses checksums.txt, streams every claimed payload through SHA-256,
-// requires a nonempty regular checksums.txt.sigstore.json, selects exactly
-// one linux/amd64 and one linux/arm64 Binary from artifacts.json, and
+// requires a nonempty regular checksums.txt.sigstore.json, selects every
+// linux/{amd64,arm64} Binary from artifacts.json, and
 // confirms each selected path is a confined regular executable. Each
 // selected binary is then streamed through SHA-256 so the report can
 // carry its digest and filename. A nil filesystem is rejected.

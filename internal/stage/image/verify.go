@@ -68,14 +68,15 @@ func checkedAnnotationKeys() []string {
 type ExpectedImage struct {
 	// Version is the candidate MAJOR.MINOR.PATCH release.
 	Version rel.Version
-	// Binary is the filename that must appear at /usr/bin/<binary> in each layer.
-	Binary string
+	// Binaries are the filenames that must appear at /usr/bin/<name> in each layer.
+	Binaries []string
 	// Revision is the expected org.opencontainers.image.revision, typically GITHUB_SHA.
 	Revision string
 	// Source is the expected org.opencontainers.image.source URL.
 	Source string
-	// Canonical maps each APK architecture to the digest of sources/<arch>/application.
-	Canonical map[APKArch]rel.Digest
+	// Canonical maps each APK architecture onto per-name digests of
+	// sources/<arch>/<name>.
+	Canonical map[APKArch]map[string]rel.Digest
 }
 
 // VerifiedImage is a layout that satisfied [VerifyLayout].
@@ -98,8 +99,8 @@ type verifiedPlatform struct {
 	config rel.Digest
 	// layer is the digest of the single layer blob.
 	layer rel.Digest
-	// binaryDigest is the streamed SHA-256 of usr/bin/<binary> in that layer.
-	binaryDigest rel.Digest
+	// binaryDigests are the streamed SHA-256 of each usr/bin/<name> in that layer.
+	binaryDigests []BinaryDigest
 }
 
 // VerifiedPlatform is one platform recorded by [VerifyResult].
@@ -114,8 +115,8 @@ type VerifiedPlatform struct {
 	Config string `json:"config"`
 	// Layer is the digest of the single layer blob.
 	Layer string `json:"layer"`
-	// BinaryDigest is the streamed SHA-256 of usr/bin/<binary> in that layer.
-	BinaryDigest string `json:"binary_digest"`
+	// BinaryDigests are the streamed SHA-256 of each usr/bin/<name> in that layer.
+	BinaryDigests []BinaryDigest `json:"binary_digests"`
 }
 
 // VerifyResult is the versioned document produced by [VerifiedImage.Result].
@@ -124,8 +125,8 @@ type VerifyResult struct {
 	Schema string `json:"schema"`
 	// Version is the candidate MAJOR.MINOR.PATCH version.
 	Version string `json:"version"`
-	// Binary is the staged binary filename shared by every platform.
-	Binary string `json:"binary"`
+	// Binaries are the staged binary filenames, sorted name-ascending.
+	Binaries []string `json:"binaries"`
 	// IndexDigest is SHA-256 over the exact index.json bytes.
 	IndexDigest string `json:"index_digest"`
 	// Platforms are the verified platforms in canonical order: linux/amd64, linux/arm64.
@@ -159,18 +160,18 @@ type sbomPackage struct {
 // revision, source, and version must equal expected. Each platform's
 // manifest annotations and config labels must equal those six index
 // values. Each config must have architecture equal to the descriptor
-// architecture, os linux, Entrypoint ["/usr/bin/<expected.Binary>"], and
-// User "65532". The single layer is then streamed, never buffered: gzip
-// when the media type ends in +gzip, otherwise plain tar. The entry
-// usr/bin/<expected.Binary> (a leading "./" is accepted) must be a regular
-// file whose Mode low twelve bits are exactly 0755, with uid/gid 0/0, and
-// a declared tar Size of at most
-// [maxBinaryBytes]; its content is hashed through SHA-256 with [io.CopyN]
+// architecture, os linux, Entrypoint ["/usr/bin/<name>"] for some expected
+// name, and User "65532". The single layer is then streamed once, never
+// buffered: gzip when the media type ends in +gzip, otherwise plain tar.
+// Every expected name must appear exactly once as usr/bin/<name> (a leading
+// "./" is accepted), a regular file whose Mode low twelve bits are exactly
+// 0755, with uid/gid 0/0, and a declared tar Size of at most
+// [maxBinaryBytes]; each payload is hashed through SHA-256 with [io.CopyN]
 // bounded by that Size and must equal expected.Canonical for that
-// platform's APK architecture. A missing, duplicate, non-regular,
-// oversized, or mismatched entry is a verification failure that names
-// the platform. Layer media types other than the OCI tar and tar+gzip
-// types are rejected.
+// platform's APK architecture and name. A missing, duplicate, leftover,
+// non-regular, oversized, or mismatched entry is a verification failure
+// that names the platform. Layer media types other than the OCI tar and
+// tar+gzip types are rejected.
 //
 // VerifyLayout does not inspect SBOMs and does not write image-digest.txt.
 // Call [VerifySBOMs] and the command layer for those.
@@ -212,19 +213,19 @@ func (image VerifiedImage) Result(expected ExpectedImage) VerifyResult {
 	platforms := make([]VerifiedPlatform, 0, len(image.platforms))
 	for _, platform := range image.platforms {
 		platforms = append(platforms, VerifiedPlatform{
-			Platform:     platform.platform.String(),
-			Arch:         platform.arch.String(),
-			Manifest:     platform.manifest.String(),
-			Config:       platform.config.String(),
-			Layer:        platform.layer.String(),
-			BinaryDigest: platform.binaryDigest.String(),
+			Platform:      platform.platform.String(),
+			Arch:          platform.arch.String(),
+			Manifest:      platform.manifest.String(),
+			Config:        platform.config.String(),
+			Layer:         platform.layer.String(),
+			BinaryDigests: platform.binaryDigests,
 		})
 	}
 
 	return VerifyResult{
 		Schema:      VerifySchema,
 		Version:     expected.Version.String(),
-		Binary:      expected.Binary,
+		Binaries:    slices.Clone(expected.Binaries),
 		IndexDigest: image.digest.String(),
 		Platforms:   platforms,
 	}
@@ -261,31 +262,41 @@ func VerifySBOMs(fsys fs.FS, version rel.Version, arches []APKArch) error {
 	return nil
 }
 
-// CanonicalDigests streams sources/<arch>/application through SHA-256.
+// CanonicalDigests streams sources/<arch>/<name> through SHA-256.
 //
-// work is a [fs.FS] rooted at the scratch workspace. Each architecture is
-// hashed independently and never buffered. A missing path or a non-regular
-// entry is an error that names the file. The returned map is keyed by the
-// supplied architectures in the order they were hashed.
-func CanonicalDigests(work fs.FS, arches []APKArch) (map[APKArch]rel.Digest, error) {
+// work is a [fs.FS] rooted at the scratch workspace. Each architecture and
+// name is hashed independently and never buffered. A missing path or a
+// non-regular entry is an error that names the file. The returned map is
+// keyed by architecture, then binary name.
+func CanonicalDigests(work fs.FS, arches []APKArch, names []string) (map[APKArch]map[string]rel.Digest, error) {
 	if work == nil {
 		return nil, errors.New("work filesystem is nil")
 	}
 	if len(arches) == 0 {
 		return nil, errors.New("canonical architecture list is empty")
 	}
+	if len(names) == 0 {
+		return nil, errors.New("canonical binary name list is empty")
+	}
 
-	digests := make(map[APKArch]rel.Digest, len(arches))
+	digests := make(map[APKArch]map[string]rel.Digest, len(arches))
 	for _, arch := range arches {
 		if arch == "" {
 			return nil, errors.New("canonical architecture is empty")
 		}
-		name := path.Join(sourcesDir, arch.String(), applicationFile)
-		digest, err := hashRegularFile(work, name)
-		if err != nil {
-			return nil, err
+		byName := make(map[string]rel.Digest, len(names))
+		for _, name := range names {
+			if err := validateBinaryName(name); err != nil {
+				return nil, err
+			}
+			pathName := path.Join(sourcesDir, arch.String(), name)
+			digest, err := hashRegularFile(work, pathName)
+			if err != nil {
+				return nil, err
+			}
+			byName[name] = digest
 		}
-		digests[arch] = digest
+		digests[arch] = byName
 	}
 
 	return digests, nil
@@ -293,11 +304,18 @@ func CanonicalDigests(work fs.FS, arches []APKArch) (map[APKArch]rel.Digest, err
 
 // validateExpected rejects incomplete [ExpectedImage] facts.
 func validateExpected(expected ExpectedImage) error {
-	if expected.Binary == "" {
-		return errors.New("binary name is empty")
+	if len(expected.Binaries) == 0 {
+		return errors.New("binary name list is empty")
 	}
-	if strings.ContainsAny(expected.Binary, `/\`) {
-		return fmt.Errorf("binary name %q contains a path separator", expected.Binary)
+	seen := make(map[string]struct{}, len(expected.Binaries))
+	for _, name := range expected.Binaries {
+		if err := validateBinaryName(name); err != nil {
+			return err
+		}
+		if _, exists := seen[name]; exists {
+			return fmt.Errorf("duplicate binary name %q", name)
+		}
+		seen[name] = struct{}{}
 	}
 	if expected.Revision == "" {
 		return errors.New("revision is empty")
@@ -359,7 +377,7 @@ func checkIndexAnnotations(annotations map[string]string, expected ExpectedImage
 	return nil
 }
 
-// verifyPlatform checks one platform's annotations, config, and layer binary.
+// verifyPlatform checks one platform's annotations, config, and layer binaries.
 func verifyPlatform(
 	fsys fs.FS,
 	platform LayoutPlatform,
@@ -387,18 +405,18 @@ func verifyPlatform(
 			platform.Platform.APKArch(),
 		)
 	}
-	binaryDigest, err := verifyLayerBinary(fsys, platform, expected.Binary, canonical)
+	binaryDigests, err := verifyLayerBinaries(fsys, platform, expected.Binaries, canonical)
 	if err != nil {
 		return verifiedPlatform{}, err
 	}
 
 	return verifiedPlatform{
-		platform:     platform.Platform,
-		arch:         platform.Platform.APKArch(),
-		manifest:     platform.Manifest,
-		config:       platform.Config,
-		layer:        platform.Layer,
-		binaryDigest: binaryDigest,
+		platform:      platform.Platform,
+		arch:          platform.Platform.APKArch(),
+		manifest:      platform.Manifest,
+		config:        platform.Config,
+		layer:         platform.Layer,
+		binaryDigests: binaryDigests,
 	}, nil
 }
 
@@ -458,14 +476,11 @@ func checkImageConfig(
 	if config.OS != "linux" {
 		return fmt.Errorf("%s config os is %q, want linux", platform.Platform, config.OS)
 	}
-
-	wantEntrypoint := []string{"/usr/bin/" + expected.Binary}
-	if !slices.Equal(config.Config.Entrypoint, wantEntrypoint) {
+	if !entrypointMatchesExpected(config.Config.Entrypoint, expected.Binaries) {
 		return fmt.Errorf(
-			"%s config Entrypoint is %q, want %q",
+			"%s config Entrypoint is %q, want [/usr/bin/<name>] for some expected name",
 			platform.Platform,
 			config.Config.Entrypoint,
-			wantEntrypoint,
 		)
 	}
 	if config.Config.User != expectedConfigUser {
@@ -480,78 +495,100 @@ func checkImageConfig(
 	return checkEqualAnnotations(platform.Platform, "config label", config.Config.Labels, indexAnnotations)
 }
 
-// verifyLayerBinary streams the layer and hashes usr/bin/<binary>.
-func verifyLayerBinary(
+// entrypointMatchesExpected reports whether entrypoint is ["/usr/bin/<name>"]
+// for some expected name.
+func entrypointMatchesExpected(entrypoint, names []string) bool {
+	if len(entrypoint) != 1 {
+		return false
+	}
+	for _, name := range names {
+		if entrypoint[0] == "/usr/bin/"+name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// verifyLayerBinaries streams the layer once and hashes every expected usr/bin/<name>.
+func verifyLayerBinaries(
 	fsys fs.FS,
 	platform LayoutPlatform,
-	binary string,
-	canonical rel.Digest,
-) (rel.Digest, error) {
+	names []string,
+	canonical map[string]rel.Digest,
+) ([]BinaryDigest, error) {
 	if err := checkLayerMedia(platform); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	name, err := blobPath(platform.Layer)
 	if err != nil {
-		return "", fmt.Errorf("%s layer: %w", platform.Platform, err)
+		return nil, fmt.Errorf("%s layer: %w", platform.Platform, err)
 	}
 	file, err := fsys.Open(name)
 	if err != nil {
-		return "", fmt.Errorf("%s open layer %s: %w", platform.Platform, name, err)
+		return nil, fmt.Errorf("%s open layer %s: %w", platform.Platform, name, err)
 	}
 	defer file.Close()
 	stream := io.Reader(file)
 	if strings.HasSuffix(platform.LayerMedia, gzipMediaSuffix) {
 		reader, gzipErr := gzip.NewReader(file)
 		if gzipErr != nil {
-			return "", fmt.Errorf("%s layer %s: gzip: %w", platform.Platform, name, gzipErr)
+			return nil, fmt.Errorf("%s layer %s: gzip: %w", platform.Platform, name, gzipErr)
 		}
 		defer reader.Close()
 		stream = reader
 	}
 
-	digest, err := hashBinaryEntry(stream, binary)
+	got, err := hashBinaryEntries(stream, names)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", platform.Platform, err)
-	}
-	if digest != canonical {
-		return "", fmt.Errorf(
-			"%s image binary has digest %s, expected %s",
-			platform.Platform,
-			digest,
-			canonical,
-		)
+		return nil, fmt.Errorf("%s: %w", platform.Platform, err)
 	}
 
-	return digest, nil
+	out := make([]BinaryDigest, 0, len(names))
+	ordered := slices.Clone(names)
+	slices.Sort(ordered)
+	for _, binaryName := range ordered {
+		digest, ok := got[binaryName]
+		if !ok {
+			return nil, fmt.Errorf("%s: layer is missing usr/bin/%s", platform.Platform, binaryName)
+		}
+		want, exists := canonical[binaryName]
+		if !exists {
+			return nil, fmt.Errorf(
+				"%s is missing a canonical digest for %q",
+				platform.Platform,
+				binaryName,
+			)
+		}
+		if digest != want {
+			return nil, fmt.Errorf(
+				"%s image binary %q has digest %s, expected %s",
+				platform.Platform,
+				binaryName,
+				digest,
+				want,
+			)
+		}
+		out = append(out, BinaryDigest{Name: binaryName, Digest: digest.String()})
+	}
+
+	return out, nil
 }
 
-// checkLayerMedia rejects a layer media type that is neither tar nor tar+gzip.
-func checkLayerMedia(platform LayoutPlatform) error {
-	switch platform.LayerMedia {
-	case layerMediaTar, layerMediaGzip:
-		return nil
-	default:
-		return fmt.Errorf(
-			"%s layer media type is %q, want %q or %q",
-			platform.Platform,
-			platform.LayerMedia,
-			layerMediaTar,
-			layerMediaGzip,
-		)
-	}
-}
-
-// hashBinaryEntry finds usr/bin/<binary> once and hashes its content.
+// hashBinaryEntries finds each expected usr/bin/<name> once and hashes its content.
 //
 // The payload is copied with [io.CopyN] using the tar header Size, which
 // must be between 0 and [maxBinaryBytes] inclusive. The layer stream is
-// never buffered.
-func hashBinaryEntry(stream io.Reader, binary string) (rel.Digest, error) {
-	want := path.Join("usr/bin", binary)
+// never buffered. Duplicate expected entries fail. Expected names absent
+// from the layer fail as leftovers.
+func hashBinaryEntries(stream io.Reader, names []string) (map[string]rel.Digest, error) {
+	want := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		want[name] = struct{}{}
+	}
 	reader := tar.NewReader(stream)
-	found := false
-	var digest rel.Digest
+	found := make(map[string]rel.Digest, len(names))
 
 	for {
 		header, err := reader.Next()
@@ -559,26 +596,32 @@ func hashBinaryEntry(stream io.Reader, binary string) (rel.Digest, error) {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("read layer: %w", err)
+			return nil, fmt.Errorf("read layer: %w", err)
 		}
-		if !isBinaryEntry(header.Name, want) {
+		entryName, ok := layerBinaryName(header.Name)
+		if !ok {
 			continue
 		}
-		if found {
-			return "", fmt.Errorf("layer lists %s more than once", want)
+		if _, expected := want[entryName]; !expected {
+			continue
 		}
-		hashed, hashErr := hashMatchedEntry(reader, header, want)
+		wantPath := path.Join("usr/bin", entryName)
+		if _, exists := found[entryName]; exists {
+			return nil, fmt.Errorf("layer lists %s more than once", wantPath)
+		}
+		hashed, hashErr := hashMatchedEntry(reader, header, wantPath)
 		if hashErr != nil {
-			return "", hashErr
+			return nil, hashErr
 		}
-		digest = hashed
-		found = true
+		found[entryName] = hashed
 	}
-	if !found {
-		return "", fmt.Errorf("layer is missing %s", want)
+	for _, name := range names {
+		if _, ok := found[name]; !ok {
+			return nil, fmt.Errorf("layer is missing %s", path.Join("usr/bin", name))
+		}
 	}
 
-	return digest, nil
+	return found, nil
 }
 
 // hashMatchedEntry validates header and streams the regular-file payload.
@@ -630,11 +673,35 @@ func checkBinaryHeader(header *tar.Header, want string) error {
 	return nil
 }
 
-// isBinaryEntry reports whether name is usr/bin/<binary> with an optional "./".
-func isBinaryEntry(name, want string) bool {
-	cleaned := strings.TrimPrefix(name, "./")
+// checkLayerMedia rejects a layer media type that is neither tar nor tar+gzip.
+func checkLayerMedia(platform LayoutPlatform) error {
+	switch platform.LayerMedia {
+	case layerMediaTar, layerMediaGzip:
+		return nil
+	default:
+		return fmt.Errorf(
+			"%s layer media type is %q, want %q or %q",
+			platform.Platform,
+			platform.LayerMedia,
+			layerMediaTar,
+			layerMediaGzip,
+		)
+	}
+}
 
-	return cleaned == want
+// layerBinaryName reports the filename when name is usr/bin/<file> with an optional "./".
+func layerBinaryName(name string) (string, bool) {
+	cleaned := strings.TrimPrefix(name, "./")
+	const prefix = "usr/bin/"
+	if !strings.HasPrefix(cleaned, prefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(cleaned, prefix)
+	if rest == "" || strings.ContainsAny(rest, `/\`) {
+		return "", false
+	}
+
+	return rest, true
 }
 
 // tarTypeName is a short label for a tar Typeflag used in error text.
