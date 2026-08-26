@@ -216,10 +216,22 @@ fails before a publisher runs.
 
 Before setting `sign-native-packages: true`, add:
 
-- `RPM_SIGNING_KEY`: base64-encoded OpenPGP private key;
+- `RPM_SIGNING_KEY`: base64-encoded armored OpenPGP private key;
 - `RPM_SIGNING_PASSPHRASE`;
 - `APK_SIGNING_KEY`: base64-encoded RSA private key; and
 - `APK_SIGNING_PASSPHRASE`.
+
+The APK key must be a traditional PKCS#1 PEM (`BEGIN RSA PRIVATE KEY`),
+optionally encrypted with legacy PEM encryption (`Proc-Type: 4,ENCRYPTED`).
+nFPM rejects a PKCS#8 `BEGIN ENCRYPTED PRIVATE KEY` document, which is what
+`openssl genrsa -aes256` emits on OpenSSL 3. Generate a compatible encrypted
+key with:
+
+```sh
+openssl genrsa -out apk-signing-plain.rsa 4096
+openssl rsa -in apk-signing-plain.rsa -aes256 -traditional \
+  -passout file:passphrase.txt -out apk-signing.rsa
+```
 
 Map all four secrets in the `release-assets` call. Keep the `.goreleaser.yaml`
 RPM and APK `key_file` expressions supplied by the example. The workflow writes
