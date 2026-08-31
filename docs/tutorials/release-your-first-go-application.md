@@ -14,8 +14,8 @@ for a disposable repository. You need:
 
 - an adopter-owned GitHub App installed on `acme/widget`;
 - the App client ID and private key available to that repository as Actions
-  variable `MEIGMA_RELEASE_APP_CLIENT_ID` and secret
-  `MEIGMA_RELEASE_APP_PRIVATE_KEY`;
+  variable `SAKURA_RELEASE_APP_CLIENT_ID` and secret
+  `SAKURA_RELEASE_APP_PRIVATE_KEY`;
 - any `v*` tag rules configured to let the App create tags and to let an
   authorized operator move this unpublished rehearsal tag;
 - GitHub Actions and GitHub Packages enabled;
@@ -52,14 +52,14 @@ cp "$RELEASE_EXAMPLE/go.mod" .
 cp -R "$RELEASE_EXAMPLE/cmd/example" cmd/widget
 ```
 
-Select the latest published `meigma/release` release and resolve its tag to one
+Select the latest published `Sakura-Industries-LLC/release` release and resolve its tag to one
 full commit SHA:
 
 ```bash
-export RELEASE_TAG="$(gh api repos/meigma/release/releases/latest --jq .tag_name)"
-export RELEASE_REVISION="$(gh api "repos/meigma/release/commits/$RELEASE_TAG" --jq .sha)"
+export RELEASE_TAG="$(gh api repos/Sakura-Industries-LLC/release/releases/latest --jq .tag_name)"
+export RELEASE_REVISION="$(gh api "repos/Sakura-Industries-LLC/release/commits/$RELEASE_TAG" --jq .sha)"
 [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
-test "$(gh api "repos/meigma/release/commits/$RELEASE_REVISION" --jq .sha)" = \
+test "$(gh api "repos/Sakura-Industries-LLC/release/commits/$RELEASE_REVISION" --jq .sha)" = \
   "$RELEASE_REVISION"
 printf 'Release unit: %s at %s\n' "$RELEASE_TAG" "$RELEASE_REVISION"
 ```
@@ -308,12 +308,12 @@ cd published-assets
 sha256sum --check checksums.txt
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@$RELEASE_REVISION" \
+  --certificate-identity "https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@$RELEASE_REVISION" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 gh attestation verify widget_0.1.0_linux_amd64.tar.gz \
   --repo "$REPOSITORY" \
-  --signer-workflow meigma/release/.github/workflows/publish-github-release.yml \
+  --signer-workflow Sakura-Industries-LLC/release/.github/workflows/publish-github-release.yml \
   --signer-digest "$RELEASE_REVISION" \
   --source-ref "refs/tags/$TAG" \
   --deny-self-hosted-runners
@@ -331,13 +331,13 @@ gh auth token | oras login ghcr.io \
   --password-stdin
 export DIGEST="$(oras resolve "$IMAGE:${TAG#v}")"
 cosign verify \
-  --certificate-identity "https://github.com/meigma/release/.github/workflows/publish-oci-image.yml@$RELEASE_REVISION" \
+  --certificate-identity "https://github.com/Sakura-Industries-LLC/release/.github/workflows/publish-oci-image.yml@$RELEASE_REVISION" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   "$IMAGE@$DIGEST"
 gh attestation verify "oci://$IMAGE@$DIGEST" \
   --repo "$REPOSITORY" \
   --bundle-from-oci \
-  --signer-workflow meigma/release/.github/workflows/publish-oci-image.yml \
+  --signer-workflow Sakura-Industries-LLC/release/.github/workflows/publish-oci-image.yml \
   --signer-digest "$RELEASE_REVISION" \
   --source-ref "refs/tags/$TAG" \
   --deny-self-hosted-runners

@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghact"
-	ghactmocks "github.com/meigma/release/internal/adapter/ghact/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghact"
+	ghactmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghact/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -41,7 +41,7 @@ func TestVerifyHandoffMissingRunIsUsage(t *testing.T) {
 	t.Parallel()
 
 	_, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_TOKEN":      handoffToken,
 	}, []string{"verify", "handoff", "--artifact-id", "1", "--digest", handoffDigest}, unusedMeta(t))
 	require.Error(t, err)
@@ -66,7 +66,7 @@ func TestVerifyHandoffMissingFlagsIsUsage(t *testing.T) {
 	t.Parallel()
 
 	_, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 	}, []string{"verify", "handoff"}, unusedMeta(t))
 	require.Error(t, err)
@@ -97,7 +97,7 @@ func TestVerifyHandoffMissingTokenIsUsage(t *testing.T) {
 		Err: stderr,
 		LookupEnv: func(key string) (string, bool) {
 			values := map[string]string{
-				"GITHUB_REPOSITORY": "meigma/release",
+				"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 				"GITHUB_RUN_ID":     "100",
 			}
 			value, ok := values[key]
@@ -123,7 +123,7 @@ func TestVerifyHandoffJSONSuccess(t *testing.T) {
 	meta := matchingMeta(t, 11, 100, expires)
 
 	stdout, stderr, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 		"GITHUB_TOKEN":      handoffToken,
 	}, []string{"verify", "handoff", "--artifact-id", "11", "--digest", handoffDigest, "--json"}, meta)
@@ -153,7 +153,7 @@ func TestVerifyHandoffSilentSuccessWithoutJSON(t *testing.T) {
 
 	meta := matchingMeta(t, 11, 100, time.Time{})
 	stdout, stderr, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 		"GH_TOKEN":          handoffToken,
 	}, []string{"verify", "handoff", "--artifact-id", "11", "--digest", handoffDigest}, meta)
@@ -167,7 +167,7 @@ func TestVerifyHandoffMismatchIsExitOne(t *testing.T) {
 
 	meta := matchingMeta(t, 11, 200, time.Time{})
 	stdout, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 		"GITHUB_TOKEN":      handoffToken,
 	}, []string{"verify", "handoff", "--artifact-id", "11", "--digest", handoffDigest, "--json"}, meta)
@@ -198,7 +198,7 @@ func TestVerifyHandoffFlagOverridesEnv(t *testing.T) {
 		Once()
 
 	_, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY":   "meigma/release",
+		"GITHUB_REPOSITORY":   "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":       "100",
 		"GITHUB_TOKEN":        handoffToken,
 		"RELEASE_ARTIFACT_ID": "999",
@@ -220,7 +220,7 @@ func TestVerifyHandoffAbsentAPIURLKeepsDefault(t *testing.T) {
 		Err: stderr,
 		LookupEnv: func(key string) (string, bool) {
 			values := map[string]string{
-				"GITHUB_REPOSITORY": "meigma/release",
+				"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 				"GITHUB_RUN_ID":     "100",
 				"GITHUB_TOKEN":      handoffToken,
 			}
@@ -249,7 +249,7 @@ func TestVerifyHandoffPublicAPIURLKeepsDefault(t *testing.T) {
 		Err: &strings.Builder{},
 		LookupEnv: func(key string) (string, bool) {
 			values := map[string]string{
-				"GITHUB_REPOSITORY": "meigma/release",
+				"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 				"GITHUB_RUN_ID":     "100",
 				"GITHUB_TOKEN":      handoffToken,
 				"GITHUB_API_URL":    "https://api.github.com",
@@ -276,7 +276,7 @@ func TestVerifyHandoffCustomAPIURLIsUsedVerbatim(t *testing.T) {
 		Err: &strings.Builder{},
 		LookupEnv: func(key string) (string, bool) {
 			values := map[string]string{
-				"GITHUB_REPOSITORY": "meigma/release",
+				"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 				"GITHUB_RUN_ID":     "100",
 				"GITHUB_TOKEN":      handoffToken,
 				"GITHUB_API_URL":    "https://github.example.internal/api/v3",
@@ -300,7 +300,7 @@ func TestVerifyHandoffMalformedAPIURLIsUsage(t *testing.T) {
 	t.Parallel()
 
 	_, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 		"GITHUB_TOKEN":      handoffToken,
 		"GITHUB_API_URL":    "not-a-url",
@@ -315,7 +315,7 @@ func TestVerifyHandoffEmptyAPIURLIsUsage(t *testing.T) {
 	t.Parallel()
 
 	_, _, err := executeHandoff(t, map[string]string{
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_RUN_ID":     "100",
 		"GITHUB_TOKEN":      handoffToken,
 		"GITHUB_API_URL":    "   ",
@@ -331,7 +331,7 @@ func TestVerifyHandoffCustomAPIURLHitsStub(t *testing.T) {
 	hit := false
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hit = true
-		assert.Equal(t, "/api/v3/repos/meigma/release/actions/artifacts/11", request.URL.Path)
+		assert.Equal(t, "/api/v3/repos/Sakura-Industries-LLC/release/actions/artifacts/11", request.URL.Path)
 		assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"id":           11,
 			"name":         "release-assets",
@@ -349,7 +349,7 @@ func TestVerifyHandoffCustomAPIURLHitsStub(t *testing.T) {
 		Err: stderr,
 		LookupEnv: func(key string) (string, bool) {
 			values := map[string]string{
-				"GITHUB_REPOSITORY": "meigma/release",
+				"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 				"GITHUB_RUN_ID":     "100",
 				"GITHUB_TOKEN":      handoffToken,
 				"GITHUB_API_URL":    server.URL,

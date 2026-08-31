@@ -9,8 +9,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 // NewMockReleaseReader creates a new instance of MockReleaseReader. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

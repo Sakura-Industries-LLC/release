@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghtap/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghtap/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 const (
@@ -183,13 +183,13 @@ func newHomebrewCLI(t *testing.T) *homebrewCLI {
 	require.NoError(t, os.MkdirAll(directory, 0o755))
 	content := []byte("cask \"release-cli\" do\n  version \"1.2.3\"\nend\n")
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "release-cli.rb"), content, 0o600))
-	tap, err := pubbrew.ParseRepository("meigma/homebrew-tap")
+	tap, err := pubbrew.ParseRepository("Sakura-Industries-LLC/homebrew-tap")
 	require.NoError(t, err)
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
 	environment := map[string]string{
 		"RELEASE_APP_TOKEN": homebrewToken,
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_REF_NAME":   "v1.2.3",
 		"GITHUB_SHA":        homebrewCommit,
 	}

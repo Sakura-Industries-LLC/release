@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	ghactmocks "github.com/meigma/release/internal/adapter/ghact/mocks"
-	"github.com/meigma/release/internal/stage/pubgh"
+	ghactmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghact/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -140,11 +140,11 @@ func TestParseRepository(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{name: "owner name pair", input: "meigma/release", want: "meigma/release"},
+		{name: "owner name pair", input: "Sakura-Industries-LLC/release", want: "Sakura-Industries-LLC/release"},
 		{name: "empty", input: "", wantErr: "repository is empty"},
-		{name: "missing name", input: "meigma/", wantErr: "not an owner/name pair"},
+		{name: "missing name", input: "acme/", wantErr: "not an owner/name pair"},
 		{name: "missing owner", input: "/release", wantErr: "not an owner/name pair"},
-		{name: "extra slash", input: "meigma/release/extra", wantErr: "not an owner/name pair"},
+		{name: "extra slash", input: "Sakura-Industries-LLC/release/extra", wantErr: "not an owner/name pair"},
 		{name: "no slash", input: "release", wantErr: "not an owner/name pair"},
 	}
 
@@ -343,7 +343,7 @@ func TestNewHandoffRejectsZeroValues(t *testing.T) {
 func mustHandoff(t *testing.T, run int64) pubgh.Handoff {
 	t.Helper()
 
-	repo, err := pubgh.ParseRepository("meigma/release")
+	repo, err := pubgh.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 	runID, err := pubgh.RunIDFromInt(run)
 	require.NoError(t, err)

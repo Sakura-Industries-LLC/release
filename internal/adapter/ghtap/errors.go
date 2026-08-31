@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/go-github/v82/github"
 
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 // errNotFound marks a repository resource that GitHub does not expose.

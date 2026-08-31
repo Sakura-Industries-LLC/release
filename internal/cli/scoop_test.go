@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghbucket/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubscoop"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghbucket/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
 
 const (
@@ -61,7 +61,7 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 				"publish",
 				"scoop",
 				"--bucket",
-				"meigma/scoop-bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
 				"--manifest",
 				"release-cli",
 			},
@@ -74,7 +74,15 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 		},
 		{
 			name: "missing manifest",
-			args: []string{"--json", "publish", "scoop", "--dist", "", "--bucket", "meigma/scoop-bucket"},
+			args: []string{
+				"--json",
+				"publish",
+				"scoop",
+				"--dist",
+				"",
+				"--bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
+			},
 			want: "--manifest is required",
 		},
 		{
@@ -89,7 +97,7 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 				"--dist",
 				"",
 				"--bucket",
-				"meigma/scoop-bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
 				"--manifest",
 				"release-cli",
 			},
@@ -107,7 +115,7 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 				"--dist",
 				"",
 				"--bucket",
-				"meigma/scoop-bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
 				"--manifest",
 				"release-cli",
 			},
@@ -125,7 +133,7 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 				"--dist",
 				"",
 				"--bucket",
-				"meigma/scoop-bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
 				"--manifest",
 				"release-cli",
 			},
@@ -143,7 +151,7 @@ func TestPublishScoopConfigErrorsAreUsage(t *testing.T) {
 				"--dist",
 				"",
 				"--bucket",
-				"meigma/scoop-bucket",
+				"Sakura-Industries-LLC/scoop-bucket",
 				"--manifest",
 				"release-cli",
 			},
@@ -469,13 +477,13 @@ func newScoopCLI(t *testing.T) *scoopCLI {
 	require.NoError(t, os.MkdirAll(directory, 0o755))
 	content := []byte("{\n  \"version\": \"1.2.3\",\n  \"url\": \"https://example.invalid/release-cli.zip\"\n}\n")
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "release-cli.json"), content, 0o600))
-	bucket, err := pubscoop.ParseRepository("meigma/scoop-bucket")
+	bucket, err := pubscoop.ParseRepository("Sakura-Industries-LLC/scoop-bucket")
 	require.NoError(t, err)
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
 	environment := map[string]string{
 		"RELEASE_APP_TOKEN": scoopToken,
-		"GITHUB_REPOSITORY": "meigma/release",
+		"GITHUB_REPOSITORY": "Sakura-Industries-LLC/release",
 		"GITHUB_REF_NAME":   "v1.2.3",
 		"GITHUB_SHA":        scoopCommit,
 	}

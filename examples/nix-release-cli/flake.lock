@@ -23,16 +23,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787371867,
-        "narHash": "sha256-E4TvKtirTwWJUMFCT9CJImsS/TMkuy0acciRgkTDQw4=",
-        "owner": "meigma",
+        "lastModified": 1787722276,
+        "narHash": "sha256-Th2hO9xvmITOhg/mM+NgRg89H5Vs8q7Sn++GRT0pBt8=",
+        "owner": "Sakura-Industries-LLC",
         "repo": "release",
-        "rev": "583937edadfbae183e49f16df46b98e0b36807ba",
+        "rev": "09d6be776ca4a9d533101bae1fbc790fb42050a8",
         "type": "github"
       },
       "original": {
-        "owner": "meigma",
-        "ref": "v0.1.16",
+        "owner": "Sakura-Industries-LLC",
+        "ref": "v0.1.18",
         "repo": "release",
         "type": "github"
       }

@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghbucket/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubscoop"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghbucket/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	// testBlobSHA is the current bucket manifest blob.
 	testBlobSHA pubscoop.BlobSHA = "3333333333333333333333333333333333333333"
 	// testPullURL is the publication review URL.
-	testPullURL = "https://github.com/meigma/scoop-bucket/pull/7"
+	testPullURL = "https://github.com/Sakura-Industries-LLC/scoop-bucket/pull/7"
 )
 
 // TestPublishCreatesOnceAndRerunsOpen proves the first publication mutates the
@@ -81,7 +81,7 @@ func TestPublishCreatesOnceAndRerunsOpen(t *testing.T) {
 	created, err := pubscoop.Publish(context.Background(), test.input, test.reader, test.writer)
 	require.NoError(t, err)
 	assert.Equal(t, pubscoop.StateCreated, created.State)
-	assert.Equal(t, "meigma/scoop-bucket", created.Bucket)
+	assert.Equal(t, "Sakura-Industries-LLC/scoop-bucket", created.Bucket)
 	assert.Equal(t, "release-cli", created.Manifest)
 	assert.Equal(t, "release/release-cli/v1.2.3", created.Branch)
 	assert.Equal(t, testPullURL, created.PullRequestURL)
@@ -508,9 +508,9 @@ func newPublishTest(t *testing.T) *publishTest {
 
 	version, err := rel.ParseVersion("1.2.3")
 	require.NoError(t, err)
-	bucket, err := pubscoop.ParseRepository("meigma/scoop-bucket")
+	bucket, err := pubscoop.ParseRepository("Sakura-Industries-LLC/scoop-bucket")
 	require.NoError(t, err)
-	source, err := pubscoop.ParseRepository("meigma/release")
+	source, err := pubscoop.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 	name, err := pubscoop.ParseManifestName("release-cli")
 	require.NoError(t, err)

@@ -1,4 +1,4 @@
-module github.com/meigma/release
+module github.com/Sakura-Industries-LLC/release
 
 go 1.26.6
 

@@ -1,6 +1,6 @@
 # Required release app settings:
-# - vars.MEIGMA_RELEASE_APP_CLIENT_ID
-# - secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY
+# - vars.SAKURA_RELEASE_APP_CLIENT_ID
+# - secrets.SAKURA_RELEASE_APP_PRIVATE_KEY
 # - protected-tag ruleset bypass for the release app, if protected v* tags are enabled.
 
 name: Release Please
@@ -27,8 +27,8 @@ jobs:
         id: release-app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.SAKURA_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SAKURA_RELEASE_APP_PRIVATE_KEY }}
 
       - name: Run Release Please
         id: release

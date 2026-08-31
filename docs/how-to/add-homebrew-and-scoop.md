@@ -47,7 +47,7 @@ README.md
 ```
 
 It creates a cask-only tap and does not create `Formula/`. The generated
-validation workflow pins `meigma/release` to the full source commit stamped into
+validation workflow pins `Sakura-Industries-LLC/release` to the full source commit stamped into
 the installed CLI. A nonempty output directory is rejected rather than merged.
 
 Create the public repository:
@@ -61,7 +61,7 @@ git branch -M main
 gh repo create "$TAP_REPOSITORY" --public --source=. --remote=origin --push
 ```
 
-Enable Actions for the tap and allow the pinned `meigma/release` validation
+Enable Actions for the tap and allow the pinned `Sakura-Industries-LLC/release` validation
 workflow and its pinned actions.
 
 ### Generate the cask in the producer
@@ -103,17 +103,17 @@ Customize the maintained `homebrew-publish` job:
       actions: read
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/publish-homebrew.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    uses: Sakura-Industries-LLC/release/.github/workflows/publish-homebrew.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+      checksum-signing-workflow-ref: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
       tap: acme/homebrew-tools
       cask: widget
-      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      release-app-client-id: ${{ vars.SAKURA_RELEASE_APP_CLIENT_ID }}
       publish-homebrew: false
     secrets:
-      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+      release-app-private-key: ${{ secrets.SAKURA_RELEASE_APP_PRIVATE_KEY }}
 ```
 
 Replace both revision placeholders with the same full SHA used everywhere else
@@ -204,7 +204,7 @@ git branch -M main
 gh repo create "$BUCKET_REPOSITORY" --public --source=. --remote=origin --push
 ```
 
-Enable Actions and allow the generated workflow's pinned `meigma/release`
+Enable Actions and allow the generated workflow's pinned `Sakura-Industries-LLC/release`
 validation workflow and actions.
 
 ### Generate the manifest in the producer
@@ -241,17 +241,17 @@ Customize the maintained publisher job:
       actions: read
       attestations: read
       contents: read
-    uses: meigma/release/.github/workflows/publish-scoop.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    uses: Sakura-Industries-LLC/release/.github/workflows/publish-scoop.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
       artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
-      checksum-signing-workflow-ref: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+      checksum-signing-workflow-ref: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
       bucket: acme/scoop-tools
       manifest: widget
-      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      release-app-client-id: ${{ vars.SAKURA_RELEASE_APP_CLIENT_ID }}
       publish-scoop: false
     secrets:
-      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+      release-app-private-key: ${{ secrets.SAKURA_RELEASE_APP_PRIVATE_KEY }}
 ```
 
 Replace both placeholders with the producer's one release-unit SHA. Leave

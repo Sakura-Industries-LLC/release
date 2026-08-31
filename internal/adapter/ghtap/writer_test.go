@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 // TestCreateBranchUsesNonForceRefCreation proves branch publication cannot
@@ -21,7 +21,7 @@ func TestCreateBranchUsesNonForceRefCreation(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodPost, request.Method)
-		assert.Equal(t, "/repos/meigma/homebrew-tap/git/refs", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/homebrew-tap/git/refs", request.URL.Path)
 		var payload map[string]any
 		if !assert.NoError(t, json.NewDecoder(request.Body).Decode(&payload)) {
 			return
@@ -54,7 +54,7 @@ func TestPutFileUpdatesOnlyExpectedCask(t *testing.T) {
 	content := []byte("cask \"release-cli\" do\n  version \"1.2.3\"\nend\n")
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodPut, request.Method)
-		assert.Equal(t, "/repos/meigma/homebrew-tap/contents/Casks/release-cli.rb", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/homebrew-tap/contents/Casks/release-cli.rb", request.URL.Path)
 		var payload struct {
 			// Message is the commit subject.
 			Message string `json:"message"`
@@ -98,7 +98,7 @@ func TestCreatePullRequestLeavesMergeManual(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodPost, request.Method)
-		assert.Equal(t, "/repos/meigma/homebrew-tap/pulls", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/homebrew-tap/pulls", request.URL.Path)
 		var payload map[string]any
 		if !assert.NoError(t, json.NewDecoder(request.Body).Decode(&payload)) {
 			return
@@ -123,7 +123,7 @@ func TestCreatePullRequestLeavesMergeManual(t *testing.T) {
 			Base:  "main",
 			Head:  "release/release-cli/v1.2.3",
 			Title: "chore(cask): update release-cli to 1.2.3",
-			Body:  "Source release: https://github.com/meigma/release/releases/tag/v1.2.3",
+			Body:  "Source release: https://github.com/Sakura-Industries-LLC/release/releases/tag/v1.2.3",
 		},
 	)
 	require.NoError(t, err)

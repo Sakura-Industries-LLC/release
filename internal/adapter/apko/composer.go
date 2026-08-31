@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/meigma/release/internal/execx"
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/execx"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (

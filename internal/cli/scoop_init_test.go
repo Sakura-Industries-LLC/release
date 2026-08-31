@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
 )
 
 // scoopScaffoldPaths is the stable lexical file order returned to automation.
@@ -70,7 +70,7 @@ jobs:
   manifests:
     permissions:
       contents: read
-    uses: meigma/release/.github/workflows/scoop-bucket-ci.yml@0123456789abcdef0123456789abcdef01234567
+    uses: Sakura-Industries-LLC/release/.github/workflows/scoop-bucket-ci.yml@0123456789abcdef0123456789abcdef01234567
 `, readTextFile(t, filepath.Join(firstOutput, ".github", "workflows", "manifests.yml")))
 	assert.Equal(t, `# acme/scoop-tools
 

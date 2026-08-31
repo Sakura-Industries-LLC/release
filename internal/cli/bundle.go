@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (

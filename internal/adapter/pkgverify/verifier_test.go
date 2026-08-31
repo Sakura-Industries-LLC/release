@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const fakeVerifierScript = `#!/bin/sh
@@ -91,7 +91,7 @@ func TestVerifyAPKUsesSignatureDeclaredKeyBasename(t *testing.T) {
 
 	fake, record, environ := verifierFake(t)
 	packagePath := filepath.Join(t.TempDir(), "release-cli.apk")
-	writeAPKSignature(t, packagePath, "meigma-release-001.rsa.pub")
+	writeAPKSignature(t, packagePath, "sakura-release-001.rsa.pub")
 	request := pkgrepo.VerificationRequest{
 		Format:    pkgrepo.FormatAPK,
 		Package:   packagePath,
@@ -112,7 +112,7 @@ func TestVerifyAPKUsesSignatureDeclaredKeyBasename(t *testing.T) {
 		"-v",
 		request.Package + ":/package.apk:ro",
 		"-v",
-		request.PublicKey + ":/keys/meigma-release-001.rsa.pub:ro",
+		request.PublicKey + ":/keys/sakura-release-001.rsa.pub:ro",
 		"alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce",
 		"apk",
 		"verify",

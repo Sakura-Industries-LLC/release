@@ -6,6 +6,22 @@ GitHub Release assets, a multi-architecture image in GHCR, Homebrew and Scoop
 update pull requests, and signed DEB, RPM, and APK repositories in Cloudflare
 R2.
 
+## Provenance
+
+This repository is Sakura Industries' independently maintained release suite.
+It was copied from [`meigma/release`](https://github.com/meigma/release) at
+commit `c2bae66638b0ce72733cc02b8fff7a82f5409192`, after upstream release
+`v0.1.18`. It is not a GitHub fork and does not automatically track upstream.
+The inherited commit and tag history remains intact under the original
+Apache-2.0 OR MIT license.
+
+## Supported callers
+
+The public source is inspectable by anyone, but its reusable workflows support
+only repositories owned by `Sakura-Industries-LLC`. The setup action and the
+package-publication request workflow reject every other caller before acquiring
+credentials or publishing artifacts.
+
 ## Supported release
 
 The supported application contract is intentionally narrow:
@@ -21,7 +37,7 @@ The supported application contract is intentionally narrow:
 - root-layout Scoop buckets.
 
 Each consumer pins every reusable workflow and signer identity to one reviewed,
-full `meigma/release` commit SHA. The workflows, setup action, and
+full `Sakura-Industries-LLC/release` commit SHA. The workflows, setup action,
 `release-cli` at that commit form one release unit.
 
 ## Release flow

@@ -33,7 +33,7 @@ Before the workflows run:
 
 1. Replace every `REPLACE_WITH_RELEASE_COMMIT_SHA` in
    `.github/workflows/release.yml` with one reviewed, full 40-character
-   `meigma/release` commit SHA.
+   `Sakura-Industries-LLC/release` commit SHA.
 2. Replace `OWNER/REPOSITORY` in `.goreleaser.yaml` and `apko.yaml` with the
    producer owner and repository.
 3. Replace `HOMEBREW-OWNER`, `HOMEBREW-TAP`, `SCOOP-OWNER`,

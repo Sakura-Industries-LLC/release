@@ -20,18 +20,18 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	apkomocks "github.com/meigma/release/internal/adapter/apko/mocks"
-	melangemocks "github.com/meigma/release/internal/adapter/melange/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/image"
+	apkomocks "github.com/Sakura-Industries-LLC/release/internal/adapter/apko/mocks"
+	melangemocks "github.com/Sakura-Industries-LLC/release/internal/adapter/melange/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (
 	testBinaryName = "release-cli"
 	testVersion    = "1.2.3"
 	testBuildDate  = "2024-01-02T03:04:05Z"
-	testNamespace  = "meigma"
-	testSourceURL  = "https://github.com/meigma/release"
+	testNamespace  = "sakura-industries-llc"
+	testSourceURL  = "https://github.com/Sakura-Industries-LLC/release"
 	testCommit     = "0123456789abcdef0123456789abcdef01234567"
 	testReference  = "local/release:1.2.3"
 	testAMD64Path  = "release-cli_linux_amd64_v1/release-cli"

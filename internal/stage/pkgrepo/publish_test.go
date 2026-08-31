@@ -14,19 +14,19 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	cosignmocks "github.com/meigma/release/internal/adapter/cosign/mocks"
-	ghattestmocks "github.com/meigma/release/internal/adapter/ghattest/mocks"
-	ghrelmocks "github.com/meigma/release/internal/adapter/ghrel/mocks"
-	gpgmocks "github.com/meigma/release/internal/adapter/gpg/mocks"
-	pkginstallmocks "github.com/meigma/release/internal/adapter/pkginstall/mocks"
-	metamocks "github.com/meigma/release/internal/adapter/pkgmeta/mocks"
-	verifymocks "github.com/meigma/release/internal/adapter/pkgverify/mocks"
-	r2mocks "github.com/meigma/release/internal/adapter/r2/mocks"
-	generatormocks "github.com/meigma/release/internal/adapter/repogen/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/pkgrepo"
-	"github.com/meigma/release/internal/stage/pubgh"
+	cosignmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/cosign/mocks"
+	ghattestmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghattest/mocks"
+	ghrelmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel/mocks"
+	gpgmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/gpg/mocks"
+	pkginstallmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/pkginstall/mocks"
+	metamocks "github.com/Sakura-Industries-LLC/release/internal/adapter/pkgmeta/mocks"
+	verifymocks "github.com/Sakura-Industries-LLC/release/internal/adapter/pkgverify/mocks"
+	r2mocks "github.com/Sakura-Industries-LLC/release/internal/adapter/r2/mocks"
+	generatormocks "github.com/Sakura-Industries-LLC/release/internal/adapter/repogen/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 // TestPublisherPublishesVerifiedRelease proves the complete package-repository orchestration contract.
@@ -45,14 +45,14 @@ func TestPublisherPublishesVerifiedRelease(t *testing.T) {
 	installer := pkginstallmocks.NewMockInstaller(t)
 
 	releases.EXPECT().Fetch(mock.Anything, pkgrepo.ReleaseRequest{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, mock.Anything).RunAndReturn(fixture.fetchRelease).Once()
 	bundles.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(request pubgh.BlobVerification) bool {
 		return request.Identity == "https://github.com/shared/workflows/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567"
 	})).Return(nil).Once()
 	attestations.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(request pkgrepo.AttestationRequest) bool {
-		return request.Repository == "meigma/release" &&
+		return request.Repository == "sakura-industries-llc/release" &&
 			request.SignerWorkflow == "shared/workflows/.github/workflows/publish-github-release.yml"
 	})).Return(nil).Times(len(fixture.assets))
 	store.EXPECT().List(mock.Anything).Return(nil, nil).Once()
@@ -87,7 +87,7 @@ func TestPublisherPublishesVerifiedRelease(t *testing.T) {
 	store.EXPECT().Stat(mock.Anything, mock.Anything).Return(pkgrepo.StoredContent{}, false, nil).Times(26)
 	store.EXPECT().Upload(mock.Anything, mock.Anything).Return(nil).Times(26)
 	installer.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(request pkgrepo.InstallRequest) bool {
-		return request.Root == nil && request.Origin == "https://pkgs.meigma.dev" &&
+		return request.Root == nil && request.Origin == "https://packages.example.com" &&
 			assert.ElementsMatch(t, []pkgrepo.PackageName{"release-cli"}, request.Packages)
 	})).Return(nil).Once()
 
@@ -105,7 +105,7 @@ func TestPublisherPublishesVerifiedRelease(t *testing.T) {
 	result, err := publisher.Publish(context.Background(), fixture.input())
 	require.NoError(t, err)
 	assert.Equal(t, pkgrepo.PublishStatePublished, result.State)
-	assert.Equal(t, pkgrepo.Repository("meigma/release"), result.Repository)
+	assert.Equal(t, pkgrepo.Repository("sakura-industries-llc/release"), result.Repository)
 	assert.Equal(t, "v1.2.3", result.Tag)
 	assert.Equal(t, 26, result.Artifacts)
 	assert.Equal(t, 26, result.Uploaded)
@@ -189,17 +189,17 @@ func newPublisherFixture(t *testing.T) *publisherFixture {
 func (f *publisherFixture) input() pkgrepo.PublishInput {
 	return pkgrepo.PublishInput{
 		Config: pkgrepo.PublicationConfig{
-			Origin:     "https://pkgs.meigma.dev",
+			Origin:     "https://packages.example.com",
 			Repository: buildConfig(),
 			Sources: []pkgrepo.SourcePolicy{
 				{
-					Repository:        "meigma/release",
+					Repository:        "sakura-industries-llc/release",
 					ChecksumIdentity:  "https://github.com/shared/workflows/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
 					AttestationSigner: "shared/workflows/.github/workflows/publish-github-release.yml",
 				},
 			},
 		},
-		Request: pkgrepo.Request{Repository: "meigma/release", Tag: "v1.2.3"},
+		Request: pkgrepo.Request{Repository: "sakura-industries-llc/release", Tag: "v1.2.3"},
 		Keys:    f.keys,
 		Source:  f.source,
 		Work:    f.work,
@@ -238,7 +238,7 @@ func (f *publisherFixture) fetchRelease(
 		)
 	}
 	return pkgrepo.Release{
-		Repository:  "meigma/release",
+		Repository:  "sakura-industries-llc/release",
 		Tag:         "v1.2.3",
 		Commit:      strings.Repeat("a", 40),
 		PublishedAt: time.Date(2026, time.August, 21, 12, 0, 0, 0, time.UTC),

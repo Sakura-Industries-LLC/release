@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (

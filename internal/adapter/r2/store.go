@@ -17,8 +17,8 @@ import (
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (

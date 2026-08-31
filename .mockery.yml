@@ -8,14 +8,14 @@ force-file-write: true
 formatter: goimports
 formatter-options:
   goimports:
-    local-prefix: github.com/meigma/release
+    local-prefix: github.com/Sakura-Industries-LLC/release
 log-level: info
 structname: '{{.Mock}}{{.InterfaceName}}'
 pkgname: mocks
 recursive: false
 template: testify
 packages:
-  github.com/meigma/release/internal/stage/pubbrew:
+  github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew:
     config:
       dir: internal/adapter/ghtap/mocks
     interfaces:
@@ -25,7 +25,7 @@ packages:
       RepositoryWriter:
         config:
           filename: repository_writer.go
-  github.com/meigma/release/internal/stage/pubscoop:
+  github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop:
     config:
       dir: internal/adapter/ghbucket/mocks
     interfaces:
@@ -35,7 +35,7 @@ packages:
       RepositoryWriter:
         config:
           filename: repository_writer.go
-  github.com/meigma/release/internal/stage/pubgh:
+  github.com/Sakura-Industries-LLC/release/internal/stage/pubgh:
     config:
       dir: internal/adapter/ghact/mocks
     interfaces:
@@ -62,7 +62,7 @@ packages:
         config:
           dir: internal/adapter/gitx/mocks
           filename: ref_resolver.go
-  github.com/meigma/release/internal/stage/puboci:
+  github.com/Sakura-Industries-LLC/release/internal/stage/puboci:
     config:
       dir: internal/adapter/reg/mocks
     interfaces:
@@ -79,7 +79,7 @@ packages:
       TagCommitter:
         config:
           filename: tag_committer.go
-  github.com/meigma/release/internal/stage/image:
+  github.com/Sakura-Industries-LLC/release/internal/stage/image:
     interfaces:
       APKBuilder:
         config:
@@ -89,7 +89,7 @@ packages:
         config:
           dir: internal/adapter/apko/mocks
           filename: composer.go
-  github.com/meigma/release/internal/stage/pkgrepo:
+  github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo:
     interfaces:
       ReleaseSource:
         config:
@@ -123,7 +123,7 @@ packages:
         config:
           dir: internal/adapter/gpg/mocks
           filename: signer.go
-  github.com/meigma/release/internal/cli:
+  github.com/Sakura-Industries-LLC/release/internal/cli:
     interfaces:
       PackageRepositoryPublisher:
         config:

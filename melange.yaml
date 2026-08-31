@@ -2,7 +2,7 @@ package:
   name: release-cli
   version: ${{vars.version}}
   epoch: 0
-  description: Exercise the Meigma release pipeline.
+  description: Exercise the Sakura Industries release pipeline.
   target-architecture:
     - x86_64
     - aarch64

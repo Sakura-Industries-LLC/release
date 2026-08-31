@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 func TestImageBuildMissingValuesAreUsage(t *testing.T) {

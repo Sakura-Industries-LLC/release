@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (
@@ -24,9 +24,9 @@ const (
 	testSourceAMD  = "/abs/work/sources/x86_64"
 	testSourceARM  = "/abs/work/sources/aarch64"
 	testRunner     = "docker"
-	testNamespace  = "meigma"
+	testNamespace  = "sakura-industries-llc"
 	testBuildDate  = "2026-04-08T12:00:00Z"
-	testGitRepoURL = "https://github.com/meigma/release"
+	testGitRepoURL = "https://github.com/Sakura-Industries-LLC/release"
 	testGitCommit  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	// invocationSep marks the end of one recorded Melange argv.
 	invocationSep = "---"

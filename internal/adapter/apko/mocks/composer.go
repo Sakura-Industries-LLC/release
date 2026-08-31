@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 // NewMockComposer creates a new instance of MockComposer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

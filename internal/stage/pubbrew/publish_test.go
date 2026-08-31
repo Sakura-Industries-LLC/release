@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghtap/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghtap/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	// testBlobSHA is the current tap cask blob.
 	testBlobSHA pubbrew.BlobSHA = "3333333333333333333333333333333333333333"
 	// testPullURL is the publication review URL.
-	testPullURL = "https://github.com/meigma/homebrew-tap/pull/7"
+	testPullURL = "https://github.com/Sakura-Industries-LLC/homebrew-tap/pull/7"
 )
 
 // TestPublishCreatesOnceAndRerunsOpen proves the first publication mutates the
@@ -236,9 +236,9 @@ func newPublishTest(t *testing.T) *publishTest {
 
 	version, err := rel.ParseVersion("1.2.3")
 	require.NoError(t, err)
-	tap, err := pubbrew.ParseRepository("meigma/homebrew-tap")
+	tap, err := pubbrew.ParseRepository("Sakura-Industries-LLC/homebrew-tap")
 	require.NoError(t, err)
-	source, err := pubbrew.ParseRepository("meigma/release")
+	source, err := pubbrew.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 	token, err := pubbrew.ParseCaskToken("release-cli")
 	require.NoError(t, err)

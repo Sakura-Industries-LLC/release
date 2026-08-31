@@ -18,8 +18,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (

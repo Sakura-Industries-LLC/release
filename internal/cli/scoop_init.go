@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/release/internal/stage/pubgh"
-	"github.com/meigma/release/internal/stage/pubscoop"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
 
 const (
@@ -109,7 +109,7 @@ jobs:
   manifests:
     permissions:
       contents: read
-    uses: meigma/release/.github/workflows/scoop-bucket-ci.yml@%s
+    uses: Sakura-Industries-LLC/release/.github/workflows/scoop-bucket-ci.yml@%s
 `, config.Commit.String())
 	readme := fmt.Sprintf(`# %s
 

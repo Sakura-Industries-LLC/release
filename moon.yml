@@ -4,10 +4,10 @@ stack: 'backend'
 
 project:
   title: 'release-cli'
-  description: 'Exercise the Meigma release pipeline.'
-  owner: 'meigma'
+  description: 'Exercise the Sakura Industries release pipeline.'
+  owner: 'sakura-industries-llc'
   maintainers:
-    - 'meigma'
+    - 'sakura-industries-llc'
 
 toolchains:
   default: 'system'

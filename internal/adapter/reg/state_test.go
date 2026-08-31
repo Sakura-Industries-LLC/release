@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/puboci"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/puboci"
 )
 
 const (

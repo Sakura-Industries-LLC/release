@@ -9,8 +9,8 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry/remote"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/puboci"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/puboci"
 )
 
 // Commit applies tags to digest serially, verifying each one.

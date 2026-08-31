@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
 )
 
 // TestConfigValidateRejectsAmbiguousOwnership proves package and key ownership is unique.
@@ -18,7 +18,7 @@ func TestConfigValidateRejectsAmbiguousOwnership(t *testing.T) {
 
 	config := testConfig(t)
 	config.Producers = append(config.Producers, Producer{
-		Repository: "meigma/other",
+		Repository: "acme/other",
 		Packages:   []PackageName{"release-cli"},
 		RPMKey: PublicKey{
 			Source:    "keys/other-rpm.asc",
@@ -65,7 +65,7 @@ func TestPlanPackagesCanonicalLayout(t *testing.T) {
 
 	assets := testInspectedRelease(t)
 	plan, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestPlanPackagesRequiresCompleteRelease(t *testing.T) {
 	assets = assets[:len(assets)-1]
 
 	_, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.Error(t, err)
@@ -104,14 +104,14 @@ func TestPlanPackagesRejectsWrongProducer(t *testing.T) {
 	t.Parallel()
 
 	assets := testInspectedRelease(t)
-	assets[0].Asset.Repository = "meigma/other"
+	assets[0].Asset.Repository = "acme/other"
 
 	_, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `belongs to "meigma/release", not "meigma/other"`)
+	assert.Contains(t, err.Error(), `belongs to "sakura-industries-llc/release", not "acme/other"`)
 }
 
 // TestPlanPackagesCollapsesExactReplay proves a repeated identical object is unchanged.
@@ -122,7 +122,7 @@ func TestPlanPackagesCollapsesExactReplay(t *testing.T) {
 	assets = append(assets, assets[0])
 
 	plan, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.NoError(t, err)
@@ -139,7 +139,7 @@ func TestPlanPackagesRejectsImmutableConflict(t *testing.T) {
 	assets = append(assets, conflict)
 
 	_, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.Error(t, err)
@@ -154,7 +154,7 @@ func TestPlanPackagesRejectsUnconfinedSource(t *testing.T) {
 	assets[0].Asset.Path = "../escape.deb"
 
 	_, err := PlanPackages(testConfig(t), Request{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        "v1.2.3",
 	}, assets)
 	require.Error(t, err)
@@ -168,7 +168,7 @@ func testConfig(t *testing.T) Config {
 	return Config{
 		Channel: ChannelStable,
 		Producers: []Producer{{
-			Repository: "meigma/release",
+			Repository: "sakura-industries-llc/release",
 			Packages:   []PackageName{"release-cli"},
 			RPMKey: PublicKey{
 				Source:    "keys/producer-rpm.asc",
@@ -206,7 +206,7 @@ func testInspectedRelease(t *testing.T) []InspectedAsset {
 			identity := fmt.Sprintf("%s-%s-%s", format, architecture, version)
 			assets = append(assets, InspectedAsset{
 				Asset: Asset{
-					Repository: Repository("meigma/release"),
+					Repository: Repository("sakura-industries-llc/release"),
 					Format:     format,
 					Path:       "packages/" + identity,
 					Digest:     testDigest(t, identity),

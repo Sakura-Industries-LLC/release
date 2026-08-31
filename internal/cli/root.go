@@ -11,13 +11,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/release/internal/profile/goprof"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/image"
-	"github.com/meigma/release/internal/stage/pubbrew"
-	"github.com/meigma/release/internal/stage/pubgh"
-	"github.com/meigma/release/internal/stage/puboci"
-	"github.com/meigma/release/internal/stage/pubscoop"
+	"github.com/Sakura-Industries-LLC/release/internal/profile/goprof"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/puboci"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
 
 const (
@@ -251,7 +251,7 @@ func NewRootCommand(options Options) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:           commandName,
-		Short:         "Stage and publish Meigma release artifacts",
+		Short:         "Stage and publish Sakura Industries release artifacts",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          requireSubcommand,

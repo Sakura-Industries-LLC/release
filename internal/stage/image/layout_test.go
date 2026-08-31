@@ -20,13 +20,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (
 	// testDescription is a nonempty index description annotation.
-	testDescription = "Exercise the Meigma release pipeline."
+	testDescription = "Exercise the Sakura Industries release pipeline."
 	// testLicenses is a nonempty index licenses annotation.
 	testLicenses = "LicenseRef-Proprietary"
 	// testTitle is a nonempty index title annotation.

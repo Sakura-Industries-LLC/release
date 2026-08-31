@@ -10,7 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 // NewMockStore creates a new instance of MockStore. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

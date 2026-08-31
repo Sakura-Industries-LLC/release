@@ -1,17 +1,13 @@
 # Prepare your GitHub organization
 
-Use this guide to create the organization-owned GitHub identity and policy that
-the release workflows require. Complete it before copying a release caller into
-a producer repository.
-
-The App described here belongs to the adopting organization. No Meigma owner,
-Meigma-owned App installation, or Meigma private key is required.
+Use this guide to configure the Sakura-owned GitHub App and Actions policy that
+the release workflows require. Complete it before enabling publication in a
+Sakura producer repository.
 
 ## Create the release App
 
-Register a GitHub App under the adopting organization. Use an organization URL
-for the required homepage field and disable webhooks unless the organization
-uses them for another purpose.
+Register the App under `Sakura-Industries-LLC`. Use
+`https://sakuraindustries.net` as its homepage and disable webhooks.
 
 Grant these repository permissions:
 
@@ -25,21 +21,20 @@ Metadata read access is implicit. Do not add administration, Actions, packages,
 or organization permissions for this release path.
 
 Record the App client ID. Generate one private key and store the downloaded PEM
-in the organization's approved secret-management system. GitHub does not expose
-the private key again.
+in the approved secret-management system. GitHub does not expose the private key
+again.
 
 ## Install the App on selected repositories
 
-Install the App on the adopting organization and select only repositories that
-need release operations. Add repositories according to their role:
+Install the App on selected `Sakura-Industries-LLC` repositories:
 
-- every producer repository;
-- each adopter-owned Homebrew tap or Scoop bucket used by a producer; and
-- the adopter-owned central package repository when producers dispatch native
-  package publication.
+- `release`;
+- every producer repository, beginning with `dntls-public`;
+- `homebrew-tap` and `scoop-bucket`; and
+- `pkgs`.
 
-Do not select **All repositories** merely to simplify onboarding. Add another
-repository when its release configuration is reviewed.
+Do not select **All repositories**. Add another Sakura repository only after
+reviewing its release configuration.
 
 The publisher workflows request narrower installation tokens from this App:
 
@@ -53,22 +48,18 @@ tag, and initial draft.
 
 ## Store the Actions variable and secret
 
-In the adopting organization's **Settings** > **Secrets and variables** >
+In `Sakura-Industries-LLC` **Settings** > **Secrets and variables** >
 **Actions**, create:
 
-| Kind | Name used by the maintained example | Value |
+| Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `MEIGMA_RELEASE_APP_CLIENT_ID` | The adopter-owned App client ID. |
-| Secret | `MEIGMA_RELEASE_APP_PRIVATE_KEY` | The adopter-owned App private key PEM. |
+| Variable | `SAKURA_RELEASE_APP_CLIENT_ID` | The Sakura release App client ID. |
+| Secret | `SAKURA_RELEASE_APP_PRIVATE_KEY` | The Sakura release App private key PEM. |
 
-Limit both entries to **Selected repositories** and add the producer
+Limit both entries to **Selected repositories** and add only producer
 repositories that mint tokens. A tap, bucket, or central receiver does not need
-direct access to the private key; the producer's workflow mints a token scoped
-to that destination.
-
-The names above are caller-local identifiers retained by the maintained
-example. They do not identify the App owner. You may rename them if you update
-every corresponding `vars.*` and `secrets.*` expression in the copied caller.
+direct access to the private key; the producer workflow mints a token scoped to
+that destination.
 
 GitHub never returns a stored Actions secret value. Verify its name, selected
 repository list, and a workflow that successfully creates an installation
@@ -82,7 +73,7 @@ choose an allowlist policy that permits the reviewed release unit.
 
 At minimum, allow:
 
-- the reusable workflows in `meigma/release` at the selected full commit SHA;
+- the reusable workflows in `Sakura-Industries-LLC/release` at the selected full commit SHA;
 - `actions/cache`, `actions/checkout`, `actions/upload-artifact`,
   `actions/download-artifact`, `actions/github-script`,
   `actions/create-github-app-token`, and `actions/attest`;
@@ -93,14 +84,14 @@ At minimum, allow:
 - `potatoqualitee/psmodulecache` when a Scoop bucket validates a manifest; and
 - `googleapis/release-please-action` from the copied versioning workflow.
 
-Review the exact action pins in the selected `meigma/release` revision before
+Review the exact action pins in the selected `Sakura-Industries-LLC/release` revision before
 adding them. The workflows pin third-party actions to full commit SHAs. Do not
 replace them with moving tags to satisfy an allowlist.
 
-If the organization allows only actions owned by the organization, add explicit
-exceptions for this reviewed set. Apply the same policy to adopter-owned taps
-and buckets so their generated validation workflows can call
-`meigma/release`.
+If the organization allows only Sakura-owned actions, add explicit exceptions
+for the reviewed third-party actions above. Apply the same policy to taps and
+buckets so their generated validation workflows can call
+`Sakura-Industries-LLC/release`.
 
 ## Set the workflow-token ceilings
 
@@ -126,14 +117,11 @@ token, and the publisher never approves or merges them.
 
 ## Configure tag protection
 
-If a repository or organization ruleset restricts `v*` tags, add the
-adopter-owned App as a bypass actor for tag creation. Keep the rule active for
-other actors.
+If a repository or organization ruleset restricts `v*` tags, add the Sakura
+release App as the only routine bypass actor for tag creation. Keep the rule
+active for other actors.
 
-A draft rehearsal can require an authorized operator to move one unpublished
-tag to a reviewed recovery commit. Do not weaken production tag rules for this.
-Use a disposable repository for the first tutorial or define a separate,
-audited break-glass path for an unpublished candidate. Never grant routine tag
+Use a disposable repository for rehearsal recovery. Never grant routine tag
 movement after publication.
 
 ## Configure GHCR policy

@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	cosignmocks "github.com/meigma/release/internal/adapter/cosign/mocks"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/pubgh"
+	cosignmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/cosign/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (

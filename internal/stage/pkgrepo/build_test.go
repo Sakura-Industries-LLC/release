@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	gpgmocks "github.com/meigma/release/internal/adapter/gpg/mocks"
-	metamocks "github.com/meigma/release/internal/adapter/pkgmeta/mocks"
-	verifymocks "github.com/meigma/release/internal/adapter/pkgverify/mocks"
-	generatormocks "github.com/meigma/release/internal/adapter/repogen/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	gpgmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/gpg/mocks"
+	metamocks "github.com/Sakura-Industries-LLC/release/internal/adapter/pkgmeta/mocks"
+	verifymocks "github.com/Sakura-Industries-LLC/release/internal/adapter/pkgverify/mocks"
+	generatormocks "github.com/Sakura-Industries-LLC/release/internal/adapter/repogen/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 // TestBuildProducesOrderedSignedRepository proves the local orchestration contract end to end.
@@ -225,7 +225,7 @@ func newBuildFixture(t *testing.T) *buildFixture {
 			name := value + formatExtension(format)
 			writeTestFile(t, filepath.Join(sourceDir, name), value)
 			assets = append(assets, pkgrepo.Asset{
-				Repository: "meigma/release",
+				Repository: "sakura-industries-llc/release",
 				Format:     format,
 				Path:       name,
 				Digest:     buildDigest(t, value),
@@ -276,7 +276,7 @@ func newBuildFixture(t *testing.T) *buildFixture {
 func (f *buildFixture) input() pkgrepo.BuildInput {
 	return pkgrepo.BuildInput{
 		Config:      f.config,
-		Request:     pkgrepo.Request{Repository: "meigma/release", Tag: "v1.2.3"},
+		Request:     pkgrepo.Request{Repository: "sakura-industries-llc/release", Tag: "v1.2.3"},
 		Assets:      f.assets,
 		Source:      f.source,
 		Work:        f.work,
@@ -296,7 +296,7 @@ func buildConfig() pkgrepo.Config {
 	return pkgrepo.Config{
 		Channel: pkgrepo.ChannelStable,
 		Producers: []pkgrepo.Producer{{
-			Repository: "meigma/release",
+			Repository: "sakura-industries-llc/release",
 			Packages:   []pkgrepo.PackageName{"release-cli"},
 			RPMKey:     pkgrepo.PublicKey{Source: "keys/producer-rpm.asc", Published: "release-rpm-001.asc"},
 			APKKey:     pkgrepo.PublicKey{Source: "keys/producer-apk.rsa.pub", Published: "release-apk-001.rsa.pub"},

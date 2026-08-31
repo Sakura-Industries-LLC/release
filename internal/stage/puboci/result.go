@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/meigma/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
 )
 
 const (

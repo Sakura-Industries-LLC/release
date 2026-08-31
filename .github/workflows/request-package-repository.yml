@@ -36,6 +36,17 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
+      - name: Verify Sakura caller
+        env:
+          CALLER_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${CALLER_REPOSITORY_OWNER}" != "Sakura-Industries-LLC" ]]; then
+            echo "::error::Sakura-Industries-LLC/release supports only Sakura-Industries-LLC repositories."
+            exit 1
+          fi
+
       - name: Create package repository token
         id: package-app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -61,7 +72,7 @@ jobs:
               repo: process.env.PACKAGE_REPOSITORY_NAME,
               event_type: 'package-release',
               client_payload: {
-                repository: process.env.PRODUCER_REPOSITORY,
+                repository: process.env.PRODUCER_REPOSITORY.toLowerCase(),
                 tag: process.env.PRODUCER_TAG,
               },
             })
