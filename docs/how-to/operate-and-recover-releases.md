@@ -266,7 +266,7 @@ artifact is required.
 Require the one release-unit identity:
 
 ```text
-https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@<full-release-unit-sha>
+https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@<full-release-unit-sha>
 ```
 
 Do not relax the issuer, change the identity to a branch or tag, or upload files

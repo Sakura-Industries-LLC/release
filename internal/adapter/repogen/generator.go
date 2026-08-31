@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/meigma/release/internal/execx"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/execx"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (
@@ -206,8 +206,8 @@ for arch in amd64 arm64; do
   gzip -n -9 -c "$dir/Packages" >"$dir/Packages.gz"
 done
 apt-ftparchive \
-  -o APT::FTPArchive::Release::Origin=Meigma \
-  -o APT::FTPArchive::Release::Label=Meigma \
+  -o APT::FTPArchive::Release::Origin=Sakura Industries \
+  -o APT::FTPArchive::Release::Label=Sakura Industries \
   -o APT::FTPArchive::Release::Suite=stable \
   -o APT::FTPArchive::Release::Codename=stable \
   -o APT::FTPArchive::Release::Architectures="amd64 arm64" \

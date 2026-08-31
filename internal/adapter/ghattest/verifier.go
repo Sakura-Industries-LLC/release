@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/meigma/release/internal/execx"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/execx"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (

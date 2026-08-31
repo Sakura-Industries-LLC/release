@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/cli"
-	climocks "github.com/meigma/release/internal/cli/mocks"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	climocks "github.com/Sakura-Industries-LLC/release/internal/cli/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const validPackagePublicationYAML = `channel: stable
-origin: https://pkgs.meigma.dev
+origin: https://packages.example.com
 keys:
   apt:
     source: keys/repository-apt.asc
@@ -30,11 +30,11 @@ keys:
     source: keys/repository-apk.rsa.pub
     published: apk-index-001.rsa.pub
 producers:
-  - repository: meigma/release
+  - repository: sakura-industries-llc/release
     packages:
       - release-cli
-    checksum_identity: https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567
-    attestation_signer: meigma/release/.github/workflows/publish-github-release.yml
+    checksum_identity: https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567
+    attestation_signer: sakura-industries-llc/release/.github/workflows/publish-github-release.yml
     rpm_key:
       source: keys/release-rpm.asc
       published: release-rpm-001.asc
@@ -56,9 +56,9 @@ func TestPackageRepositoryCommandPublishesResolvedRequest(t *testing.T) {
 	publisher.EXPECT().
 		Publish(mock.Anything, mock.Anything).
 		RunAndReturn(func(_ context.Context, input pkgrepo.PublishInput) (pkgrepo.PublishResult, error) {
-			assert.Equal(t, pkgrepo.Repository("meigma/release"), input.Request.Repository)
+			assert.Equal(t, pkgrepo.Repository("sakura-industries-llc/release"), input.Request.Repository)
 			assert.Equal(t, "v1.2.3", input.Request.Tag)
-			assert.Equal(t, "https://pkgs.meigma.dev", input.Config.Origin)
+			assert.Equal(t, "https://packages.example.com", input.Config.Origin)
 			require.NotNil(t, input.Keys)
 			require.NotNil(t, input.Source)
 			require.NotNil(t, input.Work)
@@ -76,7 +76,7 @@ func TestPackageRepositoryCommandPublishesResolvedRequest(t *testing.T) {
 
 			return pkgrepo.PublishResult{
 				State:      pkgrepo.PublishStatePublished,
-				Repository: "meigma/release",
+				Repository: "sakura-industries-llc/release",
 				Tag:        "v1.2.3",
 				Artifacts:  19,
 				Uploaded:   7,
@@ -93,7 +93,7 @@ func TestPackageRepositoryCommandPublishesResolvedRequest(t *testing.T) {
 	})
 	command.SetArgs([]string{
 		"publish", "package-repository",
-		"--repository", "meigma/release",
+		"--repository", "sakura-industries-llc/release",
 		"--tag", "v1.2.3",
 		"--config", configPath,
 		"--keys", keysPath,

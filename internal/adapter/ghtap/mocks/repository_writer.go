@@ -9,7 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 // NewMockRepositoryWriter creates a new instance of MockRepositoryWriter. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

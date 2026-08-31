@@ -336,7 +336,7 @@ Casks/.gitkeep
 README.md
 ```
 
-The validation workflow pins `meigma/release` to the CLI source commit. The
+The validation workflow pins `Sakura-Industries-LLC/release` to the CLI source commit. The
 command performs no Git or GitHub request. JSON fields are `tap`, `output`, and
 lexically sorted `files`.
 

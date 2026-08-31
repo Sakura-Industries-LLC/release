@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/go-github/v82/github"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (

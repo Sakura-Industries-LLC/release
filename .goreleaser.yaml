@@ -63,10 +63,10 @@ nfpms:
   - id: release
     ids:
       - release-cli
-    vendor: Meigma
-    homepage: https://github.com/meigma/release
-    maintainer: Meigma <contact@meigma.dev>
-    description: Exercise the Meigma release pipeline.
+    vendor: Sakura Industries LLC
+    homepage: https://github.com/Sakura-Industries-LLC/release
+    maintainer: Sakura Industries LLC <contact@sakuraindustries.net>
+    description: Release CLI and reusable workflow tooling for Sakura repositories.
     license: Apache-2.0 OR MIT
     formats:
       - deb
@@ -79,35 +79,35 @@ nfpms:
     apk:
       signature:
         key_file: "{{ .Env.RELEASE_APK_SIGNING_KEY_FILE }}"
-        key_name: meigma-release-001
+        key_name: sakura-release-001
 
 homebrew_casks:
-  - name: meigma-release-cli
+  - name: sakura-release-cli
     ids:
       - release-cli
     binaries:
       - release-cli
     repository:
-      owner: meigma
+      owner: Sakura-Industries-LLC
       name: homebrew-tap
-    homepage: https://github.com/meigma/release
-    description: Release automation for Meigma projects
+    homepage: https://github.com/Sakura-Industries-LLC/release
+    description: Release automation for Sakura repositories
     license: Apache-2.0 OR MIT
     url:
-      template: "https://github.com/meigma/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+      template: "https://github.com/Sakura-Industries-LLC/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 
 scoops:
-  - name: meigma-release-cli
+  - name: sakura-release-cli
     ids:
       - release-cli
     repository:
-      owner: meigma
+      owner: Sakura-Industries-LLC
       name: scoop-bucket
-    homepage: https://github.com/meigma/release
-    description: Release automation for Meigma projects
+    homepage: https://github.com/Sakura-Industries-LLC/release
+    description: Release automation for Sakura repositories
     license: Apache-2.0 OR MIT
-    url_template: "https://github.com/meigma/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    url_template: "https://github.com/Sakura-Industries-LLC/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 
 checksum:

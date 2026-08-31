@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/meigma/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
 )
 
 const (

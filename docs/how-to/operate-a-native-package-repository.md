@@ -5,7 +5,7 @@ by Cloudflare R2. Producers send only their repository and stable release tag to
 a central receiver. They never receive R2 credentials or aggregate repository
 signing keys.
 
-The public repository is not `pkgs.meigma.dev`. Choose and operate your own
+The public repository is not `packages.example.com`. Choose and operate your own
 Cloudflare account, bucket, custom domain, GitHub repository, and keys.
 
 ## Prepare the central repository
@@ -112,8 +112,8 @@ producers:
   - repository: acme/widget
     packages:
       - widget
-    checksum_identity: https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
-    attestation_signer: meigma/release/.github/workflows/publish-github-release.yml
+    checksum_identity: https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    attestation_signer: Sakura-Industries-LLC/release/.github/workflows/publish-github-release.yml
     rpm_key:
       source: keys/widget-rpm.asc
       published: widget-rpm-001.asc
@@ -133,7 +133,7 @@ The signer fields are explicit shared-workflow identities:
 
 In both fields, the workflow filename must end in `.yml` or `.yaml`.
 
-For a producer that calls `meigma/release`, both fields name the reusable
+For a producer that calls `Sakura-Industries-LLC/release`, both fields name the reusable
 workflow repository, not `acme/widget`. The checksum identity pins the release
 unit. GitHub attestation verification independently binds the package to the
 producer repository, `refs/tags/<tag>`, the resolved producer commit, and the
@@ -206,7 +206,7 @@ permissions:
 
 jobs:
   publish:
-    uses: meigma/release/.github/workflows/publish-package-repository.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    uses: Sakura-Industries-LLC/release/.github/workflows/publish-package-repository.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       repository: ${{ github.event.client_payload.repository }}
       tag: ${{ github.event.client_payload.tag }}
@@ -276,11 +276,11 @@ jobs:
 
       - name: Set up release-cli from the pinned release unit
         id: setup-cli
-        uses: meigma/release/.github/actions/setup-release-cli@REPLACE_WITH_RELEASE_COMMIT_SHA
+        uses: Sakura-Industries-LLC/release/.github/actions/setup-release-cli@REPLACE_WITH_RELEASE_COMMIT_SHA
 
       - name: Set up aggregate repository signing
         id: signing
-        uses: meigma/release/.github/actions/setup-package-repository@REPLACE_WITH_RELEASE_COMMIT_SHA
+        uses: Sakura-Industries-LLC/release/.github/actions/setup-package-repository@REPLACE_WITH_RELEASE_COMMIT_SHA
         with:
           gpg-private-key: ${{ secrets.PACKAGE_REPOSITORY_GPG_PRIVATE_KEY }}
           gpg-passphrase: ${{ secrets.PACKAGE_REPOSITORY_GPG_PASSPHRASE }}
@@ -354,7 +354,7 @@ and map them in the `release-assets` call:
       attestations: read
       contents: read
       id-token: write
-    uses: meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    uses: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       sign-native-packages: true
     secrets:
@@ -381,14 +381,14 @@ Customize the maintained request job and leave it disabled:
     name: Request package repository publication
     needs: github-release
     permissions: {}
-    uses: meigma/release/.github/workflows/request-package-repository.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    uses: Sakura-Industries-LLC/release/.github/workflows/request-package-repository.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       package-repository-owner: acme
       package-repository-name: packages
-      release-app-client-id: ${{ vars.MEIGMA_RELEASE_APP_CLIENT_ID }}
+      release-app-client-id: ${{ vars.SAKURA_RELEASE_APP_CLIENT_ID }}
       publish-package-repository: false
     secrets:
-      release-app-private-key: ${{ secrets.MEIGMA_RELEASE_APP_PRIVATE_KEY }}
+      release-app-private-key: ${{ secrets.SAKURA_RELEASE_APP_PRIVATE_KEY }}
 ```
 
 The request sends only `acme/widget` and its exact tag. It does not send

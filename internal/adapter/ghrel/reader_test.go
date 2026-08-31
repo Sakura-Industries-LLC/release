@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghrel"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 	testTag       = "v1.2.3"
 	testDigest    = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	testReleaseID = int64(42)
-	htmlURL       = "https://github.com/meigma/release/releases/tag/v1.2.3"
+	htmlURL       = "https://github.com/Sakura-Industries-LLC/release/releases/tag/v1.2.3"
 )
 
 func TestClientSatisfiesPorts(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFindDraftPaginatesAndSelectsExactTag(t *testing.T) {
 	var pages []int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodGet, request.Method)
-		assert.Equal(t, "/repos/meigma/release/releases", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases", request.URL.Path)
 		assert.Equal(t, "100", request.URL.Query().Get("per_page"))
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		page := request.URL.Query().Get("page")
@@ -57,7 +57,7 @@ func TestFindDraftPaginatesAndSelectsExactTag(t *testing.T) {
 		case "1":
 			writer.Header().Set(
 				"Link",
-				`<http://`+request.Host+`/repos/meigma/release/releases?page=2>; rel="next"`,
+				`<http://`+request.Host+`/repos/Sakura-Industries-LLC/release/releases?page=2>; rel="next"`,
 			)
 			assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{
 				releasePayload(7, "v9.9.9", true),
@@ -92,7 +92,7 @@ func TestFindDraftReportsNoDraftImmediately(t *testing.T) {
 	var hits int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hits++
-		assert.Equal(t, "/repos/meigma/release/releases", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases", request.URL.Path)
 		assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{}))
 	}))
 	t.Cleanup(server.Close)
@@ -154,7 +154,7 @@ func TestWaitAssetsReturnsCurrentView(t *testing.T) {
 	var hits int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hits++
-		assert.Equal(t, "/repos/meigma/release/releases/42/assets", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases/42/assets", request.URL.Path)
 		assert.Equal(t, "100", request.URL.Query().Get("per_page"))
 		assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{
 			assetPayload("checksums.txt", testDigest, "uploaded"),
@@ -205,7 +205,7 @@ func TestWaitAssetsPaginates(t *testing.T) {
 
 	var pages []int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/repos/meigma/release/releases/42/assets", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases/42/assets", request.URL.Path)
 		page := request.URL.Query().Get("page")
 		if page == "" {
 			page = "1"
@@ -219,7 +219,7 @@ func TestWaitAssetsPaginates(t *testing.T) {
 		case "1":
 			writer.Header().Set(
 				"Link",
-				`<http://`+request.Host+`/repos/meigma/release/releases/42/assets?page=2>; rel="next"`,
+				`<http://`+request.Host+`/repos/Sakura-Industries-LLC/release/releases/42/assets?page=2>; rel="next"`,
 			)
 			assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{
 				assetPayload("checksums.txt", testDigest, "uploaded"),
@@ -315,7 +315,7 @@ func TestGetMapsRelease(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/repos/meigma/release/releases/42", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases/42", request.URL.Path)
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		assert.NoError(t, json.NewEncoder(writer).Encode(releasePayload(testReleaseID, testTag, true)))
 	}))
@@ -393,7 +393,7 @@ func TestNewAuthenticatedUsesCustomAPIBase(t *testing.T) {
 	hit := false
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hit = true
-		assert.Equal(t, "/api/v3/repos/meigma/release/releases/42", request.URL.Path)
+		assert.Equal(t, "/api/v3/repos/Sakura-Industries-LLC/release/releases/42", request.URL.Path)
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		assert.NoError(t, json.NewEncoder(writer).Encode(releasePayload(testReleaseID, testTag, true)))
 	}))
@@ -431,7 +431,7 @@ func newClient(t *testing.T, server *httptest.Server) *ghrel.Client {
 func mustRepo(t *testing.T) pubgh.Repository {
 	t.Helper()
 
-	repo, err := pubgh.ParseRepository("meigma/release")
+	repo, err := pubgh.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 
 	return repo

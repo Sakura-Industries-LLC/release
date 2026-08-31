@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	cosignmocks "github.com/meigma/release/internal/adapter/cosign/mocks"
-	regmocks "github.com/meigma/release/internal/adapter/reg/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/puboci"
+	cosignmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/cosign/mocks"
+	regmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/reg/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/puboci"
 )
 
 const (

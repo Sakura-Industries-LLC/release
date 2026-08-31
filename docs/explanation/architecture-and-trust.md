@@ -112,7 +112,7 @@ The checksum identity uses the full shared workflow URL and release-unit SHA.
 Native package policy records that immutable value directly. The GitHub
 attestation signer field names the shared workflow without a ref because the
 attestation verifier separately binds the source tag and producer commit. This
-lets `acme/widget` use a signer implemented in `meigma/release` without
+lets `acme/widget` use a signer implemented in `Sakura-Industries-LLC/release` without
 pretending the workflow belongs to `acme/widget`.
 
 ## OCI publication has a trust-metadata gap

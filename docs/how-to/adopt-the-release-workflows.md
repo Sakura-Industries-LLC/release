@@ -1,8 +1,9 @@
 # Adopt the release workflows
 
-Use this guide to add the reusable release unit to an existing Go application
-repository. Complete [Prepare your GitHub organization](prepare-your-github-organization.md)
-first.
+Use this guide to add the reusable release unit to a
+`Sakura-Industries-LLC` Go application repository. The suite rejects callers
+owned by any other GitHub organization. Complete
+[Prepare your GitHub organization](prepare-your-github-organization.md) first.
 
 The unit stages every Linux `amd64` and `arm64` GoReleaser binary from one
 repository into one GitHub Release and one multi-architecture image. The binary
@@ -16,14 +17,14 @@ unscoped tag stream.
 
 ## Select one immutable release unit
 
-Choose a published `meigma/release` tag, review that release's workflow and
-contract changes, and resolve the tag to a full commit SHA:
+Choose a published `Sakura-Industries-LLC/release` tag, review that release's
+workflow and contract changes, and resolve the tag to a full commit SHA:
 
 ```bash
-export RELEASE_TAG="$(gh api repos/meigma/release/releases/latest --jq .tag_name)"
-export RELEASE_REVISION="$(gh api "repos/meigma/release/commits/$RELEASE_TAG" --jq .sha)"
+export RELEASE_TAG="$(gh api repos/Sakura-Industries-LLC/release/releases/latest --jq .tag_name)"
+export RELEASE_REVISION="$(gh api "repos/Sakura-Industries-LLC/release/commits/$RELEASE_TAG" --jq .sha)"
 [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
-test "$(gh api "repos/meigma/release/commits/$RELEASE_REVISION" --jq .sha)" = \
+test "$(gh api "repos/Sakura-Industries-LLC/release/commits/$RELEASE_REVISION" --jq .sha)" = \
   "$RELEASE_REVISION"
 printf '%s %s\n' "$RELEASE_TAG" "$RELEASE_REVISION"
 ```

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
 )
 
 const (

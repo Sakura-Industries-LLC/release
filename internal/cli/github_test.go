@@ -14,12 +14,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	ghrelmocks "github.com/meigma/release/internal/adapter/ghrel/mocks"
-	ghupmocks "github.com/meigma/release/internal/adapter/ghup/mocks"
-	gitxmocks "github.com/meigma/release/internal/adapter/gitx/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubgh"
+	ghrelmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel/mocks"
+	ghupmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghup/mocks"
+	gitxmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/gitx/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -32,9 +32,9 @@ const (
 	// githubTagName is the GITHUB_REF_NAME fixture.
 	githubTagName = "v1.2.3"
 	// githubRepo is the GITHUB_REPOSITORY fixture.
-	githubRepo = "meigma/release"
+	githubRepo = "Sakura-Industries-LLC/release"
 	// githubReleaseURL is the published release HTML URL fixture.
-	githubReleaseURL = "https://github.com/meigma/release/releases/tag/v1.2.3"
+	githubReleaseURL = "https://github.com/Sakura-Industries-LLC/release/releases/tag/v1.2.3"
 	// githubReleaseID is the discovered draft identifier.
 	githubReleaseID int64 = 42
 	// githubGHPath is the RELEASE_GH_PATH fixture.

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
 )
 
 const initializerCommit = "0123456789abcdef0123456789abcdef01234567"
@@ -60,7 +60,7 @@ jobs:
   casks:
     permissions:
       contents: read
-    uses: meigma/release/.github/workflows/homebrew-tap-ci.yml@0123456789abcdef0123456789abcdef01234567
+    uses: Sakura-Industries-LLC/release/.github/workflows/homebrew-tap-ci.yml@0123456789abcdef0123456789abcdef01234567
 `, workflow)
 	assert.Equal(t, `version: 2
 updates:

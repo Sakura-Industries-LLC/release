@@ -33,6 +33,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Verify Sakura caller
+      shell: bash
+      env:
+        CALLER_REPOSITORY_OWNER: ${{ github.repository_owner }}
+      run: |
+        set -euo pipefail
+        if [[ "${CALLER_REPOSITORY_OWNER}" != "Sakura-Industries-LLC" ]]; then
+          echo "::error::Sakura-Industries-LLC/release supports only Sakura-Industries-LLC repositories."
+          exit 1
+        fi
+
     - name: Select CLI acquisition mode
       id: select
       shell: bash

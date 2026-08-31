@@ -16,7 +16,7 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/meigma/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
 )
 
 const (

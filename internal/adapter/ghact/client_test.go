@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghact"
-	"github.com/meigma/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghact"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -27,7 +27,7 @@ func TestGetMapsArtifact(t *testing.T) {
 
 	expires := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/repos/meigma/release/actions/artifacts/11", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/actions/artifacts/11", request.URL.Path)
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"id":            11,
@@ -194,7 +194,7 @@ func TestNewAuthenticatedUsesCustomAPIBase(t *testing.T) {
 	hit := false
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hit = true
-		assert.Equal(t, "/api/v3/repos/meigma/release/actions/artifacts/11", request.URL.Path)
+		assert.Equal(t, "/api/v3/repos/Sakura-Industries-LLC/release/actions/artifacts/11", request.URL.Path)
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 			"id":           11,
@@ -238,7 +238,7 @@ func newClient(t *testing.T, server *httptest.Server) *ghact.Client {
 func mustRepo(t *testing.T) pubgh.Repository {
 	t.Helper()
 
-	repo, err := pubgh.ParseRepository("meigma/release")
+	repo, err := pubgh.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 
 	return repo

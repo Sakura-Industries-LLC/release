@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghrel"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel"
 )
 
 func TestPublishPatchesDraftFalseOnly(t *testing.T) {
@@ -21,7 +21,7 @@ func TestPublishPatchesDraftFalseOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hits++
 		assert.Equal(t, http.MethodPatch, request.Method)
-		assert.Equal(t, "/repos/meigma/release/releases/42", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/release/releases/42", request.URL.Path)
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		body, err := io.ReadAll(request.Body)
 		if !assert.NoError(t, err) {

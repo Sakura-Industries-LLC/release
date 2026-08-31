@@ -10,17 +10,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/release/internal/adapter/cosign"
-	"github.com/meigma/release/internal/adapter/ghattest"
-	"github.com/meigma/release/internal/adapter/ghrel"
-	"github.com/meigma/release/internal/adapter/gpg"
-	"github.com/meigma/release/internal/adapter/pkginstall"
-	"github.com/meigma/release/internal/adapter/pkgmeta"
-	"github.com/meigma/release/internal/adapter/pkgverify"
-	"github.com/meigma/release/internal/adapter/r2"
-	"github.com/meigma/release/internal/adapter/repogen"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/cosign"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghattest"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/gpg"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/pkginstall"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/pkgmeta"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/pkgverify"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/r2"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/repogen"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (

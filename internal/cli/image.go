@@ -13,9 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/image"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (

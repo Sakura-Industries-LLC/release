@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghbucket"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pubscoop"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghbucket"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 	// testBlobSHA is the manifest blob commit.
 	testBlobSHA = "3333333333333333333333333333333333333333"
 	// testPullURL is the publication review URL.
-	testPullURL = "https://github.com/meigma/scoop-bucket/pull/7"
+	testPullURL = "https://github.com/Sakura-Industries-LLC/scoop-bucket/pull/7"
 )
 
 // TestClientSatisfiesPorts proves the focused adapter implements both bucket ports.
@@ -48,14 +48,14 @@ func TestReadBaseReturnsDefaultBranchAndManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		switch request.URL.Path {
-		case "/repos/meigma/scoop-bucket":
+		case "/repos/Sakura-Industries-LLC/scoop-bucket":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{"default_branch": "main"}))
-		case "/repos/meigma/scoop-bucket/git/ref/heads/main":
+		case "/repos/Sakura-Industries-LLC/scoop-bucket/git/ref/heads/main":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"ref":    "refs/heads/main",
 				"object": map[string]any{"sha": testBaseSHA, "type": "commit"},
 			}))
-		case "/repos/meigma/scoop-bucket/contents/release-cli.json":
+		case "/repos/Sakura-Industries-LLC/scoop-bucket/contents/release-cli.json":
 			assert.Equal(t, testBaseSHA, request.URL.Query().Get("ref"))
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"type":     "file",
@@ -84,18 +84,18 @@ func TestReadBranchMapsOneCommit(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/repos/meigma/scoop-bucket/git/ref/heads/release/release-cli/v1.2.3":
+		case "/repos/Sakura-Industries-LLC/scoop-bucket/git/ref/heads/release/release-cli/v1.2.3":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"ref":    "refs/heads/release/release-cli/v1.2.3",
 				"object": map[string]any{"sha": testHeadSHA, "type": "commit"},
 			}))
-		case "/repos/meigma/scoop-bucket/commits/" + testHeadSHA:
+		case "/repos/Sakura-Industries-LLC/scoop-bucket/commits/" + testHeadSHA:
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"sha":     testHeadSHA,
 				"parents": []map[string]any{{"sha": testBaseSHA}},
 				"files":   []map[string]any{{"filename": "release-cli.json", "status": "modified"}},
 			}))
-		case "/repos/meigma/scoop-bucket/contents/release-cli.json":
+		case "/repos/Sakura-Industries-LLC/scoop-bucket/contents/release-cli.json":
 			assert.Equal(t, testHeadSHA, request.URL.Query().Get("ref"))
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"type":     "file",
@@ -151,9 +151,9 @@ func TestReadPullRequestMapsMergedReview(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/repos/meigma/scoop-bucket/pulls", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/scoop-bucket/pulls", request.URL.Path)
 		assert.Equal(t, "all", request.URL.Query().Get("state"))
-		assert.Equal(t, "meigma:release/release-cli/v1.2.3", request.URL.Query().Get("head"))
+		assert.Equal(t, "Sakura-Industries-LLC:release/release-cli/v1.2.3", request.URL.Query().Get("head"))
 		assert.Equal(t, "main", request.URL.Query().Get("base"))
 		assert.Equal(t, "100", request.URL.Query().Get("per_page"))
 		assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{{
@@ -263,7 +263,7 @@ func TestNewAuthenticatedUsesCustomAPIBase(t *testing.T) {
 	hit := false
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hit = true
-		assert.Contains(t, request.URL.Path, "/api/v3/repos/meigma/scoop-bucket")
+		assert.Contains(t, request.URL.Path, "/api/v3/repos/Sakura-Industries-LLC/scoop-bucket")
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{"default_branch": "main"}))
 	}))
@@ -302,7 +302,7 @@ func newClient(t *testing.T, server *httptest.Server) *ghbucket.Client {
 func mustRepository(t *testing.T) pubscoop.Repository {
 	t.Helper()
 
-	repository, err := pubscoop.ParseRepository("meigma/scoop-bucket")
+	repository, err := pubscoop.ParseRepository("Sakura-Industries-LLC/scoop-bucket")
 	require.NoError(t, err)
 
 	return repository

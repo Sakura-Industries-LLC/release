@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (
@@ -71,7 +71,7 @@ func TestVerifyPublicClientsUseHTTPSAndNetworking(t *testing.T) {
 	arguments := readRecord(t, fixture.record)
 	assert.Equal(t, 3, countArgument(arguments, "CALL"))
 	assert.NotContains(t, arguments, "--network=none")
-	assert.Equal(t, 3, countArgument(arguments, repositoryRootVariable+"=https://pkgs.meigma.dev"))
+	assert.Equal(t, 3, countArgument(arguments, repositoryRootVariable+"=https://packages.example.com"))
 }
 
 func TestVerifyRejectsMissingKeyBeforeDocker(t *testing.T) {
@@ -126,7 +126,7 @@ func newInstallerFixture(t *testing.T, local bool) installerFixture {
 	require.NoError(t, err)
 	request := pkgrepo.InstallRequest{
 		Keys:     keys,
-		Origin:   "https://pkgs.meigma.dev",
+		Origin:   "https://packages.example.com",
 		Channel:  pkgrepo.ChannelStable,
 		Packages: []pkgrepo.PackageName{name},
 		Version:  version,

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const fakeGeneratorScript = `#!/bin/sh
@@ -202,7 +202,7 @@ func buildRelease(t *testing.T, root string, includeSHA512 bool) string {
 	t.Helper()
 
 	var output strings.Builder
-	output.WriteString("Origin: Meigma\nSHA256:\n")
+	output.WriteString("Origin: Sakura Industries\nSHA256:\n")
 	for _, architecture := range []string{"amd64", "arm64"} {
 		for _, name := range []string{"Packages", "Packages.gz"} {
 			content, err := os.ReadFile(

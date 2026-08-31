@@ -15,9 +15,9 @@ import (
 
 	"github.com/google/go-github/v82/github"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (

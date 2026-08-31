@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/meigma/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
 )
 
 // Descriptor is an OCI content descriptor.

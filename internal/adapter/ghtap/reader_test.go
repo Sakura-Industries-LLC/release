@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghtap"
-	"github.com/meigma/release/internal/stage/pubbrew"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghtap"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	// testBlobSHA is the cask blob commit.
 	testBlobSHA = "3333333333333333333333333333333333333333"
 	// testPullURL is the publication review URL.
-	testPullURL = "https://github.com/meigma/homebrew-tap/pull/7"
+	testPullURL = "https://github.com/Sakura-Industries-LLC/homebrew-tap/pull/7"
 )
 
 // TestClientSatisfiesPorts proves the focused adapter implements both tap ports.
@@ -47,14 +47,14 @@ func TestReadBaseReturnsDefaultBranchAndCask(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		switch request.URL.Path {
-		case "/repos/meigma/homebrew-tap":
+		case "/repos/Sakura-Industries-LLC/homebrew-tap":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{"default_branch": "main"}))
-		case "/repos/meigma/homebrew-tap/git/ref/heads/main":
+		case "/repos/Sakura-Industries-LLC/homebrew-tap/git/ref/heads/main":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"ref":    "refs/heads/main",
 				"object": map[string]any{"sha": testBaseSHA, "type": "commit"},
 			}))
-		case "/repos/meigma/homebrew-tap/contents/Casks/release-cli.rb":
+		case "/repos/Sakura-Industries-LLC/homebrew-tap/contents/Casks/release-cli.rb":
 			assert.Equal(t, testBaseSHA, request.URL.Query().Get("ref"))
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"type":     "file",
@@ -83,18 +83,18 @@ func TestReadBranchMapsOneCommit(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/repos/meigma/homebrew-tap/git/ref/heads/release/release-cli/v1.2.3":
+		case "/repos/Sakura-Industries-LLC/homebrew-tap/git/ref/heads/release/release-cli/v1.2.3":
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"ref":    "refs/heads/release/release-cli/v1.2.3",
 				"object": map[string]any{"sha": testHeadSHA, "type": "commit"},
 			}))
-		case "/repos/meigma/homebrew-tap/commits/" + testHeadSHA:
+		case "/repos/Sakura-Industries-LLC/homebrew-tap/commits/" + testHeadSHA:
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"sha":     testHeadSHA,
 				"parents": []map[string]any{{"sha": testBaseSHA}},
 				"files":   []map[string]any{{"filename": "Casks/release-cli.rb", "status": "modified"}},
 			}))
-		case "/repos/meigma/homebrew-tap/contents/Casks/release-cli.rb":
+		case "/repos/Sakura-Industries-LLC/homebrew-tap/contents/Casks/release-cli.rb":
 			assert.Equal(t, testHeadSHA, request.URL.Query().Get("ref"))
 			assert.NoError(t, json.NewEncoder(writer).Encode(map[string]any{
 				"type":     "file",
@@ -150,9 +150,9 @@ func TestReadPullRequestMapsMergedReview(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/repos/meigma/homebrew-tap/pulls", request.URL.Path)
+		assert.Equal(t, "/repos/Sakura-Industries-LLC/homebrew-tap/pulls", request.URL.Path)
 		assert.Equal(t, "all", request.URL.Query().Get("state"))
-		assert.Equal(t, "meigma:release/release-cli/v1.2.3", request.URL.Query().Get("head"))
+		assert.Equal(t, "Sakura-Industries-LLC:release/release-cli/v1.2.3", request.URL.Query().Get("head"))
 		assert.Equal(t, "main", request.URL.Query().Get("base"))
 		assert.Equal(t, "100", request.URL.Query().Get("per_page"))
 		assert.NoError(t, json.NewEncoder(writer).Encode([]map[string]any{{
@@ -210,7 +210,7 @@ func newClient(t *testing.T, server *httptest.Server) *ghtap.Client {
 func mustRepository(t *testing.T) pubbrew.Repository {
 	t.Helper()
 
-	repository, err := pubbrew.ParseRepository("meigma/homebrew-tap")
+	repository, err := pubbrew.ParseRepository("Sakura-Industries-LLC/homebrew-tap")
 	require.NoError(t, err)
 
 	return repository

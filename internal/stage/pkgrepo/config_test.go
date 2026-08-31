@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	validChecksumIdentity  = "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567"
-	validAttestationSigner = "meigma/release/.github/workflows/publish-github-release.yml"
+	validChecksumIdentity  = "https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567"
+	validAttestationSigner = "sakura-industries-llc/release/.github/workflows/publish-github-release.yml"
 )
 
 func TestParsePublicationConfig(t *testing.T) {
@@ -26,7 +26,7 @@ func TestParsePublicationConfig(t *testing.T) {
 			name: "accepted cross-repository signer",
 			input: strings.Replace(
 				validPublicationConfig(),
-				"repository: meigma/release",
+				"repository: sakura-industries-llc/release",
 				"repository: acme/app",
 				1,
 			),
@@ -42,16 +42,21 @@ func TestParsePublicationConfig(t *testing.T) {
 			wantErr: "multiple YAML documents",
 		},
 		{
-			name:    "non-HTTPS origin",
-			input:   strings.Replace(validPublicationConfig(), "https://pkgs.meigma.dev", "http://pkgs.meigma.dev", 1),
+			name: "non-HTTPS origin",
+			input: strings.Replace(
+				validPublicationConfig(),
+				"https://packages.example.com",
+				"http://packages.example.com",
+				1,
+			),
 			wantErr: "absolute HTTPS URL",
 		},
 		{
 			name: "origin path prefix",
 			input: strings.Replace(
 				validPublicationConfig(),
-				"https://pkgs.meigma.dev",
-				"https://pkgs.meigma.dev/repository",
+				"https://packages.example.com",
+				"https://packages.example.com/repository",
 				1,
 			),
 			wantErr: "path prefix",
@@ -61,20 +66,25 @@ func TestParsePublicationConfig(t *testing.T) {
 			input: strings.Replace(
 				validPublicationConfig(),
 				validChecksumIdentity,
-				"https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
+				"https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
 				1,
 			),
 			wantErr: "checksum identity",
 		},
 		{
-			name:    "invalid repository",
-			input:   strings.Replace(validPublicationConfig(), "meigma/release", "Meigma/release", 1),
+			name: "invalid repository",
+			input: strings.Replace(
+				validPublicationConfig(),
+				"sakura-industries-llc/release",
+				"Sakura Industries/release",
+				1,
+			),
 			wantErr: "repository",
 		},
 		{
 			name:    "duplicate producer",
 			input:   strings.Replace(validPublicationConfig(), "producers:\n", "producers:\n"+validProducerYAML(), 1),
-			wantErr: "repository \"meigma/release\" is duplicated",
+			wantErr: "repository \"sakura-industries-llc/release\" is duplicated",
 		},
 	}
 
@@ -91,7 +101,7 @@ func TestParsePublicationConfig(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, ChannelStable, got.Repository.Channel)
-			assert.Equal(t, "https://pkgs.meigma.dev", got.Origin)
+			assert.Equal(t, "https://packages.example.com", got.Origin)
 			require.Len(t, got.Repository.Producers, 1)
 			require.Len(t, got.Sources, 1)
 			assert.Equal(t, ChecksumIdentity(validChecksumIdentity), got.Sources[0].ChecksumIdentity)
@@ -101,7 +111,7 @@ func TestParsePublicationConfig(t *testing.T) {
 				assert.Equal(t, Repository("acme/app"), got.Sources[0].Repository)
 				return
 			}
-			assert.Equal(t, Repository("meigma/release"), got.Repository.Producers[0].Repository)
+			assert.Equal(t, Repository("sakura-industries-llc/release"), got.Repository.Producers[0].Repository)
 			assert.Equal(t, []PackageName{"release-cli"}, got.Repository.Producers[0].Packages)
 		})
 	}
@@ -117,22 +127,22 @@ func TestParseChecksumIdentityRejectsNonImmutableValues(t *testing.T) {
 	}{
 		{
 			name:    "tag ref",
-			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
+			input:   "https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@refs/tags/v1.2.3",
 			wantErr: "full lowercase commit SHA",
 		},
 		{
 			name:    "branch ref",
-			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@main",
+			input:   "https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@main",
 			wantErr: "full lowercase commit SHA",
 		},
 		{
 			name:    "missing ref",
-			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml",
+			input:   "https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml",
 			wantErr: "immutable commit SHA",
 		},
 		{
 			name:    "short SHA",
-			input:   "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef01234567",
+			input:   "https://github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@0123456789abcdef01234567",
 			wantErr: "full lowercase commit SHA",
 		},
 		{
@@ -142,12 +152,12 @@ func TestParseChecksumIdentityRejectsNonImmutableValues(t *testing.T) {
 		},
 		{
 			name:    "non-GitHub host",
-			input:   "https://gitlab.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			input:   "https://gitlab.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
 			wantErr: "host github.com",
 		},
 		{
 			name:    "credentials",
-			input:   "https://user:token@github.com/meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			input:   "https://user:token@github.com/sakura-industries-llc/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
 			wantErr: "credentials",
 		},
 		{
@@ -162,7 +172,7 @@ func TestParseChecksumIdentityRejectsNonImmutableValues(t *testing.T) {
 		},
 		{
 			name:    "uppercase owner",
-			input:   "https://github.com/Meigma/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
+			input:   "https://github.com/Sakura Industries/release/.github/workflows/go-pre-publish.yml@0123456789abcdef0123456789abcdef01234567",
 			wantErr: "lowercase owner/name",
 		},
 	}
@@ -193,17 +203,17 @@ func TestParseAttestationSignerRejectsMalformedValues(t *testing.T) {
 		},
 		{
 			name:    "URL identity",
-			input:   "https://github.com/meigma/release/.github/workflows/publish-github-release.yml",
+			input:   "https://github.com/sakura-industries-llc/release/.github/workflows/publish-github-release.yml",
 			wantErr: "owner/repository/.github/workflows/<file>",
 		},
 		{
 			name:    "pinned ref",
-			input:   "meigma/release/.github/workflows/publish-github-release.yml@0123456789abcdef0123456789abcdef01234567",
+			input:   "sakura-industries-llc/release/.github/workflows/publish-github-release.yml@0123456789abcdef0123456789abcdef01234567",
 			wantErr: "owner/repository/.github/workflows/<file>",
 		},
 		{
 			name:    "uppercase owner",
-			input:   "Meigma/release/.github/workflows/publish-github-release.yml",
+			input:   "Sakura Industries/release/.github/workflows/publish-github-release.yml",
 			wantErr: "lowercase owner/name",
 		},
 	}
@@ -275,7 +285,7 @@ func TestPackageObjectFormatAcceptsOnlyCanonicalTrees(t *testing.T) {
 // validPublicationConfig returns one complete reviewed YAML policy.
 func validPublicationConfig() string {
 	return `channel: stable
-origin: https://pkgs.meigma.dev
+origin: https://packages.example.com
 keys:
   apt:
     source: keys/repository-apt.asc
@@ -292,7 +302,7 @@ producers:
 
 // validProducerYAML returns one producer entry with the expected indentation.
 func validProducerYAML() string {
-	return `  - repository: meigma/release
+	return `  - repository: sakura-industries-llc/release
     packages:
       - release-cli
     checksum_identity: ` + validChecksumIdentity + `

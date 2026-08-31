@@ -1,10 +1,10 @@
 {
-  description = "Consume Meigma release-cli from a Nix flake";
+  description = "Consume Sakura Industries release-cli from a Nix flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     release = {
-      url = "github:meigma/release/v0.1.16";
+      url = "github:Sakura-Industries-LLC/release/v0.1.18";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

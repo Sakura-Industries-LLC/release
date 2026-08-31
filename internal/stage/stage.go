@@ -8,7 +8,7 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/meigma/release/internal/profile/goprof"
+	"github.com/Sakura-Industries-LLC/release/internal/profile/goprof"
 )
 
 // Stage verifies a Go profile dist directory whose basename is root.

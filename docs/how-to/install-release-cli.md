@@ -4,9 +4,9 @@ Use this guide to install `release-cli` for direct command-line use. Repositorie
 that call the reusable workflows do not install or pin the CLI separately; the
 one workflow revision selects it as part of the release unit.
 
-The `meigma/release` and `pkgs.meigma.dev` URLs on this page install
-`release-cli` itself. Adopting organizations must use their own repositories and
-origins for their applications.
+Sakura distributes `release-cli` through GitHub Releases. Mise and direct
+archive installs use those release assets; Nix builds from the selected source
+revision.
 
 ## Select a released version
 
@@ -14,9 +14,9 @@ For mise, Nix, or a direct archive, select one published stable release and
 resolve its tag to a full commit:
 
 ```bash
-export RELEASE_TAG="$(gh api repos/meigma/release/releases/latest --jq .tag_name)"
+export RELEASE_TAG="$(gh api repos/Sakura-Industries-LLC/release/releases/latest --jq .tag_name)"
 export RELEASE_VERSION="${RELEASE_TAG#v}"
-export RELEASE_REVISION="$(gh api "repos/meigma/release/commits/$RELEASE_TAG" --jq .sha)"
+export RELEASE_REVISION="$(gh api "repos/Sakura-Industries-LLC/release/commits/$RELEASE_TAG" --jq .sha)"
 [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
 printf 'Installing release-cli %s from %s\n' "$RELEASE_VERSION" "$RELEASE_REVISION"
@@ -30,7 +30,7 @@ a reviewed release rather than resolving the latest release on every run.
 Use mise's built-in GitHub backend:
 
 ```bash
-mise use "github:meigma/release@$RELEASE_VERSION"
+mise use "github:Sakura-Industries-LLC/release@$RELEASE_VERSION"
 mise exec -- release-cli version --json
 ```
 
@@ -38,19 +38,19 @@ Mise writes an explicit project version:
 
 ```toml
 [tools]
-"github:meigma/release" = "<version>"
+"github:Sakura-Industries-LLC/release" = "<version>"
 ```
 
 For a temporary invocation:
 
 ```bash
-mise x "github:meigma/release@$RELEASE_VERSION" -- release-cli version --json
+mise x "github:Sakura-Industries-LLC/release@$RELEASE_VERSION" -- release-cli version --json
 ```
 
 For a user-level installation:
 
 ```bash
-mise use -g "github:meigma/release@$RELEASE_VERSION"
+mise use -g "github:Sakura-Industries-LLC/release@$RELEASE_VERSION"
 mise exec -- release-cli version --json
 ```
 
@@ -59,7 +59,7 @@ To use one locally, add:
 
 ```toml
 [tool_alias]
-release-cli = "github:meigma/release"
+release-cli = "github:Sakura-Industries-LLC/release"
 
 [tools]
 release-cli = "<version>"
@@ -72,7 +72,7 @@ checksum and GitHub artifact attestation.
 To update, review a newer release and run:
 
 ```bash
-mise use "github:meigma/release@$RELEASE_VERSION"
+mise use "github:Sakura-Industries-LLC/release@$RELEASE_VERSION"
 mise install --locked
 mise exec -- release-cli version --json
 ```
@@ -87,13 +87,13 @@ The repository flake builds `release-cli` from source for Darwin and Linux on
 Run the selected immutable revision without installing:
 
 ```bash
-nix run "github:meigma/release/$RELEASE_REVISION#release-cli" -- version --json
+nix run "github:Sakura-Industries-LLC/release/$RELEASE_REVISION#release-cli" -- version --json
 ```
 
 Install it into the current profile:
 
 ```bash
-nix profile add "github:meigma/release/$RELEASE_REVISION#release-cli"
+nix profile add "github:Sakura-Industries-LLC/release/$RELEASE_REVISION#release-cli"
 release-cli version --json
 ```
 
@@ -105,7 +105,7 @@ For a project flake, add a tagged input and make it follow the project's
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     release = {
-      url = "github:meigma/release/vMAJOR.MINOR.PATCH";
+      url = "github:Sakura-Industries-LLC/release/vMAJOR.MINOR.PATCH";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -142,89 +142,11 @@ nix develop --command release-cli version --json
 Commit `flake.lock`. This path builds from the locked source and fixed-output
 dependencies. It does not install or verify the prebuilt GitHub Release archive.
 
-## Install from the APT repository
-
-The public Meigma repository distributes `release-cli` on `amd64` and `arm64`.
-Install the HTTPS prerequisites and reviewed aggregate key:
-
-```sh
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl
-sudo install -d -m 0755 /etc/apt/keyrings
-curl --fail --silent --show-error --location \
-  https://pkgs.meigma.dev/keys/apt-repository-001.asc \
-  | sudo tee /etc/apt/keyrings/meigma-packages.asc >/dev/null
-sudo chmod 0644 /etc/apt/keyrings/meigma-packages.asc
-printf '%s\n' \
-  'deb [signed-by=/etc/apt/keyrings/meigma-packages.asc] https://pkgs.meigma.dev/apt stable main' \
-  | sudo tee /etc/apt/sources.list.d/meigma-packages.list >/dev/null
-sudo apt-get update
-sudo apt-get install -y release-cli
-release-cli version --json
-```
-
-APT verifies the aggregate signed repository metadata. Update through the same
-repository:
-
-```sh
-sudo apt-get update
-sudo apt-get install --only-upgrade release-cli
-```
-
-## Install from the DNF repository
-
-Configure both the aggregate RPM metadata key and the producer package key:
-
-```sh
-sudo tee /etc/yum.repos.d/meigma-packages.repo >/dev/null <<'EOF'
-[meigma-packages]
-name=Meigma packages
-baseurl=https://pkgs.meigma.dev/rpm/stable/$basearch
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://pkgs.meigma.dev/keys/rpm-repository-001.asc https://pkgs.meigma.dev/keys/release-rpm-001.asc
-EOF
-sudo dnf install -y release-cli
-release-cli version --json
-```
-
-Keep both `gpgcheck=1` and `repo_gpgcheck=1`. Update with:
-
-```sh
-sudo dnf upgrade release-cli
-```
-
-## Install from the APK repository
-
-APK identifies signing keys by filename. Preserve both reviewed basenames:
-
-```sh
-sudo wget -q \
-  https://pkgs.meigma.dev/keys/apk-index-001.rsa.pub \
-  -O /etc/apk/keys/apk-index-001.rsa.pub
-sudo wget -q \
-  https://pkgs.meigma.dev/keys/meigma-release-001.rsa.pub \
-  -O /etc/apk/keys/meigma-release-001.rsa.pub
-printf '%s\n' 'https://pkgs.meigma.dev/apk/stable/main' \
-  | sudo tee -a /etc/apk/repositories >/dev/null
-sudo apk update
-sudo apk add release-cli
-release-cli version --json
-```
-
-The aggregate key verifies `APKINDEX.tar.gz`; the producer key verifies the APK.
-Update with:
-
-```sh
-sudo apk update
-sudo apk upgrade release-cli
-```
 
 ## Install a verified GitHub archive
 
-Use this path when mise, Nix, and the native repositories are unavailable. The
-following Bash procedure supports Darwin and Linux on `amd64` and `arm64`.
+Use this path when mise or Nix is unavailable. The following Bash procedure
+supports Darwin and Linux on `amd64` and `arm64`.
 
 Derive the released archive name:
 
@@ -247,7 +169,7 @@ Download and verify the selected release:
 ```bash
 export INSTALL_DIR="$(mktemp -d)"
 gh release download "$RELEASE_TAG" \
-  --repo meigma/release \
+  --repo Sakura-Industries-LLC/release \
   --dir "$INSTALL_DIR" \
   --pattern "$ARCHIVE" \
   --pattern checksums.txt \
@@ -260,12 +182,12 @@ else
 fi
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@refs/tags/$RELEASE_TAG" \
+  --certificate-identity "https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@refs/tags/$RELEASE_TAG" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 gh attestation verify "$ARCHIVE" \
-  --repo meigma/release \
-  --signer-workflow meigma/release/.github/workflows/publish-github-release.yml \
+  --repo Sakura-Industries-LLC/release \
+  --signer-workflow Sakura-Industries-LLC/release/.github/workflows/publish-github-release.yml \
   --signer-digest "$RELEASE_REVISION" \
   --source-ref "refs/tags/$RELEASE_TAG" \
   --deny-self-hosted-runners
@@ -290,12 +212,7 @@ controlled directory on `PATH`.
 | --- | --- | --- |
 | mise | Prebuilt release archive | Release checksum and GitHub artifact attestation through mise's GitHub backend. |
 | Nix | Source build | Locked Git source, Nixpkgs input, Go source, and fixed dependency hashes. |
-| APT | Native DEB | HTTPS plus signed aggregate APT metadata. |
-| DNF | Native RPM | HTTPS, signed aggregate RPM metadata, and producer RPM signature. |
-| APK | Native APK | HTTPS, aggregate APK index signature, and producer APK signature. |
 | Direct archive | Prebuilt release archive | Local checksum, exact Cosign workflow identity, and GitHub artifact attestation. |
 
-Do not recover an installation by using HTTP, APT `trusted=yes`, DNF
-`gpgcheck=0`, APK `--allow-untrusted`, or skipped checksum and attestation
-checks. Correct the system clock, CA store, key files, or selected release
-instead.
+Do not recover an installation by skipping checksum or attestation checks.
+Correct the system clock, CA store, or selected release instead.

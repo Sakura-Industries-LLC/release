@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	apkomocks "github.com/meigma/release/internal/adapter/apko/mocks"
-	melangemocks "github.com/meigma/release/internal/adapter/melange/mocks"
-	"github.com/meigma/release/internal/cli"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/image"
+	apkomocks "github.com/Sakura-Industries-LLC/release/internal/adapter/apko/mocks"
+	melangemocks "github.com/Sakura-Industries-LLC/release/internal/adapter/melange/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/cli"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 )
 
 const (
@@ -30,9 +30,9 @@ const (
 	// imageSHA is the GITHUB_SHA fixture.
 	imageSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	// imageRepo is the GITHUB_REPOSITORY fixture.
-	imageRepo = "meigma/release"
+	imageRepo = "Sakura-Industries-LLC/release"
 	// imageOwner is the GITHUB_REPOSITORY_OWNER fixture.
-	imageOwner = "meigma"
+	imageOwner = "Sakura-Industries-LLC"
 	// imageServer is the GITHUB_SERVER_URL fixture.
 	imageServer = "https://github.com"
 	// imageBinaryName is the staged binary filename.

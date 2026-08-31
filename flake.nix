@@ -1,5 +1,5 @@
 {
-  description = "Meigma release-cli";
+  description = "Sakura Industries release-cli";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
@@ -48,8 +48,8 @@
             "-X=main.commit=${commit}"
           ];
           meta = {
-            description = "Validate and publish Meigma release artifacts";
-            homepage = "https://github.com/meigma/release";
+            description = "Validate and publish Sakura Industries release artifacts";
+            homepage = "https://github.com/Sakura-Industries-LLC/release";
             license = with pkgs.lib.licenses; [ asl20 mit ];
             mainProgram = "release-cli";
             platforms = systems;

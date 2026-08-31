@@ -24,7 +24,7 @@ failure handling, see [Operate and recover releases](../how-to/operate-and-recov
 
 The reusable workflows, `.github/actions/setup-release-cli`, and `release-cli`
 form one release unit. An external caller pins each `uses:` reference to one
-reviewed, full 40-character commit SHA in `meigma/release`. The same SHA appears
+reviewed, full 40-character commit SHA in `Sakura-Industries-LLC/release`. The same SHA appears
 in every `checksum-signing-workflow-ref` and in each native package policy
 `checksum_identity` for that producer.
 
@@ -418,7 +418,7 @@ Checksum verification requires:
 
 | Field | Required value |
 | --- | --- |
-| Certificate identity | `https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@<full-release-unit-sha>` for external consumers. |
+| Certificate identity | `https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@<full-release-unit-sha>` for external consumers. |
 | OIDC issuer | `https://token.actions.githubusercontent.com` |
 | Signed blob | `checksums.txt` |
 | Bundle | `checksums.txt.sigstore.json` |
@@ -435,7 +435,7 @@ GitHub-hosted runners. The native policy has no signer-digest field; its
 SHA.
 
 The setup action verifies a released `release-cli` archive against the
-`meigma/release` repository, GitHub publisher workflow path, and GitHub-hosted
+`Sakura-Industries-LLC/release` repository, GitHub publisher workflow path, and GitHub-hosted
 runner. It also verifies the selected release checksum and the binary's version
 and protocol stamps, but does not pass signer-digest, source-ref, or
 source-digest constraints.
@@ -552,8 +552,8 @@ producers:
   - repository: acme/widget
     packages:
       - widget
-    checksum_identity: https://github.com/meigma/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
-    attestation_signer: meigma/release/.github/workflows/publish-github-release.yml
+    checksum_identity: https://github.com/Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    attestation_signer: Sakura-Industries-LLC/release/.github/workflows/publish-github-release.yml
     rpm_key:
       source: keys/widget-rpm.asc
       published: widget-rpm-001.asc

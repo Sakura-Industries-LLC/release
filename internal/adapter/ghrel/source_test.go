@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/adapter/ghrel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (
@@ -42,7 +42,7 @@ func TestFetchDownloadsSortedDigestVerifiedRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "Bearer "+testToken, request.Header.Get("Authorization"))
 		switch request.URL.Path {
-		case "/repos/meigma/release/releases/tags/v1.2.3":
+		case "/repos/sakura-industries-llc/release/releases/tags/v1.2.3":
 			writeJSON(t, writer, map[string]any{
 				"id":           testReleaseID,
 				"tag_name":     testTag,
@@ -50,14 +50,14 @@ func TestFetchDownloadsSortedDigestVerifiedRelease(t *testing.T) {
 				"prerelease":   false,
 				"published_at": sourcePublishedAt,
 			})
-		case "/repos/meigma/release/releases/42/assets":
+		case "/repos/sakura-industries-llc/release/releases/42/assets":
 			assert.Equal(t, "100", request.URL.Query().Get("per_page"))
 			page := request.URL.Query().Get("page")
 			assetPages = append(assetPages, page)
 			if page == "" {
 				writer.Header().Set(
 					"Link",
-					`<http://`+request.Host+`/repos/meigma/release/releases/42/assets?page=2>; rel="next"`,
+					`<http://`+request.Host+`/repos/sakura-industries-llc/release/releases/42/assets?page=2>; rel="next"`,
 				)
 				writeJSON(
 					t,
@@ -72,7 +72,7 @@ func TestFetchDownloadsSortedDigestVerifiedRelease(t *testing.T) {
 				writer,
 				[]map[string]any{sourceAssetPayload(11, "release-cli_1.2.3_linux_amd64.rpm", bodies[11])},
 			)
-		case "/repos/meigma/release/git/ref/tags/v1.2.3":
+		case "/repos/sakura-industries-llc/release/git/ref/tags/v1.2.3":
 			writeJSON(t, writer, map[string]any{
 				"ref": "refs/tags/v1.2.3",
 				"object": map[string]any{
@@ -80,10 +80,10 @@ func TestFetchDownloadsSortedDigestVerifiedRelease(t *testing.T) {
 					"sha":  sourceCommit,
 				},
 			})
-		case "/repos/meigma/release/releases/assets/11":
+		case "/repos/sakura-industries-llc/release/releases/assets/11":
 			_, err := writer.Write(bodies[11])
 			assert.NoError(t, err)
-		case "/repos/meigma/release/releases/assets/12":
+		case "/repos/sakura-industries-llc/release/releases/assets/12":
 			_, err := writer.Write(bodies[12])
 			assert.NoError(t, err)
 		default:
@@ -98,14 +98,14 @@ func TestFetchDownloadsSortedDigestVerifiedRelease(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, root.Close()) })
 
 	result, err := newClient(t, server).Fetch(context.Background(), pkgrepo.ReleaseRequest{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        testTag,
 	}, root)
 	require.NoError(t, err)
 
 	publishedAt, err := time.Parse(time.RFC3339, sourcePublishedAt)
 	require.NoError(t, err)
-	assert.Equal(t, pkgrepo.Repository("meigma/release"), result.Repository)
+	assert.Equal(t, pkgrepo.Repository("sakura-industries-llc/release"), result.Repository)
 	assert.Equal(t, testTag, result.Tag)
 	assert.Equal(t, sourceCommit, result.Commit)
 	assert.Equal(t, publishedAt, result.PublishedAt)
@@ -129,22 +129,22 @@ func TestFetchRejectsDigestMismatchAndRemovesPartialAsset(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/repos/meigma/release/releases/tags/v1.2.3":
+		case "/repos/sakura-industries-llc/release/releases/tags/v1.2.3":
 			writeJSON(t, writer, map[string]any{
 				"id":           testReleaseID,
 				"tag_name":     testTag,
 				"published_at": sourcePublishedAt,
 			})
-		case "/repos/meigma/release/releases/42/assets":
+		case "/repos/sakura-industries-llc/release/releases/42/assets":
 			writeJSON(t, writer, []map[string]any{
 				sourceAssetPayload(11, "release-cli_1.2.3_linux_amd64.rpm", []byte("advertised")),
 			})
-		case "/repos/meigma/release/git/ref/tags/v1.2.3":
+		case "/repos/sakura-industries-llc/release/git/ref/tags/v1.2.3":
 			writeJSON(t, writer, map[string]any{
 				"ref":    "refs/tags/v1.2.3",
 				"object": map[string]any{"type": "commit", "sha": sourceCommit},
 			})
-		case "/repos/meigma/release/releases/assets/11":
+		case "/repos/sakura-industries-llc/release/releases/assets/11":
 			_, err := writer.Write([]byte("same-size!"))
 			assert.NoError(t, err)
 		default:
@@ -159,7 +159,7 @@ func TestFetchRejectsDigestMismatchAndRemovesPartialAsset(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, root.Close()) })
 
 	_, err = newClient(t, server).Fetch(context.Background(), pkgrepo.ReleaseRequest{
-		Repository: "meigma/release",
+		Repository: "sakura-industries-llc/release",
 		Tag:        testTag,
 	}, root)
 	require.Error(t, err)

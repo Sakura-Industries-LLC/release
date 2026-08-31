@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	ghrelmocks "github.com/meigma/release/internal/adapter/ghrel/mocks"
-	ghupmocks "github.com/meigma/release/internal/adapter/ghup/mocks"
-	gitxmocks "github.com/meigma/release/internal/adapter/gitx/mocks"
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage"
-	"github.com/meigma/release/internal/stage/pubgh"
+	ghrelmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghrel/mocks"
+	ghupmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/ghup/mocks"
+	gitxmocks "github.com/Sakura-Industries-LLC/release/internal/adapter/gitx/mocks"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	checksumDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	bundleDigest   = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 	wrongDigest    = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-	releaseURL     = "https://github.com/meigma/release/releases/tag/v1.2.3"
+	releaseURL     = "https://github.com/Sakura-Industries-LLC/release/releases/tag/v1.2.3"
 )
 
 func TestPublishHappyPathOrder(t *testing.T) {
@@ -725,7 +725,7 @@ type publishHarness struct {
 func newPublishHarness(t *testing.T) *publishHarness {
 	t.Helper()
 
-	repo, err := pubgh.ParseRepository("meigma/release")
+	repo, err := pubgh.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
 	tag, err := rel.ParseTag("v1.2.3")
 	require.NoError(t, err)

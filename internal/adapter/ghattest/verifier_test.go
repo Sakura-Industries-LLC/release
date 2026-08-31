@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meigma/release/internal/rel"
-	"github.com/meigma/release/internal/stage/pkgrepo"
+	"github.com/Sakura-Industries-LLC/release/internal/rel"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pkgrepo"
 )
 
 const (
@@ -47,7 +47,7 @@ func TestVerifyAcceptsCrossRepositorySigner(t *testing.T) {
 
 	fixture := newVerifierFixture(t)
 	fixture.request.Repository = "acme/app"
-	fixture.request.SignerWorkflow = "meigma/release/.github/workflows/publish-github-release.yml"
+	fixture.request.SignerWorkflow = "sakura-industries-llc/release/.github/workflows/publish-github-release.yml"
 
 	err := fixture.verifier.Verify(context.Background(), fixture.request)
 	require.NoError(t, err)
@@ -144,10 +144,10 @@ func newVerifierFixture(t *testing.T) verifierFixture {
 		}),
 		request: pkgrepo.AttestationRequest{
 			Path:           payload,
-			Repository:     "meigma/release",
+			Repository:     "sakura-industries-llc/release",
 			SourceRef:      "refs/tags/v1.2.3",
 			SourceDigest:   "0123456789abcdef0123456789abcdef01234567",
-			SignerWorkflow: "meigma/release/.github/workflows/publish-github-release.yml",
+			SignerWorkflow: "sakura-industries-llc/release/.github/workflows/publish-github-release.yml",
 		},
 		record: record,
 	}
