@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.19](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.18...v0.1.19) (2026-08-31)
+
+
+### Features
+
+* **release:** enable Sakura publication ([#2](https://github.com/Sakura-Industries-LLC/release/issues/2)) ([5b6d806](https://github.com/Sakura-Industries-LLC/release/commit/5b6d806e577f1681aaf30af063de62ecebeb0977))
+* **release:** establish Sakura release suite ([#1](https://github.com/Sakura-Industries-LLC/release/issues/1)) ([822116c](https://github.com/Sakura-Industries-LLC/release/commit/822116cd4dee07d65a8573834e87ae4e08ffb07a))
+
 ## [0.1.18](https://github.com/meigma/release/compare/v0.1.17...v0.1.18) (2026-08-26)
 
 
