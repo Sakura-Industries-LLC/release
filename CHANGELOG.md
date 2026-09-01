@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.19...v0.1.20) (2026-09-01)
+
+
+### Features
+
+* **workflows:** make asset attestation optional for private consumers ([#5](https://github.com/Sakura-Industries-LLC/release/issues/5)) ([73ed260](https://github.com/Sakura-Industries-LLC/release/commit/73ed260891c48eb4ca02bcf09ebae99e2951c52a))
+
 ## [0.1.19](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.18...v0.1.19) (2026-08-31)
 
 
