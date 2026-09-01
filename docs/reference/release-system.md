@@ -214,6 +214,7 @@ The GitHub publisher runs on `ubuntu-24.04` with a 10-minute timeout.
 | `publish-release` | boolean | No | `true` | Make the verified draft public. |
 | `require-oci-image` | boolean | No | `false` | Require a successful digest-pinned caller image before publication. |
 | `oci-image-reference` | string | No | Empty | Required `ghcr.io/<caller>@sha256:<digest>` when the preceding condition applies. |
+| `attest-assets` | boolean | No | `true` | Persist GitHub build-provenance attestations for the assets. Disable for private repositories on plans without artifact attestations. |
 
 Secret:
 
@@ -225,14 +226,18 @@ Outputs:
 
 | Output | Contract |
 | --- | --- |
-| `attestation-url` | GitHub build-provenance attestation URL. |
+| `attestation-url` | GitHub build-provenance attestation URL; empty when `attest-assets` is `false`. |
 | `release-url` | URL of the populated draft or public release. |
 
 The publisher verifies the artifact metadata and download digest, removes the
 two package-manager controls, verifies the closed bundle and exact Cosign
-identity, attests subjects from `checksums.txt`, and then reconciles the matching
-draft. With `publish-release: false`, it keeps and verifies draft state. With
-publication enabled, undrafting is its last mutation.
+identity, attests subjects from `checksums.txt` unless `attest-assets` is
+`false`, and then reconciles the matching draft. With `publish-release: false`,
+it keeps and verifies draft state. With publication enabled, undrafting is its
+last mutation. Disabling asset attestation removes the `gh attestation verify`
+recipe for that producer's assets; the Cosign checksum bundle remains required
+and verified. Keep it enabled when the native package repository is in use —
+its receiver verifies GitHub attestations.
 
 ### `publish-homebrew.yml`
 

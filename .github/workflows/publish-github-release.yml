@@ -34,6 +34,15 @@ on:
         required: false
         default: ''
         type: string
+      attest-assets:
+        description: >-
+          Persist GitHub build-provenance attestations for the release assets.
+          Disable for private repositories on plans without artifact
+          attestations; the Cosign checksum bundle remains required and
+          verified either way.
+        required: false
+        default: true
+        type: boolean
 
     secrets:
       release-app-private-key:
@@ -41,7 +50,7 @@ on:
         required: true
     outputs:
       attestation-url:
-        description: URL of the GitHub build-provenance attestation.
+        description: URL of the GitHub build-provenance attestation; empty when attest-assets is false.
         value: ${{ jobs.publish.outputs.attestation-url }}
       release-url:
         description: URL of the populated GitHub Release.
@@ -191,8 +200,12 @@ jobs:
             --identity "${CERTIFICATE_IDENTITY}" \
             --json
 
+      # GitHub artifact attestations are unavailable to private repositories
+      # on plans without the feature; the Cosign checksum bundle above is the
+      # portable trust anchor and was already verified.
       - name: Attest release assets
         id: attest
+        if: inputs.attest-assets
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
