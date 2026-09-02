@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.21...v0.1.22) (2026-09-02)
+
+
+### Bug Fixes
+
+* **workflows:** pass the GoReleaser Pro key to this repository's own release ([#12](https://github.com/Sakura-Industries-LLC/release/issues/12)) ([161bcd7](https://github.com/Sakura-Industries-LLC/release/commit/161bcd73dc00f5a87e32dfe4bb5915cb374c6d3d))
+
 ## [0.1.21](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.20...v0.1.21) (2026-09-02)
 
 
