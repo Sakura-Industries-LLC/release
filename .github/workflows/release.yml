@@ -23,6 +23,8 @@ jobs:
     with:
       sign-and-notarize-macos: false
       sign-native-packages: false
+    secrets:
+      goreleaser-key: ${{ secrets.GORELEASER_KEY }}
   oci-image:
     name: Build OCI image
     needs: release-assets
