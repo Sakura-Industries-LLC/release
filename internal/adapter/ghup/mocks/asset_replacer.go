@@ -41,7 +41,7 @@ func (_m *MockAssetReplacer) EXPECT() *MockAssetReplacer_Expecter {
 }
 
 // Replace provides a mock function for the type MockAssetReplacer
-func (_mock *MockAssetReplacer) Replace(ctx context.Context, repository pubgh.Repository, tag rel.Tag, expected []pubgh.AssetPath) error {
+func (_mock *MockAssetReplacer) Replace(ctx context.Context, repository pubgh.Repository, tag rel.GitTag, expected []pubgh.AssetPath) error {
 	ret := _mock.Called(ctx, repository, tag, expected)
 
 	if len(ret) == 0 {
@@ -49,7 +49,7 @@ func (_mock *MockAssetReplacer) Replace(ctx context.Context, repository pubgh.Re
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.Tag, []pubgh.AssetPath) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.GitTag, []pubgh.AssetPath) error); ok {
 		r0 = returnFunc(ctx, repository, tag, expected)
 	} else {
 		r0 = ret.Error(0)
@@ -65,13 +65,13 @@ type MockAssetReplacer_Replace_Call struct {
 // Replace is a helper method to define mock.On call
 //   - ctx context.Context
 //   - repository pubgh.Repository
-//   - tag rel.Tag
+//   - tag rel.GitTag
 //   - expected []pubgh.AssetPath
 func (_e *MockAssetReplacer_Expecter) Replace(ctx any, repository any, tag any, expected any) *MockAssetReplacer_Replace_Call {
 	return &MockAssetReplacer_Replace_Call{Call: _e.mock.On("Replace", ctx, repository, tag, expected)}
 }
 
-func (_c *MockAssetReplacer_Replace_Call) Run(run func(ctx context.Context, repository pubgh.Repository, tag rel.Tag, expected []pubgh.AssetPath)) *MockAssetReplacer_Replace_Call {
+func (_c *MockAssetReplacer_Replace_Call) Run(run func(ctx context.Context, repository pubgh.Repository, tag rel.GitTag, expected []pubgh.AssetPath)) *MockAssetReplacer_Replace_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -81,9 +81,9 @@ func (_c *MockAssetReplacer_Replace_Call) Run(run func(ctx context.Context, repo
 		if args[1] != nil {
 			arg1 = args[1].(pubgh.Repository)
 		}
-		var arg2 rel.Tag
+		var arg2 rel.GitTag
 		if args[2] != nil {
-			arg2 = args[2].(rel.Tag)
+			arg2 = args[2].(rel.GitTag)
 		}
 		var arg3 []pubgh.AssetPath
 		if args[3] != nil {
@@ -104,7 +104,7 @@ func (_c *MockAssetReplacer_Replace_Call) Return(err error) *MockAssetReplacer_R
 	return _c
 }
 
-func (_c *MockAssetReplacer_Replace_Call) RunAndReturn(run func(ctx context.Context, repository pubgh.Repository, tag rel.Tag, expected []pubgh.AssetPath) error) *MockAssetReplacer_Replace_Call {
+func (_c *MockAssetReplacer_Replace_Call) RunAndReturn(run func(ctx context.Context, repository pubgh.Repository, tag rel.GitTag, expected []pubgh.AssetPath) error) *MockAssetReplacer_Replace_Call {
 	_c.Call.Return(run)
 	return _c
 }

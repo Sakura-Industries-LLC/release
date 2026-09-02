@@ -121,8 +121,8 @@ type githubConfig struct {
 	Dist string
 	// Repository is the owner/name pair from GITHUB_REPOSITORY.
 	Repository pubgh.Repository
-	// Tag is the release tag from GITHUB_REF_NAME.
-	Tag rel.Tag
+	// Tag is the git tag from GITHUB_REF_NAME.
+	Tag rel.GitTag
 	// Commit is the expected tag SHA from GITHUB_SHA.
 	Commit pubgh.CommitSHA
 	// Token is the App installation token. It is never logged.
@@ -165,7 +165,7 @@ func resolveGitHub(options Options) (githubConfig, error) {
 	if err != nil {
 		return githubConfig{}, err
 	}
-	tag, err := rel.ParseTag(refRaw)
+	tag, err := rel.ParseGitTag(refRaw)
 	if err != nil {
 		return githubConfig{}, err
 	}

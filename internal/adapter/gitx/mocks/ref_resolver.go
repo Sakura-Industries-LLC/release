@@ -41,7 +41,7 @@ func (_m *MockRefResolver) EXPECT() *MockRefResolver_Expecter {
 }
 
 // Resolve provides a mock function for the type MockRefResolver
-func (_mock *MockRefResolver) Resolve(ctx context.Context, tag rel.Tag) (pubgh.CommitSHA, error) {
+func (_mock *MockRefResolver) Resolve(ctx context.Context, tag rel.GitTag) (pubgh.CommitSHA, error) {
 	ret := _mock.Called(ctx, tag)
 
 	if len(ret) == 0 {
@@ -50,15 +50,15 @@ func (_mock *MockRefResolver) Resolve(ctx context.Context, tag rel.Tag) (pubgh.C
 
 	var r0 pubgh.CommitSHA
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, rel.Tag) (pubgh.CommitSHA, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, rel.GitTag) (pubgh.CommitSHA, error)); ok {
 		return returnFunc(ctx, tag)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, rel.Tag) pubgh.CommitSHA); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, rel.GitTag) pubgh.CommitSHA); ok {
 		r0 = returnFunc(ctx, tag)
 	} else {
 		r0 = ret.Get(0).(pubgh.CommitSHA)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, rel.Tag) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, rel.GitTag) error); ok {
 		r1 = returnFunc(ctx, tag)
 	} else {
 		r1 = ret.Error(1)
@@ -73,20 +73,20 @@ type MockRefResolver_Resolve_Call struct {
 
 // Resolve is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tag rel.Tag
+//   - tag rel.GitTag
 func (_e *MockRefResolver_Expecter) Resolve(ctx any, tag any) *MockRefResolver_Resolve_Call {
 	return &MockRefResolver_Resolve_Call{Call: _e.mock.On("Resolve", ctx, tag)}
 }
 
-func (_c *MockRefResolver_Resolve_Call) Run(run func(ctx context.Context, tag rel.Tag)) *MockRefResolver_Resolve_Call {
+func (_c *MockRefResolver_Resolve_Call) Run(run func(ctx context.Context, tag rel.GitTag)) *MockRefResolver_Resolve_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 rel.Tag
+		var arg1 rel.GitTag
 		if args[1] != nil {
-			arg1 = args[1].(rel.Tag)
+			arg1 = args[1].(rel.GitTag)
 		}
 		run(
 			arg0,
@@ -101,7 +101,7 @@ func (_c *MockRefResolver_Resolve_Call) Return(commitSHA pubgh.CommitSHA, err er
 	return _c
 }
 
-func (_c *MockRefResolver_Resolve_Call) RunAndReturn(run func(ctx context.Context, tag rel.Tag) (pubgh.CommitSHA, error)) *MockRefResolver_Resolve_Call {
+func (_c *MockRefResolver_Resolve_Call) RunAndReturn(run func(ctx context.Context, tag rel.GitTag) (pubgh.CommitSHA, error)) *MockRefResolver_Resolve_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -113,7 +113,7 @@ func New(options Options) *Replacer {
 func (r *Replacer) Replace(
 	ctx context.Context,
 	repository pubgh.Repository,
-	tag rel.Tag,
+	tag rel.GitTag,
 	expected []pubgh.AssetPath,
 ) error {
 	if ctx == nil {
@@ -155,7 +155,7 @@ func (r *Replacer) Replace(
 }
 
 // uploadArgs builds the explicit `gh release upload` argument slice.
-func uploadArgs(tag rel.Tag, repository pubgh.Repository, expected []pubgh.AssetPath) []string {
+func uploadArgs(tag rel.GitTag, repository pubgh.Repository, expected []pubgh.AssetPath) []string {
 	args := make([]string, 0, uploadFixedArgs+len(expected))
 	args = append(args, "release", "upload", tag.String())
 	for _, asset := range expected {
@@ -182,7 +182,7 @@ func applyToken(env []string, token string) []string {
 }
 
 // replaceError formats a gh process failure without including credentials.
-func replaceError(tag rel.Tag, err error) error {
+func replaceError(tag rel.GitTag, err error) error {
 	var runErr *execx.RunError
 	if !errors.As(err, &runErr) {
 		return fmt.Errorf("gh release upload %s: %w", tag, err)

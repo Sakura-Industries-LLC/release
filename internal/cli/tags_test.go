@@ -197,6 +197,29 @@ func TestPlanTagsDerivedDefaults(t *testing.T) {
 	assert.Equal(t, []string{"1.2.3", "1.2", "1", "latest"}, referenceTags(got))
 }
 
+func TestPlanTagsDerivedPrefixedTag(t *testing.T) {
+	t.Parallel()
+
+	var got []puboci.Reference
+	reader := regmocks.NewMockStateReader(t)
+	reader.EXPECT().
+		Resolve(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, ref puboci.Reference) {
+			got = append(got, ref)
+		}).
+		Return(rel.Digest(""), puboci.ErrTagAbsent).
+		Times(4)
+
+	_, _, err := executeTags(t, map[string]string{
+		"GITHUB_REPOSITORY": "Owner/Repo",
+		"GITHUB_REF_NAME":   "cli/v1.2.3",
+	}, []string{"plan", "tags", "--digest", tagsDigest}, reader)
+	require.NoError(t, err)
+	require.NotEmpty(t, got)
+	assert.Equal(t, tagsImage, got[0].Image.String())
+	assert.Equal(t, []string{"1.2.3", "1.2", "1", "latest"}, referenceTags(got))
+}
+
 func TestPlanTagsFlagOverridesEnv(t *testing.T) {
 	t.Parallel()
 

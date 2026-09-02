@@ -41,7 +41,7 @@ func (_m *MockReleaseReader) EXPECT() *MockReleaseReader_Expecter {
 }
 
 // FindDraft provides a mock function for the type MockReleaseReader
-func (_mock *MockReleaseReader) FindDraft(ctx context.Context, repository pubgh.Repository, tag rel.Tag) (pubgh.Release, error) {
+func (_mock *MockReleaseReader) FindDraft(ctx context.Context, repository pubgh.Repository, tag rel.GitTag) (pubgh.Release, error) {
 	ret := _mock.Called(ctx, repository, tag)
 
 	if len(ret) == 0 {
@@ -50,15 +50,15 @@ func (_mock *MockReleaseReader) FindDraft(ctx context.Context, repository pubgh.
 
 	var r0 pubgh.Release
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.Tag) (pubgh.Release, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.GitTag) (pubgh.Release, error)); ok {
 		return returnFunc(ctx, repository, tag)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.Tag) pubgh.Release); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, pubgh.Repository, rel.GitTag) pubgh.Release); ok {
 		r0 = returnFunc(ctx, repository, tag)
 	} else {
 		r0 = ret.Get(0).(pubgh.Release)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, pubgh.Repository, rel.Tag) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, pubgh.Repository, rel.GitTag) error); ok {
 		r1 = returnFunc(ctx, repository, tag)
 	} else {
 		r1 = ret.Error(1)
@@ -74,12 +74,12 @@ type MockReleaseReader_FindDraft_Call struct {
 // FindDraft is a helper method to define mock.On call
 //   - ctx context.Context
 //   - repository pubgh.Repository
-//   - tag rel.Tag
+//   - tag rel.GitTag
 func (_e *MockReleaseReader_Expecter) FindDraft(ctx any, repository any, tag any) *MockReleaseReader_FindDraft_Call {
 	return &MockReleaseReader_FindDraft_Call{Call: _e.mock.On("FindDraft", ctx, repository, tag)}
 }
 
-func (_c *MockReleaseReader_FindDraft_Call) Run(run func(ctx context.Context, repository pubgh.Repository, tag rel.Tag)) *MockReleaseReader_FindDraft_Call {
+func (_c *MockReleaseReader_FindDraft_Call) Run(run func(ctx context.Context, repository pubgh.Repository, tag rel.GitTag)) *MockReleaseReader_FindDraft_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -89,9 +89,9 @@ func (_c *MockReleaseReader_FindDraft_Call) Run(run func(ctx context.Context, re
 		if args[1] != nil {
 			arg1 = args[1].(pubgh.Repository)
 		}
-		var arg2 rel.Tag
+		var arg2 rel.GitTag
 		if args[2] != nil {
-			arg2 = args[2].(rel.Tag)
+			arg2 = args[2].(rel.GitTag)
 		}
 		run(
 			arg0,
@@ -107,7 +107,7 @@ func (_c *MockReleaseReader_FindDraft_Call) Return(release pubgh.Release, err er
 	return _c
 }
 
-func (_c *MockReleaseReader_FindDraft_Call) RunAndReturn(run func(ctx context.Context, repository pubgh.Repository, tag rel.Tag) (pubgh.Release, error)) *MockReleaseReader_FindDraft_Call {
+func (_c *MockReleaseReader_FindDraft_Call) RunAndReturn(run func(ctx context.Context, repository pubgh.Repository, tag rel.GitTag) (pubgh.Release, error)) *MockReleaseReader_FindDraft_Call {
 	_c.Call.Return(run)
 	return _c
 }

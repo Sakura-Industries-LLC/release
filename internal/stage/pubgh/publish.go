@@ -24,7 +24,7 @@ type ReleaseReader interface {
 	// the release with its real Draft flag; it does not wait for a draft
 	// and does not refuse a public release. [Publish] retries [ErrNoDraft]
 	// under [PublishInput.Draft].
-	FindDraft(ctx context.Context, repository Repository, tag rel.Tag) (Release, error)
+	FindDraft(ctx context.Context, repository Repository, tag rel.GitTag) (Release, error)
 	// WaitAssets returns the current assets on release after one list pass.
 	//
 	// The adapter does not judge readiness, count, or digests. [Publish]
@@ -41,7 +41,7 @@ type ReleaseReader interface {
 // already have been refused by [Publish] before Replace is called.
 type AssetReplacer interface {
 	// Replace uploads expected onto the release identified by tag.
-	Replace(ctx context.Context, repository Repository, tag rel.Tag, expected []AssetPath) error
+	Replace(ctx context.Context, repository Repository, tag rel.GitTag, expected []AssetPath) error
 }
 
 // Publisher leaves draft state on a populated release.
@@ -54,7 +54,7 @@ type Publisher interface {
 // RefResolver resolves a git tag to the commit it currently names.
 type RefResolver interface {
 	// Resolve returns the commit object ID named by tag.
-	Resolve(ctx context.Context, tag rel.Tag) (CommitSHA, error)
+	Resolve(ctx context.Context, tag rel.GitTag) (CommitSHA, error)
 }
 
 // PublishInput is the closed input to [Publish].
@@ -62,7 +62,7 @@ type PublishInput struct {
 	// Repository is the GitHub owner/name that owns the release.
 	Repository Repository
 	// Tag is the git tag bound to the draft release.
-	Tag rel.Tag
+	Tag rel.GitTag
 	// Commit is the workflow's github.sha. The tag must resolve to it.
 	Commit CommitSHA
 	// Expected is the closed bundle rebuilt from the distribution
@@ -272,7 +272,7 @@ func publish(
 }
 
 // resolveCommit returns the commit named by tag, retrying [ErrRetryable].
-func resolveCommit(ctx context.Context, resolver RefResolver, tag rel.Tag, sleep SleepFunc) (CommitSHA, error) {
+func resolveCommit(ctx context.Context, resolver RefResolver, tag rel.GitTag, sleep SleepFunc) (CommitSHA, error) {
 	var sha CommitSHA
 	err := retryOp(ctx, sleep, fmt.Sprintf("resolve tag %s", tag), func() error {
 		got, callErr := resolver.Resolve(ctx, tag)

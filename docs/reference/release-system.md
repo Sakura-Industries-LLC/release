@@ -453,6 +453,14 @@ requirements.
 
 ## Publication contracts and states
 
+### Tag names
+
+The GitHub Release, Homebrew, and Scoop publishers accept a git tag that may
+include a `<prefix>/` path (GoReleaser Pro `monorepo.tag_prefix`). The version
+is the last path segment with one leading `v` removed, so `cli/v0.1.4` and
+`v0.1.4` both yield `0.1.4`. The package-repository path still requires a bare
+`v*` tag.
+
 ### GitHub Release
 
 The publisher requires the tag to resolve to the workflow commit and exactly one
@@ -630,7 +638,7 @@ The current release system does not support:
 
 - languages other than the Go producer profile;
 - more than one application, GHCR image, or image entrypoint per repository;
-- monorepo component tags or scoped versions;
+- package-repository publication from monorepo-prefixed tags;
 - prereleases or build metadata;
 - CGO-dependent or dynamically linked commands;
 - binary architectures outside Darwin/Linux/Windows `amd64` and `arm64`;

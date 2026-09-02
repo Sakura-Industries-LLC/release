@@ -83,7 +83,7 @@ func New(options Options) *Resolver {
 // stdout is trimmed and parsed as a [pubgh.CommitSHA]; any other output
 // is an error that names what was returned. A nonzero exit includes a
 // bounded tail of stderr.
-func (r *Resolver) Resolve(ctx context.Context, tag rel.Tag) (pubgh.CommitSHA, error) {
+func (r *Resolver) Resolve(ctx context.Context, tag rel.GitTag) (pubgh.CommitSHA, error) {
 	if ctx == nil {
 		return "", errors.New("context is nil")
 	}
@@ -122,7 +122,7 @@ func (r *Resolver) Resolve(ctx context.Context, tag rel.Tag) (pubgh.CommitSHA, e
 }
 
 // resolveError formats a git rev-list process failure for an unknown tag.
-func resolveError(tag rel.Tag, err error) error {
+func resolveError(tag rel.GitTag, err error) error {
 	var runErr *execx.RunError
 	if !errors.As(err, &runErr) {
 		return fmt.Errorf("git rev-list -n 1 %s: unknown tag: %w", tag, err)

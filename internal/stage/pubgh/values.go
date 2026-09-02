@@ -45,7 +45,7 @@ type Release struct {
 	// ID is the GitHub Release identifier.
 	ID ReleaseID
 	// Tag is the git tag bound to the release.
-	Tag rel.Tag
+	Tag rel.GitTag
 	// Draft reports whether the release is still a draft.
 	Draft bool
 	// URL is the GitHub html_url of the release.
