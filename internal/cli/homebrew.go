@@ -144,13 +144,9 @@ func resolveHomebrew(cmd *cobra.Command, options Options) (homebrewConfig, error
 	if err != nil {
 		return homebrewConfig{}, fmt.Errorf("%s: %w", envRepository, err)
 	}
-	versionRaw, err := deriveVersion(options.LookupEnv)
+	version, err := deriveVersion(options.LookupEnv)
 	if err != nil {
 		return homebrewConfig{}, err
-	}
-	version, err := rel.ParseVersion(versionRaw)
-	if err != nil {
-		return homebrewConfig{}, fmt.Errorf("%s: %w", envRefName, err)
 	}
 	commitRaw, err := requiredEnv(options.LookupEnv, envCommitSHA)
 	if err != nil {

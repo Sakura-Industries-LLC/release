@@ -191,7 +191,12 @@ jobs:
               requireFile(`oci-image/layout/blobs/sha256/${digest.slice('sha256:'.length)}`)
             }
 
-            const version = String(process.env.GITHUB_REF_NAME ?? '').replace(/^v/, '')
+            const refName = String(process.env.GITHUB_REF_NAME ?? '')
+            const versionTag = refName.split('/').pop()
+            if (!versionTag.startsWith('v')) {
+              throw new Error(`Expected a v-prefixed tag, got ${refName}.`)
+            }
+            const version = versionTag.replace(/^v/, '')
             const [major, minor, patch, ...extra] = version.split('.')
             if (!major || !minor || !patch || extra.length !== 0) {
               throw new Error(`Invalid stable version: ${version}`)

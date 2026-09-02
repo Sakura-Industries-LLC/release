@@ -727,7 +727,7 @@ func newPublishHarness(t *testing.T) *publishHarness {
 
 	repo, err := pubgh.ParseRepository("Sakura-Industries-LLC/release")
 	require.NoError(t, err)
-	tag, err := rel.ParseTag("v1.2.3")
+	tag, err := rel.ParseGitTag("v1.2.3")
 	require.NoError(t, err)
 	id, err := pubgh.ReleaseIDFromInt(42)
 	require.NoError(t, err)

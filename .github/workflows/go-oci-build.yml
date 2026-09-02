@@ -62,8 +62,10 @@ jobs:
             if (process.env.GITHUB_REF_TYPE !== 'tag') {
               throw new Error('Go OCI production must run against a tag ref.')
             }
-            if (!process.env.GITHUB_REF_NAME.startsWith('v')) {
-              throw new Error(`Expected a v-prefixed tag, got ${process.env.GITHUB_REF_NAME}.`)
+            const refName = process.env.GITHUB_REF_NAME
+            const versionTag = refName.split('/').pop()
+            if (!versionTag.startsWith('v')) {
+              throw new Error(`Expected a v-prefixed tag, got ${refName}.`)
             }
 
       - name: Checkout

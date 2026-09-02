@@ -144,13 +144,9 @@ func resolveScoop(cmd *cobra.Command, options Options) (scoopConfig, error) {
 	if err != nil {
 		return scoopConfig{}, fmt.Errorf("%s: %w", envRepository, err)
 	}
-	versionRaw, err := deriveVersion(options.LookupEnv)
+	version, err := deriveVersion(options.LookupEnv)
 	if err != nil {
 		return scoopConfig{}, err
-	}
-	version, err := rel.ParseVersion(versionRaw)
-	if err != nil {
-		return scoopConfig{}, fmt.Errorf("%s: %w", envRefName, err)
 	}
 	commitRaw, err := requiredEnv(options.LookupEnv, envCommitSHA)
 	if err != nil {

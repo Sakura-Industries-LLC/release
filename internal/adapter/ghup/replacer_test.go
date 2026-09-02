@@ -213,7 +213,7 @@ func TestReplaceRejectsBeforeStart(t *testing.T) {
 		ctx      context.Context
 		replacer *Replacer
 		repo     pubgh.Repository
-		tag      rel.Tag
+		tag      rel.GitTag
 		assets   []pubgh.AssetPath
 		want     string
 	}{
@@ -474,10 +474,10 @@ func mustRepo(t *testing.T) pubgh.Repository {
 }
 
 // mustTag returns the fixture release tag.
-func mustTag(t *testing.T) rel.Tag {
+func mustTag(t *testing.T) rel.GitTag {
 	t.Helper()
 
-	tag, err := rel.ParseTag(testTag)
+	tag, err := rel.ParseGitTag(testTag)
 	require.NoError(t, err)
 
 	return tag

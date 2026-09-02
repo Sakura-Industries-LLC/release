@@ -157,7 +157,7 @@ func TestResolveRejectsNilGuardsBeforeStart(t *testing.T) {
 		name     string
 		ctx      context.Context
 		resolver *Resolver
-		tag      rel.Tag
+		tag      rel.GitTag
 		want     string
 	}{
 		{
@@ -257,11 +257,11 @@ func runGit(t *testing.T, git string, dir string, args ...string) string {
 	return string(out)
 }
 
-// mustTag parses raw as a [rel.Tag].
-func mustTag(t *testing.T, raw string) rel.Tag {
+// mustTag parses raw as a [rel.GitTag].
+func mustTag(t *testing.T, raw string) rel.GitTag {
 	t.Helper()
 
-	tag, err := rel.ParseTag(raw)
+	tag, err := rel.ParseGitTag(raw)
 	require.NoError(t, err)
 
 	return tag

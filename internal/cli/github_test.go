@@ -91,6 +91,12 @@ func TestPublishGitHubConfigErrorsAreUsage(t *testing.T) {
 			args: []string{"publish", "github", "--dist", dist, "--json"},
 			want: "",
 		},
+		{
+			name: "malformed ref name",
+			env:  withEnv(githubEnv(), "GITHUB_REF_NAME", "v1.2.3 "),
+			args: []string{"publish", "github", "--dist", dist, "--json"},
+			want: "git tag",
+		},
 	}
 
 	for _, tt := range tests {
@@ -496,7 +502,7 @@ func acceptingReplacer(t *testing.T, got *[]pubgh.AssetPath) *ghupmocks.MockAsse
 	expect := replacer.EXPECT().
 		Replace(mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	if got != nil {
-		expect.Run(func(_ context.Context, _ pubgh.Repository, _ rel.Tag, expected []pubgh.AssetPath) {
+		expect.Run(func(_ context.Context, _ pubgh.Repository, _ rel.GitTag, expected []pubgh.AssetPath) {
 			cloned := make([]pubgh.AssetPath, len(expected))
 			copy(cloned, expected)
 			*got = cloned
@@ -708,10 +714,10 @@ func mustReleaseID(t *testing.T) pubgh.ReleaseID {
 }
 
 // mustGitHubTag constructs the fixture release tag.
-func mustGitHubTag(t *testing.T) rel.Tag {
+func mustGitHubTag(t *testing.T) rel.GitTag {
 	t.Helper()
 
-	tag, err := rel.ParseTag(githubTagName)
+	tag, err := rel.ParseGitTag(githubTagName)
 	require.NoError(t, err)
 
 	return tag

@@ -438,10 +438,10 @@ func mustRepo(t *testing.T) pubgh.Repository {
 }
 
 // mustTag parses the fixture tag or fails the test.
-func mustTag(t *testing.T) rel.Tag {
+func mustTag(t *testing.T) rel.GitTag {
 	t.Helper()
 
-	tag, err := rel.ParseTag(testTag)
+	tag, err := rel.ParseGitTag(testTag)
 	require.NoError(t, err)
 
 	return tag

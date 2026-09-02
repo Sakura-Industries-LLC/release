@@ -206,11 +206,7 @@ func resolvePlanImage(settings Settings, lookup LookupEnv) (puboci.Image, error)
 func resolvePlanVersion(settings Settings, lookup LookupEnv) (rel.Version, error) {
 	raw := settings.Version
 	if raw == "" {
-		derived, err := deriveVersion(lookup)
-		if err != nil {
-			return rel.Version{}, err
-		}
-		raw = derived
+		return deriveVersion(lookup)
 	}
 
 	return rel.ParseVersion(raw)
@@ -229,17 +225,28 @@ func deriveImage(lookup LookupEnv) (string, error) {
 	return strings.ToLower(defaultImageRegistry + "/" + repository), nil
 }
 
-// deriveVersion reads GITHUB_REF_NAME and strips one optional leading v.
-func deriveVersion(lookup LookupEnv) (string, error) {
+// deriveVersion reads GITHUB_REF_NAME as a git tag and returns its version.
+//
+// The last `/`-separated segment is taken and one optional leading `v` is
+// stripped, so `v1.2.3` and `cli/v1.2.3` both yield 1.2.3.
+func deriveVersion(lookup LookupEnv) (rel.Version, error) {
 	if lookup == nil {
-		return "", fmt.Errorf("--%s is required when %s is unset", flagVersion, envRefName)
+		return rel.Version{}, fmt.Errorf("--%s is required when %s is unset", flagVersion, envRefName)
 	}
 	refName, ok := lookup(envRefName)
 	if !ok || refName == "" {
-		return "", fmt.Errorf("--%s is required when %s is unset", flagVersion, envRefName)
+		return rel.Version{}, fmt.Errorf("--%s is required when %s is unset", flagVersion, envRefName)
+	}
+	tag, err := rel.ParseGitTag(refName)
+	if err != nil {
+		return rel.Version{}, fmt.Errorf("%s: %w", envRefName, err)
+	}
+	version, err := tag.Version()
+	if err != nil {
+		return rel.Version{}, fmt.Errorf("%s: %w", envRefName, err)
 	}
 
-	return strings.TrimPrefix(refName, "v"), nil
+	return version, nil
 }
 
 // requireLoopbackPlainHTTP rejects --plain-http unless image is on loopback.

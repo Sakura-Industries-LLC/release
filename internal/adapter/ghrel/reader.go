@@ -64,7 +64,7 @@ func NewAuthenticated(token rel.Secret, apiURL, serverURL string) (*Client, erro
 func (c *Client) FindDraft(
 	ctx context.Context,
 	repository pubgh.Repository,
-	tag rel.Tag,
+	tag rel.GitTag,
 ) (pubgh.Release, error) {
 	if err := c.requireReady(ctx); err != nil {
 		return pubgh.Release{}, err
@@ -119,7 +119,7 @@ func (c *Client) requireReady(ctx context.Context) error {
 func (c *Client) findDraft(
 	ctx context.Context,
 	repository pubgh.Repository,
-	tag rel.Tag,
+	tag rel.GitTag,
 ) (pubgh.Release, error) {
 	matched, err := c.listMatchingReleases(ctx, repository, tag)
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *Client) get(
 func (c *Client) listMatchingReleases(
 	ctx context.Context,
 	repository pubgh.Repository,
-	tag rel.Tag,
+	tag rel.GitTag,
 ) ([]pubgh.Release, error) {
 	opts := &github.ListOptions{PerPage: listPageSize}
 	wanted := tag.String()
@@ -228,7 +228,7 @@ func mapRelease(release *github.RepositoryRelease) (pubgh.Release, error) {
 	if err != nil {
 		return pubgh.Release{}, fmt.Errorf("malformed release metadata: %w", err)
 	}
-	tag, err := rel.ParseTag(release.GetTagName())
+	tag, err := rel.ParseGitTag(release.GetTagName())
 	if err != nil {
 		return pubgh.Release{}, fmt.Errorf("malformed release metadata: %w", err)
 	}
