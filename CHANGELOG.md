@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.21](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.20...v0.1.21) (2026-09-02)
+
+
+### Features
+
+* **cli:** accept monorepo-prefixed release tags ([#11](https://github.com/Sakura-Industries-LLC/release/issues/11)) ([e46324f](https://github.com/Sakura-Industries-LLC/release/commit/e46324f21feb3b50f1f877cbaccb107ca37776f5))
+* **workflows:** pass an optional GoReleaser Pro key to the Go pre-publish stage ([#8](https://github.com/Sakura-Industries-LLC/release/issues/8)) ([083b9bd](https://github.com/Sakura-Industries-LLC/release/commit/083b9bde29eb90b1ab6ed358551bf1a6affa13d8))
+
 ## [0.1.20](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.19...v0.1.20) (2026-09-01)
 
 
