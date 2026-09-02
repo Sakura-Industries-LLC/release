@@ -130,6 +130,7 @@ Optional secrets become required when their input is enabled:
 | --- | --- |
 | macOS signing | `macos-sign-p12`, `macos-sign-password`, `macos-notary-key`, `macos-notary-key-id`, `macos-notary-issuer-id` |
 | Native signing | `rpm-signing-key`, `rpm-signing-passphrase`, `apk-signing-key`, `apk-signing-passphrase` |
+| Any | `goreleaser-key` (optional): GoReleaser Pro license key, exported to GoReleaser as `GORELEASER_KEY`; the open-source binary ignores it |
 
 The private key values are base64 encoded. Native keys are materialized as
 owner-only files under `RUNNER_TEMP` immediately before staging and removed
