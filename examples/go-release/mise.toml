@@ -1,6 +1,6 @@
 [tools]
 go = "1.26.6"
-"aqua:goreleaser/goreleaser" = "2.17.1"
+"http:goreleaser-pro" = { version = "2.17.1", url = 'https://github.com/goreleaser/goreleaser-pro/releases/download/v{{ version }}/goreleaser-pro_{{ os(macos="Darwin", linux="Linux") }}_{{ arch(x64="x86_64") }}.tar.gz', checksum_url = 'https://github.com/goreleaser/goreleaser-pro/releases/download/v{{ version }}/checksums.txt' }
 "aqua:cli/cli" = "2.97.0"
 "aqua:anchore/syft" = "1.51.0"
 "aqua:sigstore/cosign" = "3.1.3"
