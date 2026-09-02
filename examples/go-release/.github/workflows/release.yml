@@ -33,6 +33,7 @@ jobs:
       rpm-signing-passphrase: ${{ secrets.RPM_SIGNING_PASSPHRASE }}
       apk-signing-key: ${{ secrets.APK_SIGNING_KEY }}
       apk-signing-passphrase: ${{ secrets.APK_SIGNING_PASSPHRASE }}
+      goreleaser-key: ${{ secrets.GORELEASER_KEY }}
 
   oci-image:
     name: Build OCI image

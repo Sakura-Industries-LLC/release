@@ -41,6 +41,11 @@ on:
       apk-signing-passphrase:
         description: Passphrase for the APK package-signing key.
         required: false
+      goreleaser-key:
+        description: >-
+          GoReleaser Pro license key, exported to GoReleaser as
+          GORELEASER_KEY. Ignored by the open-source GoReleaser binary.
+        required: false
     outputs:
       artifact-id:
         description: ID of the authoritative release-assets artifact.
@@ -236,6 +241,7 @@ jobs:
           RELEASE_APK_SIGNING_KEY_FILE: ${{ steps.native-signing.outputs.apk-key-file }}
           NFPM_RELEASE_RPM_PASSPHRASE: ${{ secrets.rpm-signing-passphrase }}
           NFPM_RELEASE_APK_PASSPHRASE: ${{ secrets.apk-signing-passphrase }}
+          GORELEASER_KEY: ${{ secrets.goreleaser-key }}
         shell: bash
         run: |
           set -euo pipefail
