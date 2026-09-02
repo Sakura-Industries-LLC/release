@@ -134,7 +134,9 @@ Merge the example's tool declarations into the producer's `mise.toml`. The
 release path requires locked versions of:
 
 - Go;
-- GoReleaser;
+- GoReleaser Pro, declared as `http:goreleaser-pro` (the aqua registry has no
+  Pro package; the example pins the release `checksums.txt` as the checksum
+  source);
 - Syft;
 - Cosign;
 - GitHub CLI;

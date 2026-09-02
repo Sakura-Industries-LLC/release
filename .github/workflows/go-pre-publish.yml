@@ -161,7 +161,7 @@ jobs:
           version: 2026.8.8
           install_args: >-
             go
-            aqua:goreleaser/goreleaser
+            http:goreleaser-pro
             aqua:anchore/syft
             aqua:sigstore/cosign
           cache: true
