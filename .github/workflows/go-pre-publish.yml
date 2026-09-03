@@ -17,7 +17,7 @@ on:
         description: >-
           Comma-separated GOPRIVATE patterns for Go modules hosted in private
           GitHub repositories of this organization, for example
-          github.com/Sakura-Industries-LLC/dntls-public. Empty means every
+          github.com/Sakura-Industries-LLC/dntls-testnet. Empty means every
           module comes from the public proxy.
         required: false
         default: ''
@@ -25,7 +25,7 @@ on:
       private-go-module-repositories:
         description: >-
           Comma-separated repository names the release app token may read
-          while resolving private-go-modules, for example dntls-public.
+          while resolving private-go-modules, for example dntls-testnet.
           Required when private-go-modules is set.
         required: false
         default: ''
