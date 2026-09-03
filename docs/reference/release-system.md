@@ -123,6 +123,9 @@ Inputs:
 | --- | --- | --- | --- | --- |
 | `sign-and-notarize-macos` | boolean | No | `false` | Enable the producer's guarded GoReleaser macOS signing and notarization block. |
 | `sign-native-packages` | boolean | No | `false` | Sign RPM and APK packages before checksum generation. |
+| `private-go-modules` | string | No | `''` | Comma-separated `GOPRIVATE` patterns for Go modules hosted in private repositories of the calling organization. Empty resolves every module through the public proxy. |
+| `private-go-module-repositories` | string | No | `''` | Comma-separated repository names the release app token may read while resolving `private-go-modules`. Required with `private-go-modules`. |
+| `release-app-client-id` | string | No | `''` | Client ID of the GitHub App that reads `private-go-module-repositories`. Required with `private-go-modules`. |
 
 Optional secrets become required when their input is enabled:
 
@@ -130,6 +133,7 @@ Optional secrets become required when their input is enabled:
 | --- | --- |
 | macOS signing | `macos-sign-p12`, `macos-sign-password`, `macos-notary-key`, `macos-notary-key-id`, `macos-notary-issuer-id` |
 | Native signing | `rpm-signing-key`, `rpm-signing-passphrase`, `apk-signing-key`, `apk-signing-passphrase` |
+| Private Go modules | `release-app-private-key`. The producer mints a `contents: read` installation token for exactly `private-go-module-repositories`, adds a repository-scoped `url.insteadOf` to the runner's global git configuration, and exports `GOPRIVATE`; nothing is written to the staged artifacts |
 | Any | `goreleaser-key`: GoReleaser Pro license key, exported to GoReleaser as `GORELEASER_KEY`. The workflow installs the producer's `http:goreleaser-pro` declaration; the Pro binary validates configuration without a key and enforces the license on non-snapshot releases |
 
 The private key values are base64 encoded. Native keys are materialized as
