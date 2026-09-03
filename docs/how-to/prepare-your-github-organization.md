@@ -29,7 +29,7 @@ again.
 Install the App on selected `Sakura-Industries-LLC` repositories:
 
 - `release`;
-- every producer repository, beginning with `dntls-public`;
+- every producer repository, beginning with `dntls-testnet`;
 - `homebrew-tap` and `scoop-bucket`; and
 - `pkgs`.
 
