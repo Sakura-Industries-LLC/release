@@ -13,7 +13,36 @@ on:
         required: false
         default: false
         type: boolean
+      private-go-modules:
+        description: >-
+          Comma-separated GOPRIVATE patterns for Go modules hosted in private
+          GitHub repositories of this organization, for example
+          github.com/Sakura-Industries-LLC/dntls-public. Empty means every
+          module comes from the public proxy.
+        required: false
+        default: ''
+        type: string
+      private-go-module-repositories:
+        description: >-
+          Comma-separated repository names the release app token may read
+          while resolving private-go-modules, for example dntls-public.
+          Required when private-go-modules is set.
+        required: false
+        default: ''
+        type: string
+      release-app-client-id:
+        description: >-
+          Client ID of the GitHub App that reads private-go-module-repositories.
+          Required when private-go-modules is set.
+        required: false
+        default: ''
+        type: string
     secrets:
+      release-app-private-key:
+        description: >-
+          Private key of the GitHub App named by release-app-client-id.
+          Required when private-go-modules is set.
+        required: false
       macos-sign-p12:
         description: Base64-encoded Developer ID Application certificate.
         required: false
@@ -167,6 +196,45 @@ jobs:
           cache: true
           add_shims_to_path: false
           export_path: false
+
+      # Private Go modules: mint a read-only app token for exactly the named
+      # repositories and route git at them through it. GOPRIVATE keeps those
+      # modules away from the public proxy and checksum database. The token
+      # lives only in git configuration on this runner for this job.
+      - name: Create private module read token
+        id: private-modules
+        if: inputs.private-go-modules != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.release-app-client-id }}
+          private-key: ${{ secrets.release-app-private-key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.private-go-module-repositories }}
+          permission-contents: read
+
+      - name: Route private module fetches through the token
+        if: inputs.private-go-modules != ''
+        shell: bash
+        env:
+          PRIVATE_MODULES: ${{ inputs.private-go-modules }}
+          PRIVATE_REPOSITORIES: ${{ inputs.private-go-module-repositories }}
+          PRIVATE_TOKEN: ${{ steps.private-modules.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRIVATE_REPOSITORIES}" ] || [ -z "${PRIVATE_TOKEN}" ]; then
+            echo "::error::private-go-modules requires private-go-module-repositories, release-app-client-id, and release-app-private-key."
+            exit 1
+          fi
+          IFS=',' read -ra repos <<<"${PRIVATE_REPOSITORIES}"
+          for repo in "${repos[@]}"; do
+            repo="${repo// /}"
+            [ -n "${repo}" ] || continue
+            git config --global \
+              "url.https://x-access-token:${PRIVATE_TOKEN}@github.com/${OWNER}/${repo}.insteadOf" \
+              "https://github.com/${OWNER}/${repo}"
+          done
+          echo "GOPRIVATE=${PRIVATE_MODULES}" >> "${GITHUB_ENV}"
 
       - name: Verify Go release tools
         shell: bash
