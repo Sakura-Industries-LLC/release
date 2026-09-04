@@ -129,6 +129,28 @@ jobs:
     secrets:
       release-app-private-key: ${{ secrets.SAKURA_RELEASE_APP_PRIVATE_KEY }}
 
+  object-store-publish:
+    name: Publish to object store
+    needs:
+      - release-assets
+      - github-release
+    permissions:
+      actions: read
+      contents: read
+    uses: Sakura-Industries-LLC/release/.github/workflows/publish-object-store.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+    with:
+      artifact-id: ${{ needs.release-assets.outputs.artifact-id }}
+      artifact-digest: ${{ needs.release-assets.outputs.artifact-digest }}
+      checksum-signing-workflow-ref: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
+      project: example
+      endpoint: https://OBJECT-STORE-ORIGIN
+      bucket: OBJECT-STORE-BUCKET
+      region: OBJECT-STORE-REGION
+      publish-object-store: false
+    secrets:
+      object-store-access-key-id: ${{ secrets.OBJECT_STORE_ACCESS_KEY_ID }}
+      object-store-secret-access-key: ${{ secrets.OBJECT_STORE_SECRET_ACCESS_KEY }}
+
   package-repository:
     name: Request package repository publication
     needs: github-release

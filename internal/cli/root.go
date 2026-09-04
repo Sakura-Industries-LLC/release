@@ -16,6 +16,7 @@ import (
 	"github.com/Sakura-Industries-LLC/release/internal/stage/image"
 	"github.com/Sakura-Industries-LLC/release/internal/stage/pubbrew"
 	"github.com/Sakura-Industries-LLC/release/internal/stage/pubgh"
+	"github.com/Sakura-Industries-LLC/release/internal/stage/pubobj"
 	"github.com/Sakura-Industries-LLC/release/internal/stage/puboci"
 	"github.com/Sakura-Industries-LLC/release/internal/stage/pubscoop"
 )
@@ -234,6 +235,9 @@ type Options struct {
 	// PackageRepositoryPublisher, when set, is the complete package publication seam.
 	// Tests inject it to avoid network, process, and object-storage side effects.
 	PackageRepositoryPublisher PackageRepositoryPublisher
+	// ObjectStore, when set, is the private release-bucket port. Tests inject it.
+	// Nil constructs an S3-compatible store from the resolved endpoint, bucket, region, and credentials.
+	ObjectStore pubobj.ObjectStore
 	// settings is filled after flags are parsed.
 	settings *Settings
 }
@@ -275,6 +279,7 @@ func NewRootCommand(options Options) *cobra.Command {
 	publish := newPublishCommand(options)
 	publish.AddCommand(newGitHubCommand(options))
 	publish.AddCommand(newPackageRepositoryCommand(options))
+	publish.AddCommand(newObjectStoreCommand(options))
 	root.AddCommand(publish)
 	root.AddCommand(newImageCommand(options))
 	root.AddCommand(newVersionCommand(options))

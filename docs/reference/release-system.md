@@ -78,6 +78,7 @@ release-please.yml
        -> public release
   -> publish-homebrew.yml       (optional, independent PR)
   -> publish-scoop.yml          (optional, independent PR)
+  -> publish-object-store.yml   (optional, private bucket)
   -> request-package-repository.yml
        -> adopter-owned central repository_dispatch
        -> publish-package-repository.yml
@@ -107,6 +108,7 @@ above that ceiling.
 | `publish-scoop.yml` | `actions: read`, `attestations: read`, `contents: read` |
 | `request-package-repository.yml` | `{}` |
 | `publish-package-repository.yml` | `attestations: read`, `contents: read` |
+| `publish-object-store.yml` | `actions: read`, `contents: read` |
 
 The Release Please job requires `contents: write`, `issues: write`, and
 `pull-requests: write`. It performs mutations with an adopter-owned App token.
@@ -334,6 +336,42 @@ The receiver checks out the caller's policy and public keys, builds the CLI from
 the reusable workflow source, materializes aggregate signing keys, and performs
 one convergent repository publication.
 
+### `publish-object-store.yml`
+
+Uploads the verified closed release bundle to a private S3-compatible bucket so
+a self-hosted download surface (the DNTLS Portal's Downloads page) can serve it
+without GitHub. It runs on `ubuntu-24.04` with a 15-minute timeout and requires
+a tag ref that resolves to the workflow commit.
+
+| Input | Type | Required | Default |
+| --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None |
+| `artifact-digest` | string | Yes | None |
+| `checksum-signing-workflow-ref` | string | Yes | None |
+| `project` | string | Yes | None |
+| `endpoint` | string | Yes | None |
+| `bucket` | string | Yes | None |
+| `region` | string | Yes | None |
+| `publish-object-store` | boolean | No | `false` |
+
+| Secret | Required | Contract |
+| --- | --- | --- |
+| `object-store-access-key-id` | Yes | Access key with write permission on the bucket. |
+| `object-store-secret-access-key` | Yes | Secret for that key. |
+
+Outputs:
+
+| Output | Contract |
+| --- | --- |
+| `prefix` | Bucket key prefix `<project>/<tag>` the release was published under. |
+| `state` | `published` when at least one object was uploaded; `unchanged` when every object already matched; `skipped` when `publish-object-store` is false. |
+
+The publisher verifies the artifact handoff and the closed bundle with the
+exact Cosign identity, removes the two package-manager controls, and, when
+`publish-object-store` is true, runs `release-cli publish object-store`. Neither GitHub Release state nor the
+native repository is consulted; the maintained caller sequences it after the
+GitHub Release job.
+
 ## Producer repository contract
 
 The producer supplies:
@@ -464,6 +502,8 @@ include a `<prefix>/` path (GoReleaser Pro `monorepo.tag_prefix`). The version
 is the last path segment with one leading `v` removed, so `cli/v0.1.4` and
 `v0.1.4` both yield `0.1.4`. The package-repository path still requires a bare
 `v*` tag.
+The object store publisher uses the same grammar and stores the release under
+`v<version>`, so `cli/v0.1.4` publishes to `<project>/v0.1.4/`.
 
 ### GitHub Release
 
@@ -543,6 +583,21 @@ Packages, public keys, and APT by-hash objects are immutable with one-year cache
 headers. Indexes, signatures, and other replaceable metadata use `no-store`.
 Publication never deletes an object. Its result state is `published` when it
 writes at least one object and `unchanged` when every generated object matches.
+
+### Object store
+
+The publisher stores every bundle name, payloads then `checksums.txt` and
+`checksums.txt.sigstore.json`, at `<project>/v<version>/<name>` in the private
+bucket. Each object carries the digest metadata `sha256:<hex>` from the bundle
+and a one-year immutable cache header. An object that already exists with the
+same digest is skipped; one that exists with a different digest fails the
+publication before any later object is written. Publication never deletes an
+object. Its result state is `published` when it writes at least one object and
+`unchanged` when every object matched.
+
+The bucket is private: consumers reach objects through presigned URLs minted by
+the download surface, never anonymously. Rebuilding a lost bucket is a matter of
+rerunning the publisher for each release.
 
 ## Native package policy schema
 

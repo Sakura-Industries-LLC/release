@@ -20,6 +20,7 @@ publication states are defined in the [release system reference](release-system.
 | `publish homebrew` | Reconcile one generated cask through a tap pull request. |
 | `publish scoop` | Reconcile one generated root manifest through a bucket pull request. |
 | `publish package-repository` | Verify a producer release and converge an APT/DNF/APK repository in R2. |
+| `publish object-store` | Upload a closed bundle to a private S3-compatible bucket under `<project>/<tag>/`. |
 | `init homebrew-tap` | Generate a cask-only tap scaffold. |
 | `init scoop-bucket` | Generate a root-layout Scoop bucket scaffold. |
 | `verify bundle` | Verify a closed local release bundle and its Cosign signature. |
@@ -439,6 +440,37 @@ JSON result fields are `state` (`published` or `unchanged`), `repository`,
 `tag`, generated `artifacts`, and `uploaded`. The command does not create the
 bucket, keys, policy, public domain, GitHub environment, or producer release and
 never deletes an R2 object.
+
+## `publish object-store`
+
+```text
+release-cli publish object-store --dist <dir> [flags]
+```
+
+| Flag | Environment | Required value |
+| --- | --- | --- |
+| `--dist` | None | Distribution directory holding the closed bundle. |
+| `--project` | `RELEASE_OBJECT_STORE_PROJECT` | First key segment: lowercase letters, digits, `.`, `_`, `-`; at most 64 characters. |
+| `--endpoint` | `RELEASE_OBJECT_STORE_ENDPOINT` | S3 API origin without path or credentials. |
+| `--bucket` | `RELEASE_OBJECT_STORE_BUCKET` | Existing private bucket. |
+| `--region` | `RELEASE_OBJECT_STORE_REGION` | Signing region the endpoint expects. |
+
+Environment-only values:
+
+- `GITHUB_REF_NAME`, the release tag; the second key segment is `v<version>`
+  from its last path segment; and
+- `OBJECT_STORE_ACCESS_KEY_ID` and `OBJECT_STORE_SECRET_ACCESS_KEY`.
+
+The command accepts no operands. It rebuilds the closed set from
+`checksums.txt` exactly as `publish github` does, then for each bundle name,
+payloads first and the two controls last, compares the stored object's digest
+metadata: an equal digest is unchanged, a different digest fails the
+publication, and a missing object is streamed up with `sha256:<hex>` metadata
+and a one-year immutable cache header.
+
+JSON result fields are `state` (`published` or `unchanged`), `project`, `tag`,
+`prefix`, `uploaded`, and `unchanged`. The command does not create the bucket
+or its keys and never deletes an object.
 
 ## `verify bundle`
 
