@@ -49,11 +49,14 @@ type Options struct {
 	// AccountID is the Cloudflare account that owns the bucket.
 	// It is required when Endpoint is empty.
 	AccountID string
-	// Endpoint overrides the account-derived S3 endpoint.
-	// It exists for S3-compatible integration tests.
+	// Endpoint is the S3-compatible HTTP(S) origin without a path or credentials.
+	// Empty constructs the Cloudflare R2 endpoint from AccountID.
 	Endpoint string
-	// Bucket is the existing R2 bucket name.
+	// Bucket is the existing bucket name.
 	Bucket string
+	// Region is the S3 signing region.
+	// Empty selects "auto" for Cloudflare R2.
+	Region string
 	// Credentials are the least-privilege S3 API credentials.
 	Credentials Credentials
 }
@@ -87,9 +90,13 @@ func New(ctx context.Context, options Options) (*Store, error) {
 		return nil, errors.New("R2 secret access key is empty")
 	}
 
+	region := strings.TrimSpace(options.Region)
+	if region == "" {
+		region = cloudflareRegion
+	}
 	awsConfig, err := config.LoadDefaultConfig(
 		ctx,
-		config.WithRegion(cloudflareRegion),
+		config.WithRegion(region),
 		config.WithBaseEndpoint(endpoint),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			accessKeyID,

@@ -64,6 +64,7 @@ inspect its draft and workflow artifacts before enabling destinations.
 - [Adopt the release workflows](docs/how-to/adopt-the-release-workflows.md)
 - [Add Homebrew and Scoop](docs/how-to/add-homebrew-and-scoop.md)
 - [Operate a native package repository](docs/how-to/operate-a-native-package-repository.md)
+- [Publish to an object store](docs/how-to/publish-to-an-object-store.md)
 - [Operate and recover releases](docs/how-to/operate-and-recover-releases.md)
 - [Install `release-cli`](docs/how-to/install-release-cli.md)
 - [Release system reference](docs/reference/release-system.md)

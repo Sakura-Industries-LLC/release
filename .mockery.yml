@@ -123,6 +123,12 @@ packages:
         config:
           dir: internal/adapter/gpg/mocks
           filename: signer.go
+  github.com/Sakura-Industries-LLC/release/internal/stage/pubobj:
+    interfaces:
+      ObjectStore:
+        config:
+          dir: internal/adapter/r2/mocks
+          filename: object_store.go
   github.com/Sakura-Industries-LLC/release/internal/cli:
     interfaces:
       PackageRepositoryPublisher:
