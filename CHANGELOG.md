@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.23](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.22...v0.1.23) (2026-09-04)
+
+
+### Features
+
+* **go-pre-publish:** resolve private Go modules with a release app token ([#14](https://github.com/Sakura-Industries-LLC/release/issues/14)) ([4e51dd4](https://github.com/Sakura-Industries-LLC/release/commit/4e51dd40ed93468bd1dcfa954c020707127de26f))
+* **object-store:** publish the closed release bundle to a private bucket ([#18](https://github.com/Sakura-Industries-LLC/release/issues/18)) ([a76cfef](https://github.com/Sakura-Industries-LLC/release/commit/a76cfef7264f84380101a61d45660664c2647938))
+
 ## [0.1.22](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.21...v0.1.22) (2026-09-02)
 
 
