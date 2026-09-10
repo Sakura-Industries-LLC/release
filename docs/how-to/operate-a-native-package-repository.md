@@ -356,7 +356,7 @@ and map them in the `release-assets` call:
       id-token: write
     uses: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
-      sign-native-packages: true
+      sign-native-packages: rpm,apk
     secrets:
       rpm-signing-key: ${{ secrets.RPM_SIGNING_KEY }}
       rpm-signing-passphrase: ${{ secrets.RPM_SIGNING_PASSPHRASE }}
@@ -364,10 +364,12 @@ and map them in the `release-assets` call:
       apk-signing-passphrase: ${{ secrets.APK_SIGNING_PASSPHRASE }}
 ```
 
-The workflow validates all four secrets, materializes owner-only temporary key
-files, and removes them after staging. GoReleaser signs RPM and APK bytes before
-`checksums.txt` is generated. A package repository rejects unsigned or
-wrong-key RPM and APK packages even when their release checksums are valid.
+A native package repository requires both formats signed, so both are selected
+here. The workflow validates the secrets for the selected formats, materializes
+owner-only temporary key files, and removes them after staging. GoReleaser
+signs RPM and APK bytes before `checksums.txt` is generated. A package
+repository rejects unsigned or wrong-key RPM and APK packages even when their
+release checksums are valid.
 
 ## Onboard the producer dispatch
 

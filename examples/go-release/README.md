@@ -59,7 +59,7 @@ The caller begins with:
 
 ```yaml
 sign-and-notarize-macos: false
-sign-native-packages: false
+sign-native-packages: ''
 publish-image: false
 publish-release: false
 publish-homebrew: false

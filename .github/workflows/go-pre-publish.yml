@@ -9,10 +9,15 @@ on:
         default: false
         type: boolean
       sign-native-packages:
-        description: Sign RPM and APK packages before checksums are generated.
+        description: >-
+          Comma-separated native package formats to sign before checksums are
+          generated. Empty signs nothing, `rpm` signs the RPM packages, `apk`
+          signs the APK packages, and `rpm,apk` signs both. Each selected
+          format requires its own signing key and passphrase secrets; a format
+          left out ships unsigned.
         required: false
-        default: false
-        type: boolean
+        default: ''
+        type: string
       private-go-modules:
         description: >-
           Comma-separated GOPRIVATE patterns for Go modules hosted in private
@@ -147,26 +152,47 @@ jobs:
       - name: Validate native package signing configuration
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          ENABLED: ${{ inputs.sign-native-packages }}
+          SELECTION: ${{ inputs.sign-native-packages }}
           RPM_SIGNING_KEY: ${{ secrets.rpm-signing-key }}
           RPM_SIGNING_PASSPHRASE: ${{ secrets.rpm-signing-passphrase }}
           APK_SIGNING_KEY: ${{ secrets.apk-signing-key }}
           APK_SIGNING_PASSPHRASE: ${{ secrets.apk-signing-passphrase }}
         with:
           script: |
-            if (process.env.ENABLED !== 'true') {
+            const credentials = {
+              rpm: ['RPM_SIGNING_KEY', 'RPM_SIGNING_PASSPHRASE'],
+              apk: ['APK_SIGNING_KEY', 'APK_SIGNING_PASSPHRASE'],
+            }
+
+            const selection = (process.env.SELECTION ?? '').trim()
+            if (selection === '') {
               return
             }
 
-            const required = [
-              'RPM_SIGNING_KEY',
-              'RPM_SIGNING_PASSPHRASE',
-              'APK_SIGNING_KEY',
-              'APK_SIGNING_PASSPHRASE',
-            ]
-            const missing = required.filter((name) => !process.env[name])
+            const selected = selection.split(',').map((format) => format.trim())
+            const unknown = selected.filter((format) => !Object.hasOwn(credentials, format))
+            if (unknown.length !== 0) {
+              core.setFailed(
+                `sign-native-packages names unsupported package formats: ${unknown.join(', ')} ` +
+                  `(supported: ${Object.keys(credentials).join(', ')})`,
+              )
+              return
+            }
+
+            const repeated = selected.filter((format, index) => selected.indexOf(format) !== index)
+            if (repeated.length !== 0) {
+              core.setFailed(`sign-native-packages names these package formats twice: ${repeated.join(', ')}`)
+              return
+            }
+
+            const missing = selected
+              .flatMap((format) => credentials[format])
+              .filter((name) => !process.env[name])
             if (missing.length !== 0) {
-              core.setFailed(`native package signing is enabled but these credentials are missing: ${missing.join(', ')}`)
+              core.setFailed(
+                `signing ${selected.join(' and ')} packages is selected but these credentials are missing: ` +
+                  missing.join(', '),
+              )
             }
 
       - name: Require a tag ref
@@ -249,15 +275,24 @@ jobs:
             go version
           '
 
+      # Staging is the one job whose behavior is defined by this workflow's own
+      # source: the native-signing selection is a contract between these steps
+      # and the CLI that reads RELEASE_NATIVE_PACKAGE_SIGNING. Building the CLI
+      # from the exact reusable-workflow SHA keeps the two in step, instead of
+      # pairing a pinned workflow with whatever version the last release
+      # stamped into the setup action.
       - name: Set up release-cli
         id: setup-cli
         uses: $/.github/actions/setup-release-cli
+        with:
+          local-build: always
 
       - name: Materialize native package signing keys
         id: native-signing
-        if: inputs.sign-native-packages
+        if: inputs.sign-native-packages != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          SELECTION: ${{ inputs.sign-native-packages }}
           RPM_SIGNING_KEY: ${{ secrets.rpm-signing-key }}
           APK_SIGNING_KEY: ${{ secrets.apk-signing-key }}
         with:
@@ -284,16 +319,27 @@ jobs:
               return decoded
             }
 
-            const rpmKey = decode('RPM_SIGNING_KEY')
-            const apkKey = decode('APK_SIGNING_KEY')
+            // Only a selected format's key is written. An unselected format
+            // leaves its output empty, which is how the CLI is told to leave
+            // that format unsigned.
+            const formats = [
+              {name: 'rpm', secret: 'RPM_SIGNING_KEY', file: 'rpm-signing-key.asc', output: 'rpm-key-file'},
+              {name: 'apk', secret: 'APK_SIGNING_KEY', file: 'apk-signing-key.pem', output: 'apk-key-file'},
+            ]
+            const selected = new Set(
+              process.env.SELECTION.split(',').map((format) => format.trim()),
+            )
+            const keys = formats
+              .filter((format) => selected.has(format.name))
+              .map((format) => ({...format, content: decode(format.secret)}))
+
             const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'release-native-signing-'))
             core.setOutput('directory', directory)
-            const rpmKeyFile = path.join(directory, 'rpm-signing-key.asc')
-            const apkKeyFile = path.join(directory, 'apk-signing-key.pem')
-            fs.writeFileSync(rpmKeyFile, rpmKey, { mode: 0o600, flag: 'wx' })
-            fs.writeFileSync(apkKeyFile, apkKey, { mode: 0o600, flag: 'wx' })
-            core.setOutput('rpm-key-file', rpmKeyFile)
-            core.setOutput('apk-key-file', apkKeyFile)
+            for (const key of keys) {
+              const keyFile = path.join(directory, key.file)
+              fs.writeFileSync(keyFile, key.content, { mode: 0o600, flag: 'wx' })
+              core.setOutput(key.output, keyFile)
+            }
 
       - name: Stage Go release artifacts
         env:

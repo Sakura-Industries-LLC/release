@@ -23,8 +23,12 @@ const (
 	flagDist = "dist"
 	// octalBase formats file modes as octal strings.
 	octalBase = 8
-	// envNativePackageSigning enables RPM and APK package signing.
+	// envNativePackageSigning selects which native package formats are signed.
 	envNativePackageSigning = "RELEASE_NATIVE_PACKAGE_SIGNING"
+	// formatRPM selects RPM package signing.
+	formatRPM = "rpm"
+	// formatAPK selects APK package signing.
+	formatAPK = "apk"
 	// envRPMSigningKeyFile is the nFPM RPM private-key path.
 	envRPMSigningKeyFile = "RELEASE_RPM_SIGNING_KEY_FILE"
 	// envAPKSigningKeyFile is the nFPM APK private-key path.
@@ -35,7 +39,9 @@ const (
 	envAPKPassphrase = "NFPM_RELEASE_APK_PASSPHRASE" // #nosec G101 -- environment variable name, not a credential
 )
 
-// nativeSigning contains the validated nFPM signing environment.
+// nativeSigning contains the validated nFPM signing environment. A format the
+// selection leaves out keeps empty values, which is how nFPM is told to leave
+// that format unsigned.
 type nativeSigning struct {
 	// rpmKeyFile is the RPM private-key path.
 	rpmKeyFile string
@@ -45,6 +51,21 @@ type nativeSigning struct {
 	rpmPassphrase string
 	// apkPassphrase decrypts the APK private key.
 	apkPassphrase string
+}
+
+// nativeFormat is one selectable native package format and the environment
+// that signs it.
+type nativeFormat struct {
+	// name is the value that selects this format.
+	name string
+	// keyFileEnv names the private-key path variable.
+	keyFileEnv string
+	// passphraseEnv names the passphrase variable nFPM reads.
+	passphraseEnv string
+	// keyFile receives the validated private-key path.
+	keyFile *string
+	// passphrase receives the validated passphrase.
+	passphrase *string
 }
 
 // newStageCommand constructs the stage verb.
@@ -65,8 +86,8 @@ func newStageCommand(options Options) *cobra.Command {
 
 // runStage builds the Go profile dist directory with GoReleaser, then verifies it.
 //
-// A malformed RELEASE_* boolean, a missing or unknown --profile, a missing
-// --dist, and a --dist that is not a basename are [ErrUsage] and are
+// An unusable native-signing selection, a missing or unknown --profile, a
+// missing --dist, and a --dist that is not a basename are [ErrUsage] and are
 // raised before GoReleaser runs. A GoReleaser failure is a command
 // failure. GoReleaser progress and diagnostics are written to stderr so
 // --json stdout stays a single envelope. Success writes the OCI
@@ -155,49 +176,104 @@ func runStage(ctx context.Context, options Options) error {
 	return writeCommandResult(options, "stage", result, nil)
 }
 
-// resolveNativeSigning validates opt-in package-signing configuration.
+// resolveNativeSigning validates the selected package-signing configuration.
+//
+// The selection is a comma-separated list of native package formats, so a
+// producer that holds an RPM key and no APK key signs its RPM packages and
+// ships unsigned APK packages instead of being forced to choose between
+// signing everything and signing nothing. An empty or unset selection signs
+// nothing.
 func resolveNativeSigning(lookup LookupEnv) (nativeSigning, error) {
-	raw, ok := lookup(envNativePackageSigning)
-	if !ok {
-		return nativeSigning{}, nil
-	}
-
-	enabled, err := strconv.ParseBool(raw)
-	if err != nil {
-		return nativeSigning{}, fmt.Errorf("%s: %w", envNativePackageSigning, err)
-	}
-	if !enabled {
-		return nativeSigning{}, nil
-	}
-
 	signing := nativeSigning{}
-	required := []struct {
-		// name is the required environment variable.
-		name string
-		// destination receives the environment value.
-		destination *string
-	}{
-		{name: envRPMSigningKeyFile, destination: &signing.rpmKeyFile},
-		{name: envAPKSigningKeyFile, destination: &signing.apkKeyFile},
-		{name: envRPMPassphrase, destination: &signing.rpmPassphrase},
-		{name: envAPKPassphrase, destination: &signing.apkPassphrase},
-	}
-	for _, value := range required {
-		raw, exists := lookup(value.name)
-		if !exists || raw == "" {
-			return nativeSigning{}, fmt.Errorf("%s is required when %s is true", value.name, envNativePackageSigning)
-		}
-		*value.destination = raw
+	formats := []nativeFormat{
+		{
+			name:          formatRPM,
+			keyFileEnv:    envRPMSigningKeyFile,
+			passphraseEnv: envRPMPassphrase,
+			keyFile:       &signing.rpmKeyFile,
+			passphrase:    &signing.rpmPassphrase,
+		},
+		{
+			name:          formatAPK,
+			keyFileEnv:    envAPKSigningKeyFile,
+			passphraseEnv: envAPKPassphrase,
+			keyFile:       &signing.apkKeyFile,
+			passphrase:    &signing.apkPassphrase,
+		},
 	}
 
-	if err := validatePrivateKeyFile(envRPMSigningKeyFile, signing.rpmKeyFile); err != nil {
+	selected, err := selectNativeFormats(lookupValue(lookup, envNativePackageSigning), formats)
+	if err != nil {
 		return nativeSigning{}, err
 	}
-	if err := validatePrivateKeyFile(envAPKSigningKeyFile, signing.apkKeyFile); err != nil {
-		return nativeSigning{}, err
+
+	for _, format := range selected {
+		keyFile := lookupValue(lookup, format.keyFileEnv)
+		passphrase := lookupValue(lookup, format.passphraseEnv)
+		for _, missing := range []struct {
+			// name is the environment variable that must carry a value.
+			name string
+			// value is what the environment carries.
+			value string
+		}{
+			{name: format.keyFileEnv, value: keyFile},
+			{name: format.passphraseEnv, value: passphrase},
+		} {
+			if missing.value == "" {
+				return nativeSigning{}, fmt.Errorf(
+					"%s is required when %s selects %s",
+					missing.name,
+					envNativePackageSigning,
+					format.name,
+				)
+			}
+		}
+		if err := validatePrivateKeyFile(format.keyFileEnv, keyFile); err != nil {
+			return nativeSigning{}, err
+		}
+		*format.keyFile = keyFile
+		*format.passphrase = passphrase
 	}
 
 	return signing, nil
+}
+
+// selectNativeFormats resolves a comma-separated selection to the formats it
+// names. An unknown or repeated name is a usage error: a typo must not be
+// read as "sign nothing".
+func selectNativeFormats(selection string, formats []nativeFormat) ([]*nativeFormat, error) {
+	if strings.TrimSpace(selection) == "" {
+		return nil, nil
+	}
+
+	selected := make([]*nativeFormat, 0, len(formats))
+	for name := range strings.SplitSeq(selection, ",") {
+		name = strings.TrimSpace(name)
+		var match *nativeFormat
+		for index := range formats {
+			if formats[index].name == name {
+				match = &formats[index]
+				break
+			}
+		}
+		if match == nil {
+			return nil, fmt.Errorf(
+				"%s names unknown package format %q (supported: %s, %s)",
+				envNativePackageSigning,
+				name,
+				formatRPM,
+				formatAPK,
+			)
+		}
+		for _, already := range selected {
+			if already.name == name {
+				return nil, fmt.Errorf("%s names package format %q twice", envNativePackageSigning, name)
+			}
+		}
+		selected = append(selected, match)
+	}
+
+	return selected, nil
 }
 
 // validatePrivateKeyFile requires a regular owner-only private-key file.
