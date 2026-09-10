@@ -84,6 +84,7 @@ release-please.yml
   -> publish-object-store.yml   (optional, private bucket)
   -> publish-forgejo-debian.yml (optional, Forgejo apt registry)
   -> publish-forgejo-rpm.yml    (optional, Forgejo DNF registry)
+  -> publish-forgejo-arch.yml   (optional, Forgejo pacman registry)
   -> request-package-repository.yml
        -> adopter-owned central repository_dispatch
        -> publish-package-repository.yml
@@ -116,6 +117,7 @@ above that ceiling.
 | `publish-object-store.yml` | `actions: read`, `contents: read` |
 | `publish-forgejo-debian.yml` | `actions: read`, `attestations: read`, `contents: read` |
 | `publish-forgejo-rpm.yml` | `actions: read`, `attestations: read`, `contents: read` |
+| `publish-forgejo-arch.yml` | `actions: read`, `attestations: read`, `contents: read` |
 
 The Release Please job requires `contents: write`, `issues: write`, and
 `pull-requests: write`. It performs mutations with an adopter-owned App token.
@@ -490,6 +492,70 @@ both fail. A differing file fails the run and the release must move to a new
 version: nothing is ever deleted or overwritten, no request follows a redirect,
 and an unexpected status is reported without the registry's response body.
 
+### `publish-forgejo-arch.yml`
+
+Uploads the Arch Linux packages of the verified closed release bundle to a
+Forgejo Arch package registry, so pacman users install the same bytes the
+release publishes. It runs on `ubuntu-24.04` with a 15-minute timeout.
+Publication requires a tag ref that resolves to the workflow commit; with
+`publish-packages` false the job performs every check from any ref, including
+a branch dispatch, and sends no request to Forgejo.
+
+| Input | Type | Required | Default |
+| --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None |
+| `artifact-digest` | string | Yes | None |
+| `checksum-signing-workflow-ref` | string | Yes | None |
+| `package-name` | string | Yes | None |
+| `origin` | string | Yes | None |
+| `owner` | string | Yes | None |
+| `group` | string | Yes | None |
+| `publisher-username` | string | Yes | None |
+| `publish-packages` | boolean | No | `false` |
+
+| Secret | Required | Contract |
+| --- | --- | --- |
+| `publisher-token` | No | Token of the publisher account, with package write permission. Required only when `publish-packages` is true. |
+
+Forgejo signs both the package and the pacman database with the registry key
+it generates per owner, so this format has no producer key and no
+`sign-native-packages` selection. The publisher fetches that key from
+`<origin>/api/packages/<owner>/arch/repository.key` over the same
+authenticated origin and verifies every signature below against exactly it.
+
+The publisher verifies the artifact handoff and the closed bundle with the
+exact Cosign identity, removes the two package-manager controls, and then
+reads every `.pkg.tar.zst` left in the bundle through `bsdtar`, without
+unpacking one. The set must be exactly two packages that declare
+`package-name`, one `x86_64` and one `aarch64`, at the same `pkgver` in the
+plain `VERSION-RELEASE` form, with a stable `MAJOR.MINOR.PATCH` version, a
+numeric `pkgrel`, no epoch, and the `.MTREE` entry the registry requires; the
+`.PKGINFO` fields decide, not the file names. A publication additionally
+requires the version to be the one the tag names, derived as the tag without
+any monorepo prefix and without the leading `v`, so `resolver/v1.2.3`
+publishes only packages that declare `1.2.3`. Every check runs before any
+credential is written and before the registry is contacted.
+
+Each package is uploaded with `PUT` to
+`<origin>/api/packages/<owner>/arch/<group>`. A Forgejo Arch upload is not
+atomic: the instance creates the package, then adds its signature, then
+rebuilds and signs the database for that architecture, so an interrupted
+upload leaves state a retry meets as `409`. Both `201` and `409` are therefore
+followed by the same read-back under
+`<origin>/api/packages/<owner>/arch/<group>/<architecture>/`, which must
+present a complete published state:
+`<package>-<pkgver>-<architecture>.pkg.tar.zst` with the SHA-256 this run
+built, a `.sig` beside it that the registry key validates, a `<group>.db` and
+`<group>.db.sig` whose signature verifies, and the `<package>-<pkgver>/desc`
+entry in that database declaring the same `FILENAME`, `NAME`, `VERSION`,
+`ARCH`, `SHA256SUM`, and `PGPSIG`. Forgejo indexes one entry per package name,
+for the version it created most recently, so a database naming another version
+of the package fails for an operator to resolve. A differing file, an
+incomplete state, or an unexpected status fails the run and the release must
+move to a new version: nothing is ever deleted or overwritten, no request
+follows a redirect, and an unexpected status is reported without the
+registry's response body.
+
 ## Producer repository contract
 
 The producer supplies:
@@ -544,6 +610,7 @@ dist/*.zip
 dist/*.deb
 dist/*.rpm
 dist/*.apk
+dist/*.pkg.tar.zst
 dist/*.sbom.json
 dist/checksums.txt
 dist/checksums.txt.sigstore.json
