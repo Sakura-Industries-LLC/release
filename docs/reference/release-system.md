@@ -79,6 +79,7 @@ release-please.yml
   -> publish-homebrew.yml       (optional, independent PR)
   -> publish-scoop.yml          (optional, independent PR)
   -> publish-object-store.yml   (optional, private bucket)
+  -> publish-forgejo-debian.yml (optional, Forgejo apt registry)
   -> request-package-repository.yml
        -> adopter-owned central repository_dispatch
        -> publish-package-repository.yml
@@ -109,6 +110,7 @@ above that ceiling.
 | `request-package-repository.yml` | `{}` |
 | `publish-package-repository.yml` | `attestations: read`, `contents: read` |
 | `publish-object-store.yml` | `actions: read`, `contents: read` |
+| `publish-forgejo-debian.yml` | `actions: read`, `attestations: read`, `contents: read` |
 
 The Release Please job requires `contents: write`, `issues: write`, and
 `pull-requests: write`. It performs mutations with an adopter-owned App token.
@@ -371,6 +373,51 @@ exact Cosign identity, removes the two package-manager controls, and, when
 `publish-object-store` is true, runs `release-cli publish object-store`. Neither GitHub Release state nor the
 native repository is consulted; the maintained caller sequences it after the
 GitHub Release job.
+
+### `publish-forgejo-debian.yml`
+
+Uploads the Debian packages of the verified closed release bundle to a Forgejo
+Debian package registry, so apt users install the same bytes the release
+publishes. It runs on `ubuntu-24.04` with a 15-minute timeout. Publication
+requires a tag ref that resolves to the workflow commit; with
+`publish-packages` false the job performs every check from any ref, including a
+branch dispatch, and sends no request to Forgejo.
+
+| Input | Type | Required | Default |
+| --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None |
+| `artifact-digest` | string | Yes | None |
+| `checksum-signing-workflow-ref` | string | Yes | None |
+| `package-name` | string | Yes | None |
+| `origin` | string | Yes | None |
+| `owner` | string | Yes | None |
+| `distribution` | string | Yes | None |
+| `component` | string | Yes | None |
+| `publisher-username` | string | Yes | None |
+| `publish-packages` | boolean | No | `false` |
+
+| Secret | Required | Contract |
+| --- | --- | --- |
+| `publisher-token` | No | Token of the publisher account, with package write permission. Required only when `publish-packages` is true. |
+
+The publisher verifies the artifact handoff and the closed bundle with the
+exact Cosign identity, removes the two package-manager controls, and then reads
+every `.deb` left in the bundle. The set must be exactly two packages that
+declare `package-name`, one `amd64` and one `arm64`, at the same stable
+`MAJOR.MINOR.PATCH` version; the control fields decide, not the file names.
+A publication additionally requires that version to be the one the tag names,
+derived as the tag without any monorepo prefix and without the leading `v`, so
+`resolver/v1.2.3` publishes only packages that declare `1.2.3`.
+
+Each package is uploaded with `PUT` to
+`<origin>/api/packages/<owner>/debian/pool/<distribution>/<component>/upload`.
+`201` is a publication. `409` means the registry already holds that key, so the
+publisher reads
+`<origin>/api/packages/<owner>/debian/pool/<distribution>/<component>/<package>_<version>_<architecture>.deb`
+and accepts the run only when the published SHA-256 equals the built one. A
+differing file fails the run and the release must move to a new version:
+nothing is ever deleted or overwritten, no request follows a redirect, and an
+unexpected status is reported without the registry's response body.
 
 ## Producer repository contract
 
