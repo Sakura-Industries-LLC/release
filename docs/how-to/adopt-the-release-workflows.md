@@ -197,7 +197,8 @@ second binary in Melange or apko.
 
 ## Configure optional signing
 
-Both signing inputs default to `false` in the maintained caller.
+In the maintained caller macOS signing is `false` and the native package
+signing selection is empty.
 
 ### Sign and notarize macOS archives
 
@@ -217,10 +218,17 @@ fails before a publisher runs.
 
 ### Sign RPM and APK packages
 
-Before setting `sign-native-packages: true`, add:
+`sign-native-packages` names the formats to sign: `rpm`, `apk`, or `rpm,apk`.
+A format you leave out ships unsigned, so a producer that holds only an RPM key
+signs RPM packages without inventing an APK key.
 
-- `RPM_SIGNING_KEY`: base64-encoded armored OpenPGP private key;
-- `RPM_SIGNING_PASSPHRASE`;
+Before selecting `rpm`, add:
+
+- `RPM_SIGNING_KEY`: base64-encoded armored OpenPGP private key; and
+- `RPM_SIGNING_PASSPHRASE`.
+
+Before selecting `apk`, add:
+
 - `APK_SIGNING_KEY`: base64-encoded RSA private key; and
 - `APK_SIGNING_PASSPHRASE`.
 
@@ -236,10 +244,12 @@ openssl rsa -in apk-signing-plain.rsa -aes256 -traditional \
   -passout file:passphrase.txt -out apk-signing.rsa
 ```
 
-Map all four secrets in the `release-assets` call. Keep the `.goreleaser.yaml`
-RPM and APK `key_file` expressions supplied by the example. The workflow writes
-owner-only temporary key files, GoReleaser signs packages before checksums are
-generated, and the workflow removes the files after staging.
+Map the secrets for the formats you selected in the `release-assets` call. Keep
+the `.goreleaser.yaml` RPM and APK `key_file` expressions supplied by the
+example: an unselected format resolves them to an empty path, which is how nFPM
+is told to leave that format unsigned. The workflow writes owner-only temporary
+key files for the selected formats only, GoReleaser signs those packages before
+checksums are generated, and the workflow removes the files after staging.
 
 Give the corresponding public producer keys to the central package-repository
 operator. Do not give that operator the producer private keys.

@@ -66,6 +66,7 @@ inspect its draft and workflow artifacts before enabling destinations.
 - [Operate a native package repository](docs/how-to/operate-a-native-package-repository.md)
 - [Publish to an object store](docs/how-to/publish-to-an-object-store.md)
 - [Publish Debian packages to Forgejo](docs/how-to/publish-debian-packages-to-forgejo.md)
+- [Publish RPM packages to Forgejo](docs/how-to/publish-rpm-packages-to-forgejo.md)
 - [Operate and recover releases](docs/how-to/operate-and-recover-releases.md)
 - [Install `release-cli`](docs/how-to/install-release-cli.md)
 - [Release system reference](docs/reference/release-system.md)

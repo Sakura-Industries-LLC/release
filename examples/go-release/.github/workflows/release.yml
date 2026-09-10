@@ -22,7 +22,7 @@ jobs:
     uses: Sakura-Industries-LLC/release/.github/workflows/go-pre-publish.yml@REPLACE_WITH_RELEASE_COMMIT_SHA
     with:
       sign-and-notarize-macos: false
-      sign-native-packages: false
+      sign-native-packages: ''
     secrets:
       macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
       macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}

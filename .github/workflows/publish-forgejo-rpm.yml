@@ -1,0 +1,256 @@
+name: Reusable Forgejo RPM Publisher
+
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        description: ID of the authoritative release-assets artifact.
+        required: true
+        type: string
+      artifact-digest:
+        description: Expected SHA-256 digest of the release-assets artifact.
+        required: true
+        type: string
+      checksum-signing-workflow-ref:
+        description: Exact workflow ref expected in the checksum signing certificate identity.
+        required: true
+        type: string
+      package-name:
+        description: RPM package name both architectures must declare, for example `dntls-resolver`.
+        required: true
+        type: string
+      origin:
+        description: HTTPS origin of the forge, for example `https://forge.dntls.net`.
+        required: true
+        type: string
+      owner:
+        description: Registry owner that holds the packages, for example `dntls-downloads`.
+        required: true
+        type: string
+      group:
+        description: RPM registry group the packages are filed under, for example `stable`.
+        required: true
+        type: string
+      producer-key-file:
+        description: >
+          Repository-relative path to the reviewed armored OpenPGP public key
+          that must validate both package signatures, for example
+          `.config/keys/dntls-rpm.asc`. Forgejo signs only repository metadata,
+          so this signature is what a DNF client running `gpgcheck=1` trusts.
+        required: true
+        type: string
+      producer-key-fingerprint:
+        description: 40 hex digits the producer key file must present.
+        required: true
+        type: string
+      publisher-username:
+        description: Forge account the publisher token belongs to.
+        required: true
+        type: string
+      publish-packages:
+        description: Upload the verified packages, which requires a tag ref. When false the job verifies the handoff, the bundle, and the package set from any ref and uploads nothing.
+        required: false
+        default: false
+        type: boolean
+
+    secrets:
+      publisher-token:
+        description: Token of the publisher account, with package write permission. Required only when publish-packages is true.
+        required: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish RPM packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    env:
+      MISE_EXEC_AUTO_INSTALL: 'false'
+    steps:
+      - name: Verify Sakura caller
+        env:
+          CALLER_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${CALLER_REPOSITORY_OWNER}" != "Sakura-Industries-LLC" ]]; then
+            echo "::error::Sakura-Industries-LLC/release supports only Sakura-Industries-LLC repositories."
+            exit 1
+          fi
+
+      # An upload is bound to an immutable tag that points at this commit. A
+      # rehearsal may run from any ref, including a branch dispatch: it
+      # verifies the same handoff, the same signature over the same closed
+      # bundle, and the same package set, and uploads nothing. Nothing about
+      # verification is relaxed for it, so no throwaway tag is needed to
+      # exercise this workflow.
+      - name: Require a tag ref to publish
+        if: inputs.publish-packages
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (process.env.GITHUB_REF_TYPE !== 'tag') {
+              throw new Error(
+                'RPM publication must run against a tag ref; rerun with publish-packages false to rehearse from a branch.',
+              )
+            }
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          filter: 'blob:none'
+          persist-credentials: false
+
+      - name: Derive the release version from the tag
+        id: release
+        if: inputs.publish-packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          if [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} resolves to ${tag_commit}, expected ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          # `v1.2.3` and a monorepo tag such as `resolver/v1.2.3` both name the
+          # version the packages must declare.
+          version="${GITHUB_REF_NAME##*/}"
+          version="${version#v}"
+          if ! printf '%s' "${version}" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not name a stable MAJOR.MINOR.PATCH release."
+            exit 1
+          fi
+          printf 'version=%s\n' "${version}" >>"${GITHUB_OUTPUT}"
+
+      # The reviewed public key is caller-owned content that reaches the
+      # publisher as a path, so it is resolved inside the checkout: an absolute
+      # path, a traversal, or a symlink out of the workspace would let a run
+      # trust a key its repository never reviewed.
+      - name: Resolve the reviewed producer key
+        id: producer-key
+        env:
+          PRODUCER_KEY_FILE: ${{ inputs.producer-key-file }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${PRODUCER_KEY_FILE}" in
+          '' | /* | ./* | ../* | *'..'*)
+            echo '::error::producer-key-file must be a repository-relative path without a leading ./ or any .. segment.'
+            exit 1
+            ;;
+          esac
+
+          workspace="$(cd "${GITHUB_WORKSPACE}" && pwd -P)"
+          resolved="$(cd "${workspace}" && readlink -f -- "${PRODUCER_KEY_FILE}")"
+          case "${resolved}" in
+          "${workspace}"/*) ;;
+          *)
+            echo '::error::producer-key-file resolves outside the checked-out repository.'
+            exit 1
+            ;;
+          esac
+          if [ ! -f "${resolved}" ]; then
+            echo "::error::producer-key-file ${PRODUCER_KEY_FILE} is not a file in this repository."
+            exit 1
+          fi
+          printf 'path=%s\n' "${resolved}" >>"${GITHUB_OUTPUT}"
+
+      - name: Setup mise
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          version: 2026.8.8
+          install_args: 'aqua:sigstore/cosign'
+          cache: true
+          add_shims_to_path: false
+          export_path: false
+
+      - name: Install RPM verification tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends rpm gnupg
+
+      - name: Verify publication tools
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await exec.exec('mise', ['exec', '--', 'cosign', 'version'])
+
+      - name: Set up release-cli
+        id: setup-cli
+        uses: $/.github/actions/setup-release-cli
+
+      - name: Verify artifact handoff
+        env:
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+          ARTIFACT_ID: ${{ inputs.artifact-id }}
+          EXPECTED_DIGEST: ${{ inputs.artifact-digest }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          "${RELEASE_CLI}" verify handoff --artifact-id "${ARTIFACT_ID}" --digest "${EXPECTED_DIGEST}"
+
+      - name: Download authoritative release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ inputs.artifact-id }}
+          path: dist
+          digest-mismatch: error
+
+      - name: Exclude package-manager controls from bundle verification
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs/promises')
+            const path = require('path')
+            await fs.rm(path.resolve('dist/homebrew'), {recursive: true, force: true})
+            await fs.rm(path.resolve('dist/scoop'), {recursive: true, force: true})
+
+      - name: Verify authoritative release bundle
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ inputs.checksum-signing-workflow-ref }}
+          RELEASE_CLI: ${{ steps.setup-cli.outputs.cli-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # mise runs here without shims and without exporting PATH, so hand the
+          # CLI the pinned cosign binary instead of putting it on PATH globally.
+          cosign_path="$(mise which cosign)"
+          if [ ! -x "${cosign_path}" ]; then
+            echo "::error::Resolved cosign path ${cosign_path} is not executable."
+            exit 1
+          fi
+
+          RELEASE_COSIGN_PATH="${cosign_path}" \
+            "${RELEASE_CLI}" verify bundle \
+            --dist dist \
+            --identity "${CERTIFICATE_IDENTITY}" \
+            --json
+
+      # Verification above proves dist is the closed set the signed
+      # checksums.txt claims, so every .rpm left in it is a signed member of
+      # this release. The action additionally holds each package to the
+      # reviewed producer key, because that signature is the only one a DNF
+      # client checks for the package bytes. It uploads only when publication
+      # is enabled; otherwise it runs the same checks and sends no request.
+      - name: Publish the RPM packages
+        uses: $/.github/actions/publish-forgejo-rpm
+        with:
+          dist: dist
+          package-name: ${{ inputs.package-name }}
+          expected-version: ${{ steps.release.outputs.version }}
+          origin: ${{ inputs.origin }}
+          owner: ${{ inputs.owner }}
+          group: ${{ inputs.group }}
+          producer-key-file: ${{ steps.producer-key.outputs.path }}
+          producer-key-fingerprint: ${{ inputs.producer-key-fingerprint }}
+          publisher-username: ${{ inputs.publisher-username }}
+          publish: ${{ inputs.publish-packages }}
+          publisher-token: ${{ secrets.publisher-token }}

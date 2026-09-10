@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/go-pre-publish.yml
     with:
       sign-and-notarize-macos: false
-      sign-native-packages: false
+      sign-native-packages: ''
     secrets:
       goreleaser-key: ${{ secrets.GORELEASER_KEY }}
   oci-image:

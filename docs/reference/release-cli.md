@@ -104,16 +104,20 @@ Native package signing is controlled by environment only:
 
 | Environment | Contract |
 | --- | --- |
-| `RELEASE_NATIVE_PACKAGE_SIGNING` | Enable signing when true. |
-| `RELEASE_RPM_SIGNING_KEY_FILE` | Owner-only regular OpenPGP private-key file. |
-| `RELEASE_APK_SIGNING_KEY_FILE` | Owner-only regular RSA private-key file. |
-| `NFPM_RELEASE_RPM_PASSPHRASE` | Passphrase selected by nFPM ID `release`. |
-| `NFPM_RELEASE_APK_PASSPHRASE` | Passphrase selected by nFPM ID `release`. |
+| `RELEASE_NATIVE_PACKAGE_SIGNING` | Comma-separated formats to sign: empty, `rpm`, `apk`, or `rpm,apk`. |
+| `RELEASE_RPM_SIGNING_KEY_FILE` | Owner-only regular OpenPGP private-key file. Required when `rpm` is selected. |
+| `RELEASE_APK_SIGNING_KEY_FILE` | Owner-only regular RSA private-key file. Required when `apk` is selected. |
+| `NFPM_RELEASE_RPM_PASSPHRASE` | Passphrase selected by nFPM ID `release`. Required when `rpm` is selected. |
+| `NFPM_RELEASE_APK_PASSPHRASE` | Passphrase selected by nFPM ID `release`. Required when `apk` is selected. |
 
-When signing is disabled, inherited native-signing values are replaced with
-empty values so GoReleaser templates cannot use ambient credentials. When
-enabled, a missing value, malformed boolean, inaccessible file, or
-group/other-readable key is configuration error `2` before GoReleaser starts.
+Each format is selected on its own, so a producer that holds an RPM key and no
+APK key signs its RPM packages and ships unsigned APK packages. Every
+native-signing value inherited from the environment is replaced: a format the
+selection leaves out reaches GoReleaser with empty values, so nFPM does not
+sign it and GoReleaser templates cannot use ambient credentials. An unknown or
+repeated format name, a missing value for a selected format, an inaccessible
+file, or a group/other-readable key is configuration error `2` before
+GoReleaser starts.
 
 JSON result:
 

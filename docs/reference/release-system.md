@@ -29,9 +29,12 @@ in every `checksum-signing-workflow-ref` and in each native package policy
 `checksum_identity` for that producer.
 
 A consumer does not select a separate composite-action revision or CLI version.
-The pinned workflow loads its sibling setup action, whose release stamp selects
-and verifies the matching CLI. Moving branches, tags, abbreviated SHAs, and
-mixed release-unit revisions are unsupported.
+The pinned workflow loads its sibling setup action, which acquires the CLI the
+pinned SHA defines: `go-pre-publish.yml` builds it from that SHA's source
+because staging's native-signing selection is a contract with the workflow's
+own source, and every other workflow installs and verifies the release the
+action's stamp names. Moving branches, tags, abbreviated SHAs, and mixed
+release-unit revisions are unsupported.
 
 `REPLACE_WITH_RELEASE_COMMIT_SHA` in the maintained example is a template value.
 The caller is not ready to run until every occurrence is replaced by one full
@@ -80,6 +83,7 @@ release-please.yml
   -> publish-scoop.yml          (optional, independent PR)
   -> publish-object-store.yml   (optional, private bucket)
   -> publish-forgejo-debian.yml (optional, Forgejo apt registry)
+  -> publish-forgejo-rpm.yml    (optional, Forgejo DNF registry)
   -> request-package-repository.yml
        -> adopter-owned central repository_dispatch
        -> publish-package-repository.yml
@@ -111,6 +115,7 @@ above that ceiling.
 | `publish-package-repository.yml` | `attestations: read`, `contents: read` |
 | `publish-object-store.yml` | `actions: read`, `contents: read` |
 | `publish-forgejo-debian.yml` | `actions: read`, `attestations: read`, `contents: read` |
+| `publish-forgejo-rpm.yml` | `actions: read`, `attestations: read`, `contents: read` |
 
 The Release Please job requires `contents: write`, `issues: write`, and
 `pull-requests: write`. It performs mutations with an adopter-owned App token.
@@ -126,7 +131,7 @@ Inputs:
 | Input | Type | Required | Default | Contract |
 | --- | --- | --- | --- | --- |
 | `sign-and-notarize-macos` | boolean | No | `false` | Enable the producer's guarded GoReleaser macOS signing and notarization block. |
-| `sign-native-packages` | boolean | No | `false` | Sign RPM and APK packages before checksum generation. |
+| `sign-native-packages` | string | No | `''` | Comma-separated native package formats to sign before checksum generation: empty, `rpm`, `apk`, or `rpm,apk`. A format left out ships unsigned. |
 | `private-go-modules` | string | No | `''` | Comma-separated `GOPRIVATE` patterns for Go modules hosted in private repositories of the calling organization. Empty resolves every module through the public proxy. |
 | `private-go-module-repositories` | string | No | `''` | Comma-separated repository names the release app token may read while resolving `private-go-modules`. Required with `private-go-modules`. |
 | `release-app-client-id` | string | No | `''` | Client ID of the GitHub App that reads `private-go-module-repositories`. Required with `private-go-modules`. |
@@ -136,13 +141,21 @@ Optional secrets become required when their input is enabled:
 | Input | Required secrets |
 | --- | --- |
 | macOS signing | `macos-sign-p12`, `macos-sign-password`, `macos-notary-key`, `macos-notary-key-id`, `macos-notary-issuer-id` |
-| Native signing | `rpm-signing-key`, `rpm-signing-passphrase`, `apk-signing-key`, `apk-signing-passphrase` |
+| Native signing | `rpm` selects `rpm-signing-key` and `rpm-signing-passphrase`; `apk` selects `apk-signing-key` and `apk-signing-passphrase`. Only the selected formats' secrets are required, and only their keys are materialized |
 | Private Go modules | `release-app-private-key`. The producer mints a `contents: read` installation token for exactly `private-go-module-repositories`, adds a repository-scoped `url.insteadOf` to the runner's global git configuration, and exports `GOPRIVATE`; nothing is written to the staged artifacts |
 | Any | `goreleaser-key`: GoReleaser Pro license key, exported to GoReleaser as `GORELEASER_KEY`. The workflow installs the producer's `http:goreleaser-pro` declaration; the Pro binary validates configuration without a key and enforces the license on non-snapshot releases |
 
 The private key values are base64 encoded. Native keys are materialized as
 owner-only files under `RUNNER_TEMP` immediately before staging and removed
 afterward, including on a failed stage.
+
+This workflow acquires `release-cli` with the setup action's `local-build:
+always` mode, so the binary is built from the exact reusable-workflow source
+SHA the caller pinned. Staging is the one job whose behavior is defined by this
+workflow's own source: the native-signing selection is a contract between these
+steps and the CLI that reads `RELEASE_NATIVE_PACKAGE_SIGNING`, and building
+from the pinned source keeps the two in step instead of pairing a pinned
+workflow with the version the last release stamped.
 
 Outputs:
 
@@ -418,6 +431,64 @@ and accepts the run only when the published SHA-256 equals the built one. A
 differing file fails the run and the release must move to a new version:
 nothing is ever deleted or overwritten, no request follows a redirect, and an
 unexpected status is reported without the registry's response body.
+
+### `publish-forgejo-rpm.yml`
+
+Uploads the RPM packages of the verified closed release bundle to a Forgejo RPM
+package registry, so DNF users install the same bytes the release publishes. It
+runs on `ubuntu-24.04` with a 15-minute timeout. Publication requires a tag ref
+that resolves to the workflow commit; with `publish-packages` false the job
+performs every check from any ref, including a branch dispatch, and sends no
+request to Forgejo.
+
+| Input | Type | Required | Default |
+| --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None |
+| `artifact-digest` | string | Yes | None |
+| `checksum-signing-workflow-ref` | string | Yes | None |
+| `package-name` | string | Yes | None |
+| `origin` | string | Yes | None |
+| `owner` | string | Yes | None |
+| `group` | string | Yes | None |
+| `producer-key-file` | string | Yes | None |
+| `producer-key-fingerprint` | string | Yes | None |
+| `publisher-username` | string | Yes | None |
+| `publish-packages` | boolean | No | `false` |
+
+| Secret | Required | Contract |
+| --- | --- | --- |
+| `publisher-token` | No | Token of the publisher account, with package write permission. Required only when `publish-packages` is true. |
+
+`producer-key-file` is a repository-relative path to the reviewed armored
+OpenPGP public key in the caller's checkout, and `producer-key-fingerprint` is
+the 40 hex digits that key must present. A path that is absolute, contains a
+`..` segment, or resolves outside the checkout is rejected before the key is
+read. Forgejo signs only repository metadata, so this producer signature is
+what a DNF client running `gpgcheck=1` checks over the package bytes.
+
+The publisher verifies the artifact handoff and the closed bundle with the
+exact Cosign identity, removes the two package-manager controls, and then reads
+every `.rpm` left in the bundle. The set must be exactly two packages that
+declare `package-name`, one `x86_64` and one `aarch64`, at the same stable
+`MAJOR.MINOR.PATCH` version, release, and epoch; the RPM headers decide, not
+the file names. Each package must carry an OpenPGP signature that the reviewed
+key validates in a scratch RPM database holding only that key, so an unsigned
+package and a package signed by any other key both fail. A publication
+additionally requires the version to be the one the tag names, derived as the
+tag without any monorepo prefix and without the leading `v`, so
+`resolver/v1.2.3` publishes only packages that declare `1.2.3`. Every check
+runs before any credential is written and before the registry is contacted.
+
+Each package is uploaded with `PUT` to
+`<origin>/api/packages/<owner>/rpm/<group>/upload`. Both `201` and `409` are
+followed by a read of
+`<origin>/api/packages/<owner>/rpm/<group>/package/<package>/<version>-<release>/<architecture>`,
+prefixed `<epoch>-` when the package declares an epoch other than zero, exactly
+as Forgejo files it. The run is accepted only when the published SHA-256 equals
+the built one, so an upload the registry altered and a stale published file
+both fail. A differing file fails the run and the release must move to a new
+version: nothing is ever deleted or overwritten, no request follows a redirect,
+and an unexpected status is reported without the registry's response body.
 
 ## Producer repository contract
 

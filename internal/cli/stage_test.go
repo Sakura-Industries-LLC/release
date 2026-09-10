@@ -93,10 +93,26 @@ func TestStagePassesNativeSigningEnvironment(t *testing.T) {
 	assert.NotContains(t, stderr, env["NFPM_RELEASE_APK_PASSPHRASE"])
 }
 
-func TestStageDisabledNativeSigningRemovesSecrets(t *testing.T) {
+func TestStageSignsOnlyTheSelectedFormat(t *testing.T) {
+	dist := chdirDist(t)
+	env := validNativeSigningEnv(t)
+	env["RELEASE_NATIVE_PACKAGE_SIGNING"] = "rpm"
+	delete(env, "RELEASE_APK_SIGNING_KEY_FILE")
+	delete(env, "NFPM_RELEASE_APK_PASSPHRASE")
+	_, _, got, err := executeStageSeam(t, env, []string{"stage", "--profile", "go", "--dist", dist})
+	require.NoError(t, err)
+	assert.Contains(t, got.Environ, "RELEASE_RPM_SIGNING_KEY_FILE="+env["RELEASE_RPM_SIGNING_KEY_FILE"])
+	assert.Contains(t, got.Environ, "NFPM_RELEASE_RPM_PASSPHRASE="+env["NFPM_RELEASE_RPM_PASSPHRASE"])
+	// nFPM signs a format only when its key file resolves, so the unselected
+	// format must reach GoReleaser with empty values.
+	assert.Contains(t, got.Environ, "RELEASE_APK_SIGNING_KEY_FILE=")
+	assert.Contains(t, got.Environ, "NFPM_RELEASE_APK_PASSPHRASE=")
+}
+
+func TestStageUnselectedNativeSigningRemovesSecrets(t *testing.T) {
 	dist := chdirDist(t)
 	_, _, got, err := executeStageSeam(t, map[string]string{
-		"RELEASE_NATIVE_PACKAGE_SIGNING": "false",
+		"RELEASE_NATIVE_PACKAGE_SIGNING": "",
 		"NFPM_RELEASE_RPM_PASSPHRASE":    "unused-rpm-secret",
 		"NFPM_RELEASE_APK_PASSPHRASE":    "unused-apk-secret",
 		"NATIVE_SIGNING_TEST_MARKER":     "preserved",
@@ -119,11 +135,18 @@ func TestStageRejectsInvalidNativeSigningBeforeGoReleaser(t *testing.T) {
 		want string
 	}{
 		{
-			name: "malformed enable",
+			name: "unknown format",
 			mutate: func(_ *testing.T, env map[string]string) {
 				env["RELEASE_NATIVE_PACKAGE_SIGNING"] = "yes"
 			},
 			want: "RELEASE_NATIVE_PACKAGE_SIGNING",
+		},
+		{
+			name: "repeated format",
+			mutate: func(_ *testing.T, env map[string]string) {
+				env["RELEASE_NATIVE_PACKAGE_SIGNING"] = "rpm,rpm"
+			},
+			want: "twice",
 		},
 		{
 			name: "missing RPM key",
@@ -201,7 +224,7 @@ func validNativeSigningEnv(t *testing.T) map[string]string {
 	require.NoError(t, os.WriteFile(apkKey, []byte("apk-private-key"), 0o600))
 
 	return map[string]string{
-		"RELEASE_NATIVE_PACKAGE_SIGNING": "true",
+		"RELEASE_NATIVE_PACKAGE_SIGNING": "rpm,apk",
 		"RELEASE_RPM_SIGNING_KEY_FILE":   rpmKey,
 		"RELEASE_APK_SIGNING_KEY_FILE":   apkKey,
 		"NFPM_RELEASE_RPM_PASSPHRASE":    "rpm-passphrase-do-not-print",

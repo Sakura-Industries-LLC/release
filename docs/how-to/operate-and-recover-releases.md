@@ -249,10 +249,11 @@ checksum, missing canonical Linux binary, dynamic executable, escaped path, or
 irregular file.
 
 When macOS signing is enabled, confirm all five Apple credentials and inspect
-Quill's rejection or timeout. When native package signing is enabled, confirm
-all four credentials, owner-only key files, nFPM ID `release`, and the fixed key
-expressions. Do not disable signing to make a producer eligible for a native
-repository whose policy requires signed RPM and APK packages.
+Quill's rejection or timeout. When a native package format is selected, confirm
+that format's credentials, owner-only key files, nFPM ID `release`, and the
+fixed key expressions. Do not drop a format from the selection to make a
+producer eligible for a native repository whose policy requires signed RPM and
+APK packages.
 
 ### Artifact handoff
 
