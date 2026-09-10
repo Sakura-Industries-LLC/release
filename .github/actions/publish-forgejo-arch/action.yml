@@ -1,0 +1,58 @@
+name: Publish Arch packages to Forgejo
+description: >
+  Uploads the two Arch Linux packages of a verified release bundle to a Forgejo
+  Arch package registry, or checks the package set without contacting it.
+
+inputs:
+  dist:
+    description: Verified distribution directory holding the closed release bundle.
+    required: false
+    default: dist
+  package-name:
+    description: pkgname both packages must declare.
+    required: true
+  expected-version:
+    description: Version this release publishes. Required when publish is true; both packages must declare it.
+    required: false
+    default: ''
+  origin:
+    description: HTTPS origin of the forge, for example `https://forge.dntls.net`.
+    required: true
+  owner:
+    description: Registry owner that holds the packages.
+    required: true
+  group:
+    description: Arch registry group the packages are filed under, for example `stable`.
+    required: true
+  publisher-username:
+    description: Forge account the publisher token belongs to.
+    required: true
+  publish:
+    description: Upload the packages. When false the action checks the set and sends no request.
+    required: false
+    default: 'false'
+  publisher-token:
+    description: Token of the publisher account. Required only when publish is true.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # The one step that reaches the registry, and so the only place the token
+    # exists. The script owns the package-set, route, and published-state rules
+    # too, so an operator rehearsing it by hand runs the checks a publication
+    # runs.
+    - name: Publish the Arch packages
+      shell: bash
+      env:
+        DIST: ${{ inputs.dist }}
+        FORGEJO_ORIGIN: ${{ inputs.origin }}
+        FORGEJO_OWNER: ${{ inputs.owner }}
+        FORGEJO_GROUP: ${{ inputs.group }}
+        FORGEJO_PACKAGE: ${{ inputs.package-name }}
+        FORGEJO_EXPECTED_VERSION: ${{ inputs.expected-version }}
+        FORGEJO_USERNAME: ${{ inputs.publisher-username }}
+        FORGEJO_PUBLISH: ${{ inputs.publish }}
+        FORGEJO_TOKEN: ${{ inputs.publisher-token }}
+      run: bash "${GITHUB_ACTION_PATH}/publish-arch.sh" "${DIST}"

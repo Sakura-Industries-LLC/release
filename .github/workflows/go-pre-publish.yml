@@ -448,6 +448,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.apk
+            dist/*.pkg.tar.zst
             dist/*.sbom.json
             dist/checksums.txt
             dist/checksums.txt.sigstore.json
