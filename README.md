@@ -68,6 +68,7 @@ inspect its draft and workflow artifacts before enabling destinations.
 - [Publish Debian packages to Forgejo](docs/how-to/publish-debian-packages-to-forgejo.md)
 - [Publish RPM packages to Forgejo](docs/how-to/publish-rpm-packages-to-forgejo.md)
 - [Publish Arch packages to Forgejo](docs/how-to/publish-arch-packages-to-forgejo.md)
+- [Publish Python packages to Forgejo](docs/how-to/publish-python-packages-to-forgejo.md)
 - [Operate and recover releases](docs/how-to/operate-and-recover-releases.md)
 - [Install `release-cli`](docs/how-to/install-release-cli.md)
 - [Release system reference](docs/reference/release-system.md)
