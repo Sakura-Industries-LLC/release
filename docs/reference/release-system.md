@@ -85,6 +85,7 @@ release-please.yml
   -> publish-forgejo-debian.yml (optional, Forgejo apt registry)
   -> publish-forgejo-rpm.yml    (optional, Forgejo DNF registry)
   -> publish-forgejo-arch.yml   (optional, Forgejo pacman registry)
+  -> publish-forgejo-pypi.yml   (optional, Forgejo PyPI registry)
   -> request-package-repository.yml
        -> adopter-owned central repository_dispatch
        -> publish-package-repository.yml
@@ -118,6 +119,7 @@ above that ceiling.
 | `publish-forgejo-debian.yml` | `actions: read`, `attestations: read`, `contents: read` |
 | `publish-forgejo-rpm.yml` | `actions: read`, `attestations: read`, `contents: read` |
 | `publish-forgejo-arch.yml` | `actions: read`, `attestations: read`, `contents: read` |
+| `publish-forgejo-pypi.yml` | `actions: read`, `attestations: read`, `contents: read` |
 
 The Release Please job requires `contents: write`, `issues: write`, and
 `pull-requests: write`. It performs mutations with an adopter-owned App token.
@@ -555,6 +557,63 @@ incomplete state, or an unexpected status fails the run and the release must
 move to a new version: nothing is ever deleted or overwritten, no request
 follows a redirect, and an unexpected status is reported without the
 registry's response body.
+
+### `publish-forgejo-pypi.yml`
+
+Uploads the Python distributions of a verified closed release bundle to a
+Forgejo PyPI package registry, so pip and uv users install the same bytes the
+release publishes. It runs on `ubuntu-24.04` with a 15-minute timeout.
+Publication requires a tag ref that resolves to the workflow commit; with
+`publish-packages` false the job performs every check from any ref, including
+a branch dispatch, and uploads nothing.
+
+| Input | Type | Required | Default |
+| --- | --- | --- | --- |
+| `artifact-id` | string | Yes | None |
+| `artifact-digest` | string | Yes | None |
+| `checksum-signing-workflow-ref` | string | Yes | None |
+| `package-name` | string | Yes | None |
+| `origin` | string | Yes | None |
+| `owner` | string | Yes | None |
+| `publisher-username` | string | Yes | None |
+| `publish-packages` | boolean | No | `false` |
+
+| Secret | Required | Contract |
+| --- | --- | --- |
+| `publisher-token` | No | Token of the publisher account, with package write permission. Required only when `publish-packages` is true. |
+
+`package-name` is the PEP 503 normalized project name, so the simple-index
+URL, the published name, and the input are one string. The distribution file
+stem is derived from it by PEP 625 normalization, folding every `-` to `_`.
+
+The artifact this publisher consumes is flat and carries no package-manager
+controls, so nothing is removed before verification. The publisher verifies
+the artifact handoff and the closed bundle with the exact Cosign identity,
+then requires the bundle to be exactly four regular files:
+`<stem>-<version>.tar.gz`, `<stem>-<version>-py3-none-any.whl`,
+`checksums.txt`, and `checksums.txt.sigstore.json`, at one stable
+`MAJOR.MINOR.PATCH` version. A publication additionally requires that version
+to be the one the tag names, derived as the tag without any component prefix
+and without the leading `v`, so `sdk/python/v1.2.3` publishes only
+distributions named `1.2.3`.
+
+A PyPI registry refuses to replace a published file, so the publisher reads
+`<origin>/api/packages/<owner>/pypi/simple/<package-name>` first and compares
+the `#sha256=` fragment Forgejo renders for each anchor against the SHA-256
+this run built. A file listed with the built digest is `unchanged` and is
+never re-sent; both listed is a complete, identical publication that uploads
+nothing; a file listed with any other digest fails the run. Only unlisted
+files are uploaded, with twine 7.0.0 run through `uv`, to
+`<origin>/api/packages/<owner>/pypi`, credentials in `TWINE_USERNAME` and
+`TWINE_PASSWORD` and never in argv. The index is read again afterwards and
+the run is accepted only when it lists every uploaded file with the built
+digest. A differing file fails the run and the release must move to a new
+version: nothing is ever deleted or overwritten, no request follows a
+redirect, and an unexpected status is reported without the registry's
+response body.
+
+The job installs `cosign` and `uv` from the caller's `mise.toml`, which must
+pin both.
 
 ## Producer repository contract
 
