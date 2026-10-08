@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.24](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.23...v0.1.24) (2026-10-08)
+
+
+### Features
+
+* publish signed Debian packages to Forgejo ([#20](https://github.com/Sakura-Industries-LLC/release/issues/20)) ([80a3ada](https://github.com/Sakura-Industries-LLC/release/commit/80a3ada6b8e253ae7cb5e704e76e5b706003f5ed))
+* **publish:** add verified Forgejo Arch package publisher ([#23](https://github.com/Sakura-Industries-LLC/release/issues/23)) ([ef30bcc](https://github.com/Sakura-Industries-LLC/release/commit/ef30bccbde68a6e101e79922d782adb829c3a355))
+* **publish:** add verified Forgejo PyPI package publisher ([#24](https://github.com/Sakura-Industries-LLC/release/issues/24)) ([a3fd04c](https://github.com/Sakura-Industries-LLC/release/commit/a3fd04c8819021c5338a29f54a7fc22627767719))
+* **release:** sign selected package formats and publish Forgejo RPMs ([#22](https://github.com/Sakura-Industries-LLC/release/issues/22)) ([76642f4](https://github.com/Sakura-Industries-LLC/release/commit/76642f419e899692d8daefb5c37925e2b84cfdca))
+
+
+### Bug Fixes
+
+* **publish:** retry the GitHub Release tool install on transient failures ([#25](https://github.com/Sakura-Industries-LLC/release/issues/25)) ([75a3aeb](https://github.com/Sakura-Industries-LLC/release/commit/75a3aebb4f5fbf5e1ca9c3c940c7876c095a5c04))
+
 ## [0.1.23](https://github.com/Sakura-Industries-LLC/release/compare/v0.1.22...v0.1.23) (2026-09-04)
 
 
