@@ -67,7 +67,7 @@ nfpms:
     homepage: https://github.com/Sakura-Industries-LLC/release
     maintainer: Sakura Industries LLC <contact@sakuraindustries.net>
     description: Release CLI and reusable workflow tooling for Sakura repositories.
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     formats:
       - deb
       - rpm
@@ -92,7 +92,7 @@ homebrew_casks:
       name: homebrew-tap
     homepage: https://github.com/Sakura-Industries-LLC/release
     description: Release automation for Sakura repositories
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     url:
       template: "https://github.com/Sakura-Industries-LLC/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
@@ -106,7 +106,7 @@ scoops:
       name: scoop-bucket
     homepage: https://github.com/Sakura-Industries-LLC/release
     description: Release automation for Sakura repositories
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     url_template: "https://github.com/Sakura-Industries-LLC/release/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 

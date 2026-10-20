@@ -30,4 +30,4 @@ annotations:
   org.opencontainers.image.title: example
   org.opencontainers.image.description: Example Go command using the reusable release workflows.
   org.opencontainers.image.source: https://github.com/OWNER/REPOSITORY
-  org.opencontainers.image.licenses: Apache-2.0 OR MIT
+  org.opencontainers.image.licenses: AGPL-3.0-only

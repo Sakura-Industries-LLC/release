@@ -81,7 +81,7 @@ homebrew_casks:
       name: homebrew-tools
     homepage: https://github.com/acme/widget
     description: Widget command
-    license: MIT
+    license: AGPL-3.0-only
     url:
       template: "https://github.com/acme/widget/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
@@ -221,7 +221,7 @@ scoops:
       name: scoop-tools
     homepage: https://github.com/acme/widget
     description: Widget command
-    license: MIT
+    license: AGPL-3.0-only
     url_template: "https://github.com/acme/widget/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 ```

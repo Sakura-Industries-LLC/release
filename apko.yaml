@@ -30,4 +30,4 @@ annotations:
   org.opencontainers.image.title: release-cli
   org.opencontainers.image.description: Exercise the Sakura Industries release pipeline.
   org.opencontainers.image.source: https://github.com/Sakura-Industries-LLC/release
-  org.opencontainers.image.licenses: Apache-2.0 OR MIT
+  org.opencontainers.image.licenses: AGPL-3.0-only

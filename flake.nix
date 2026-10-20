@@ -50,7 +50,7 @@
           meta = {
             description = "Validate and publish Sakura Industries release artifacts";
             homepage = "https://github.com/Sakura-Industries-LLC/release";
-            license = with pkgs.lib.licenses; [ asl20 mit ];
+            license = pkgs.lib.licenses.agpl3Only;
             mainProgram = "release-cli";
             platforms = systems;
           };

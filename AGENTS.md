@@ -11,6 +11,14 @@ under `.journal/repos/release/`.
 If you are running directly inside this repo, `cd ..` to the meta repo root
 before any session lifecycle command.
 
+# License
+
+This repository is licensed under the GNU Affero General Public License v3.0
+only (`AGPL-3.0-only`). Never add, restore, or dual-license under MIT,
+Apache-2.0, or any other permissive license. Every license file, SPDX
+expression, package or image metadata field, and README license section says
+`AGPL-3.0-only`. Vendored third-party code keeps its upstream notice.
+
 # Go Best Practices
 
 Rules are grouped by category and numbered for reference. Cite them by ID in

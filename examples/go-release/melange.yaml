@@ -10,7 +10,7 @@ package:
   homepage: https://github.com/OWNER/REPOSITORY
   maintainer: Release Team <releases@example.com>
   copyright:
-    - license: Apache-2.0 OR MIT
+    - license: AGPL-3.0-only
 
 vars:
   version: 0.0.0
