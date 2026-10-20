@@ -77,5 +77,5 @@ inspect its draft and workflow artifacts before enabling destinations.
 
 ## License
 
-Licensed under either the [Apache License 2.0](LICENSE-APACHE) or the
-[MIT License](LICENSE-MIT), at your option.
+Licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0-only).

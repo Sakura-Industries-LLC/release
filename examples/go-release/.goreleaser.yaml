@@ -67,7 +67,7 @@ nfpms:
     homepage: https://github.com/OWNER/REPOSITORY
     maintainer: Release Team <releases@example.com>
     description: Example Go command using the reusable release workflows.
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     formats:
       - deb
       - rpm
@@ -92,7 +92,7 @@ homebrew_casks:
       name: HOMEBREW-TAP
     homepage: https://github.com/OWNER/REPOSITORY
     description: Example Go command
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     url:
       template: "https://github.com/OWNER/REPOSITORY/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
@@ -106,7 +106,7 @@ scoops:
       name: SCOOP-BUCKET
     homepage: https://github.com/OWNER/REPOSITORY
     description: Example Go command
-    license: Apache-2.0 OR MIT
+    license: AGPL-3.0-only
     url_template: "https://github.com/OWNER/REPOSITORY/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     skip_upload: true
 
