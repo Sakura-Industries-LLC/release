@@ -124,14 +124,38 @@ jobs:
             exit 1
           fi
 
+      # The GitHub CLI's lock entry requires a live GitHub artifact attestation
+      # check, and GitHub's attestation API sometimes answers 503. The action's
+      # own install runs first so a success still saves its cache; when it
+      # fails, the next step retries. Verification is never turned off: the
+      # locked checksum and attestation must match on the attempt that
+      # succeeds.
       - name: Setup mise
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        continue-on-error: true
         with:
           version: 2026.8.8
           install_args: 'aqua:cli/cli aqua:sigstore/cosign'
           cache: true
           add_shims_to_path: false
           export_path: false
+
+      - name: Install publication tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v mise >/dev/null || { echo "::error::mise is not installed."; exit 1; }
+          for attempt in 1 2 3 4; do
+            if mise install --locked aqua:cli/cli aqua:sigstore/cosign; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 4 ]; then
+              echo "::warning::mise install failed (attempt ${attempt} of 4); retrying in $((attempt * 20)) seconds."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::mise could not install the publication tools after 4 attempts."
+          exit 1
 
       - name: Verify publication tools
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
